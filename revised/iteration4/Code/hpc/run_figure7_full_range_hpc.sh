@@ -34,6 +34,7 @@ COMPUTE_ONLY=FALSE
 REUSE_CONTINUOUS_RUN=""
 PILOT_ONLY=FALSE
 STOCHASTIC_REPLICATES=20
+STOCHASTIC_ALLOCATION=fixed
 
 for argument in "$@"; do
   case "${argument}" in
@@ -46,11 +47,12 @@ for argument in "$@"; do
     --reuse-continuous-run=*) REUSE_CONTINUOUS_RUN="${argument#*=}" ;;
     --pilot-only) PILOT_ONLY=TRUE ;;
     --replicates=*) STOCHASTIC_REPLICATES="${argument#*=}" ;;
+    --allocation=*) STOCHASTIC_ALLOCATION="${argument#*=}" ;;
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--o2-chunk-size=N] [--run-id=ID]" \
         "          [--preflight-only|--draw-only|--compute-only]" \
-        "          [--pilot-only] [--replicates=20|50|100]" \
+        "          [--pilot-only] [--replicates=N] [--allocation=fixed|independent_calibration]" \
         "          [--reuse-continuous-run=ABSOLUTE_RUN_DIRECTORY]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -64,6 +66,9 @@ fi
 if ! [[ "${STOCHASTIC_REPLICATES}" =~ ^[1-9][0-9]*$ ]] || (( STOCHASTIC_REPLICATES < 2 )); then
   echo "--replicates must be an integer >=2" >&2; exit 2
 fi
+[[ "${STOCHASTIC_ALLOCATION}" == fixed || "${STOCHASTIC_ALLOCATION}" == independent_calibration ]] || {
+  echo "Invalid stochastic allocation policy" >&2; exit 2
+}
 if ! [[ "${O2_CHUNK_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
   echo "--o2-chunk-size must be a positive integer." >&2
   exit 2
@@ -247,6 +252,7 @@ CONTAINER_ARGS=(
   --env "FIGURE7_FINITE_TIME_FUTURE_PLAN=multicore"
   --env "FIGURE7_REUSE_CONTINUOUS_RUN=${REUSE_CONTINUOUS_RUN}"
   --env "FIGURE7_STOCHASTIC_REPLICATES=${STOCHASTIC_REPLICATES}"
+  --env "FIGURE7_STOCHASTIC_ALLOCATION=${STOCHASTIC_ALLOCATION}"
   --env "FIGURE7_STOCHASTIC_PILOT_ONLY=${PILOT_ONLY}"
   --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
   --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"

@@ -35,7 +35,8 @@ full stochastic birth/death simulation. No per-day rounding occurs in culture.
 Master seed 20260904; R L'Ecuyer-CMRG/Inversion/Rejection, pinned R 4.4.2 SIF.
 The sorted condition key is (invitro, cluster, original optimizer seed number,
 oxygen, p_misseg, initial ploidy). Every key owns a separate nextRNGStream stream;
-replicate r owns its (r-1)th nextRNGSubStream. The catalog and RNG settings are
+production replicate r owns substream 2*(r-1); independent calibration replicate
+r owns substream 2*(r-1)+1. The catalog and RNG settings are
 saved with results. Keys never use worker id, task scheduling, chunk size or
 run id. The first R replicas are unchanged when increasing R. Parameter-identity
 deduplication shares the operator only: every original optimizer endpoint keeps
@@ -43,13 +44,24 @@ independent sampling streams, including the 35-fold identical group.
 
 Average replicas within each endpoint, then average the same 50 q10 endpoints
 equally. Save within-endpoint variance, Monte Carlo SE of the 50-endpoint mean,
-and between-endpoint-mean variance separately. A 20/50/100-repeat full-time pilot
-selects a fixed R; all final grid means must have MCSE <=0.01N before publication.
-Pilot convergence is evidence at selected conditions, not a proof for the grid.
-The pilot screening SE is the largest observed endpoint SE divided by sqrt(50),
-assuming equally large variance in all 50 independent endpoints. It does not
-apply the 0.01N target to an individual endpoint. If 100 repeats are insufficient,
-the campaign stops for a compute-strategy decision before a larger full run.
+and between-endpoint-mean variance separately. Following the completed 40-case
+pilot, the production campaign uses independent per-condition calibration.
+For every unique parameter identity / oxygen / p_misseg / initial ploidy, run
+100 calibration trajectories over all 10000 days, take the maximum temporal
+sample variance v, and freeze R as the next level in 20,50,100,200,400,800,1600,
+3200,4000 at or above 2*v/(50*0.01^2). No-threshold-crossing conditions require
+no stochastic calibration and remain exactly continuous. The factor of two
+provides a planning margin, not a confidence bound. All original endpoints of
+an identical parameter identity share this calibration but use independent
+production draws; calibration draws never enter the reported mean.
+
+The allocation and calibration variance are saved before production and carried
+in each endpoint passage summary. This prevents choosing the final sample size
+from the same draws whose mean is reported. Different R values do not change
+endpoint weighting. Final full-grid MCSE still must be <=0.01N; a failure stops
+publication rather than selectively dropping endpoints or repeatedly adding
+production samples until a result passes. This replaces the historical pilot
+gate, which remains available only through the explicit --pilot-only option.
 
 Daily state, log count, RNG states, accumulators, current endpoint and oxygen are
 checkpointed at 1000-day boundaries. Completed operators are atomically reduced
@@ -71,7 +83,7 @@ never reused. Historical runs/publication files are retained in versioned roots.
 ## Execution
 
 Use run_figure7_stochastic_campaign_hpc.sh RUN_ID BASELINE_RUN on hpctpa3pc0028.
-It runs the pilot, locks R, computes all new passage data, renders headlessly,
+It calibrates and locks R independently per condition, computes all new passage data, renders headlessly,
 validates whole PDF words/bounds and seals a positive-list SHA256 return manifest.
 60 worker processes, BLAS one thread; checkpoint batching stays within the user
 allocation of 64 CPUs/512GB. Temporary/cache/output writes stay in iteration4.

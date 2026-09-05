@@ -103,7 +103,8 @@ f7s_validate <- function(paths, run_paths, actual_cases=list()) {
     f7s_rng_key("C01",seed,.5,.005,initial)))
   catalog_states <- f7s_test_streams(length(catalog_keys))
   colnames(catalog_states) <- catalog_keys
-  config <- f7s_config(); config$replicates <- 3L; config$checkpoint_days <- 3L
+  config <- f7s_config(); config$allocation <- "fixed"
+  config$replicates <- 3L; config$checkpoint_days <- 3L
   bundle <- list(rule=data.frame(seed_cells=100,target_live_cells=251),
     stochastic=list(config=config,catalog=list(states=catalog_states)))
   step5 <- diag(rep(1.25,5)) + matrix(.03,5,5)
@@ -135,6 +136,32 @@ f7s_validate <- function(paths, run_paths, actual_cases=list()) {
   recovered <- f7s_operator(step5,diag(5),2:6,endpoint,.5,.005,17L,bundle,
     interrupted_path,"synthetic_v4",TRUE)
   check("interrupted_operator_resume_equal",identical(wrapped,recovered))
+  prod <- f7s_streams(bundle$stochastic$catalog,"C01",17,.5,.005,2,10L)
+  cal <- f7s_streams(bundle$stochastic$catalog,"C01",17,.5,.005,2,10L,"calibration")
+  check("calibration_production_substreams_disjoint",
+    !any(apply(cal,2,paste,collapse=",") %in% apply(prod,2,paste,collapse=",")))
+  check("production_replicate_prefix_stable",identical(prod[,1:3],
+    f7s_streams(bundle$stochastic$catalog,"C01",17,.5,.005,2,3L)))
+  check("allocation_high_variance_safety_margin",
+    f7s_allocate_replicates(1.25^2,config)==800L)
+  check("allocation_stable_minimum",f7s_allocate_replicates(0,config)==20L)
+  unequal <- f7s_moments(matrix(rep(2,20),20),1L,20L)$sum +
+    f7s_moments(matrix(rep(6,100),100),1L,100L)$sum
+  check("unequal_replicates_preserve_equal_endpoint_weight",identical(unequal/2,4))
+  calibrated_bundle <- bundle
+  calibrated_bundle$stochastic$config$allocation <- "independent_calibration"
+  allocation_path <- file.path(directory,"calibrated_operator.rds")
+  if (file.exists(allocation_path)) unlink(allocation_path)
+  calibrated <- f7s_operator(step5,diag(5),2:6,endpoint,.5,.005,17L,
+    calibrated_bundle,allocation_path,"calibrated_v1",FALSE)
+  calibrated_resume <- f7s_operator(step5,diag(5),2:6,endpoint,.5,.005,17L,
+    calibrated_bundle,allocation_path,"calibrated_v1",FALSE)
+  check("calibration_allocation_and_production_resume_equal",
+    identical(calibrated,calibrated_resume))
+  check("calibration_not_pooled_into_production_mean",
+    all(calibrated$summary$n_replicate %in% c(20,50,100,200,400,800,1600,3200,4000)) &&
+      all(calibrated$summary$calibration_replicates==100L) &&
+      max(abs(calibrated$sum[,1]/2-2:6))<1e-12)
   for (case in actual_cases) {
     init <- case$initial[,1,drop=FALSE]
     actual <- f7s_propagate_cpp(case$step, init, case$ploidy, case$days,

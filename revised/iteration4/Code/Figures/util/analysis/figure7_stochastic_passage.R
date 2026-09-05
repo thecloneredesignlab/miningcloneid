@@ -3,7 +3,12 @@
 f7s_config <- function() {
   reps <- as.integer(Sys.getenv("FIGURE7_STOCHASTIC_REPLICATES", "20"))
   stopifnot(length(reps) == 1L, !is.na(reps), reps >= 2L, reps <= 10000L)
+  allocation <- Sys.getenv("FIGURE7_STOCHASTIC_ALLOCATION", "fixed")
+  stopifnot(allocation %in% c("fixed", "independent_calibration"))
   list(master_seed = 20260904L, rng_kind = "L'Ecuyer-CMRG", replicates = reps,
+    allocation = allocation, calibration_replicates = 100L,
+    calibration_variance_safety_factor = 2, ensemble_size = 50L,
+    stream_policy = "even_substreams_production_odd_substreams_calibration_v1",
     checkpoint_days = 1000L, mcse_target_N = 0.01,
     sampling = "systematic_randomized_integerization_then_multivariate_hypergeometric",
     day_convention = "first_eligible_integer_day_actual_population_post_passage_mean")
@@ -46,7 +51,7 @@ f7s_prepare <- function(endpoint_manifest, run_paths) {
     else if (exists(".Random.seed", envir = .GlobalEnv)) rm(".Random.seed", envir = .GlobalEnv)
     catalog <- list(master_seed = config$master_seed, states = states,
       endpoint_identity = expanded[c("pair_label", "seed_number", "parameter_signature")],
-      rule = "sorted condition key owns stream; replicate r owns nextRNGSubStream^(r-1); independent of workers/chunks/run_id")
+      rule = "sorted condition key owns stream; production replica r uses substream 2*(r-1), calibration uses 2*(r-1)+1; independent of workers/chunks/run_id")
     f7ft_atomic_save_rds(catalog, catalog_path, compress = "gzip")
   }
   config$stream_catalog_md5 <- unname(tools::md5sum(catalog_path))
@@ -59,19 +64,59 @@ f7s_prepare <- function(endpoint_manifest, run_paths) {
     catalog = catalog)
 }
 
-f7s_streams <- function(catalog, family, seeds, oxygen, p, initial, replicates) {
+f7s_streams <- function(catalog, family, seeds, oxygen, p, initial, replicates,
+    phase = "production") {
+  stopifnot(phase %in% c("production", "calibration"))
   indices <- match(f7s_rng_key(family, seeds, oxygen, p, initial),
     colnames(catalog$states))
   if (anyNA(indices)) stop("Condition has no registered random stream.")
   out <- matrix(NA_integer_, 7L, length(seeds) * replicates)
   for (j in seq_along(seeds)) {
     state <- catalog$states[, indices[j]]
+    if (phase == "calibration") state <- parallel::nextRNGSubStream(state)
     for (r in seq_len(replicates)) {
       out[, (j-1L) * replicates+r] <- state
-      state <- parallel::nextRNGSubStream(state)
+      state <- parallel::nextRNGSubStream(parallel::nextRNGSubStream(state))
     }
   }
   out
+}
+
+f7s_allocate_replicates <- function(maximum_variance, config) {
+  stopifnot(is.finite(maximum_variance), maximum_variance >= 0)
+  needed <- ceiling(config$calibration_variance_safety_factor * maximum_variance /
+    (config$ensemble_size * config$mcse_target_N^2))
+  levels <- c(20L, 50L, 100L, 200L, 400L, 800L, 1600L, 3200L, 4000L)
+  eligible <- levels[levels >= needed]
+  if (!length(eligible)) stop("Calibration requires more than 4000 repeats.")
+  min(eligible)
+}
+
+# Calibration draws are never included in the published mean. The allocation
+# is frozen before any production draw, and persisted in the operator checkpoint.
+# Identical parameter endpoints may share a variance calibration, but retain
+# independent production streams and equal endpoint weights.
+f7s_calibrate <- function(step, initial, ploidy, endpoint, oxygen, p, initial_N,
+    days, bundle, no_crossing) {
+  config <- bundle$stochastic$config
+  variance <- 0
+  if (!no_crossing) {
+    r <- config$calibration_replicates
+    optimizer_seed <- as.integer(strsplit(endpoint$represented_seed_numbers[[1]],
+      ",", fixed=TRUE)[[1]][1])
+    streams <- f7s_streams(bundle$stochastic$catalog, endpoint$pair_label[[1]],
+      optimizer_seed, oxygen, p, initial_N, r, phase="calibration")
+    seed <- bundle$rule$seed_cells[[1]]
+    response <- f7s_propagate_cpp(step, initial[,rep(1L,r),drop=FALSE], ploidy,
+      days, seed, bundle$rule$target_live_cells[[1]], streams,
+      rep(log(seed),r), 0L, TRUE, 0L)
+    x <- response$mean_ploidy
+    variance <- max(colSums((x-rep(colMeans(x),each=r))^2)/(r-1L))
+  }
+  list(replicates=f7s_allocate_replicates(variance,config),
+    calibration_replicates=if (no_crossing) 0L else config$calibration_replicates,
+    calibration_maximum_variance_N2=variance,
+    calibration_no_crossing=no_crossing)
 }
 
 f7s_moments <- function(trajectories, multiplicity, replicates) {
@@ -94,13 +139,15 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
   weight <- length(seeds)
   stopifnot(weight == endpoint$endpoint_multiplicity_q10[[1]])
   config <- bundle$stochastic$config
+  calibrated <- missing(replicates) && identical(config$allocation, "independent_calibration")
+  fixed_replicates <- replicates
   seed <- bundle$rule$seed_cells[[1]]
   target <- bundle$rule$target_live_cells[[1]]
   empty <- matrix(0, ncol(initial), days+1L)
   state <- list(fingerprint = fingerprint, sum = empty,
     sum_squared_endpoint_mean = empty, sum_within_variance = empty,
     sum_mc_variance = empty, initial_index = 1L, day = 0L,
-    active = NULL, summary = list(), traces = list())
+    active = NULL, summary = list(), traces = list(), allocation = list())
   if (!is.null(checkpoint_path) && file.exists(checkpoint_path)) {
     state <- readRDS(checkpoint_path)
     stopifnot(identical(state$fingerprint, fingerprint))
@@ -111,6 +158,16 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
     log(seed), log(target), TRUE)
   for (i in seq_len(ncol(initial))) {
     if (i < state$initial_index) next
+    if (is.null(state$allocation[[as.character(i)]])) {
+      state$allocation[[as.character(i)]] <- if (calibrated) {
+        f7s_calibrate(step, initial[,i,drop=FALSE], ploidy, endpoint, oxygen, p,
+          f7ft_initial_ploidy()[i], days, bundle, isTRUE(scan$no_crossing[[i]]))
+      } else list(replicates=fixed_replicates, calibration_replicates=0L,
+        calibration_maximum_variance_N2=NA_real_, calibration_no_crossing=scan$no_crossing[[i]])
+      if (!is.null(checkpoint_path)) f7ft_atomic_save_rds(state, checkpoint_path, compress=FALSE)
+    }
+    allocation <- state$allocation[[as.character(i)]]
+    replicates <- allocation$replicates
     rng <- f7s_streams(bundle$stochastic$catalog, endpoint$pair_label[[1]], seeds,
       oxygen, p, f7ft_initial_ploidy()[i], replicates)
     if (is.null(state$active)) state$active <- list(
@@ -165,6 +222,9 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
       z <- (j-1L)*replicates+seq_len(replicates)
       data.frame(pair_label=endpoint$pair_label[[1]], endpoint_group=endpoint$endpoint_group[[1]],
         optimizer_seed=seeds[j], endpoint_multiplicity_q10=1L, n_replicate=replicates,
+        calibration_replicates=allocation$calibration_replicates,
+        calibration_maximum_variance_N2=allocation$calibration_maximum_variance_N2,
+        calibration_no_crossing=allocation$calibration_no_crossing,
         p_misseg=p, O2_pct=oxygen, initial_ploidy=f7ft_initial_ploidy()[i],
         passage_count=mean(a$count[z]), no_crossing=mean(a$count[z]==0L),
         first_passage_day=if (all(is.na(a$first[z]))) NA_real_ else min(a$first[z], na.rm=TRUE),
@@ -274,11 +334,13 @@ f7s_compute_task <- function(task, endpoint_manifest, objective_bundle, contexts
   qc <- source$qc
   qc$cache_path <- output; qc$continuous_source <- source_path
   qc$maximum_day0_abs_error <- day0; qc$maximum_direct_formula_error <- work$formula_error
-  qc$maximum_mcse_N <- max(mcse); qc$n_stochastic_replicate <- passage_bundle$stochastic$config$replicates
+  qc$maximum_mcse_N <- max(mcse)
   qc$all_finite <- all(is.finite(mean)); qc$protocol_mask_valid <- TRUE
   qc$passed <- qc$all_finite && day0 < 1e-10 && work$formula_error < 1e-12
   qc$mcse_target_met <- max(mcse) <= passage_bundle$stochastic$config$mcse_target_N
   passage <- do.call(rbind, work$summaries)
+  qc$n_stochastic_replicate <- max(passage$n_replicate)
+  qc$minimum_stochastic_replicate <- min(passage$n_replicate)
   qc$total_passage_events <- sum(passage$passage_count * passage$n_replicate)
   qc$maximum_passage_pre_post_mean_error <- 0
   f7ft_atomic_save_rds(list(profile=f7g_profile(), fingerprint=fingerprint, task=task,

@@ -46,6 +46,10 @@ equally. Save within-endpoint variance, Monte Carlo SE of the 50-endpoint mean,
 and between-endpoint-mean variance separately. A 20/50/100-repeat full-time pilot
 selects a fixed R; all final grid means must have MCSE <=0.01N before publication.
 Pilot convergence is evidence at selected conditions, not a proof for the grid.
+The pilot screening SE is the largest observed endpoint SE divided by sqrt(50),
+assuming equally large variance in all 50 independent endpoints. It does not
+apply the 0.01N target to an individual endpoint. If 100 repeats are insufficient,
+the campaign stops for a compute-strategy decision before a larger full run.
 
 Daily state, log count, RNG states, accumulators, current endpoint and oxygen are
 checkpointed at 1000-day boundaries. Completed operators are atomically reduced

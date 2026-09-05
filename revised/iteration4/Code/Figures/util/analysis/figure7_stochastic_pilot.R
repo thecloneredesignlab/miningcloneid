@@ -59,17 +59,24 @@ f7s_pilot <- function(paths, run_paths, endpoint_manifest, objective_bundle,
   results <- f7ft_parallel_lapply(rows,worker,n_core=n_core)
   results <- do.call(rbind,results)
   f7ft_atomic_write_tsv(results,file.path(run_paths$run_root,"stochastic_pilot_results.tsv"))
-  # A stricter per-endpoint check protects the final 50-endpoint mean. Record
-  # unresolved variability rather than pretending a finite pilot proves all cells.
+  # Target the FINAL equally weighted 50-endpoint mean, not one endpoint.
+  # This screening estimate assumes all 50 have the largest observed variance;
+  # it is not a bound on untested conditions. The full-grid MCSE gate remains.
   summary <- do.call(rbind,lapply(c(20L,50L,100L),function(r) {
     z <- results[results$replicates==r,]
     data.frame(replicates=r, maximum_endpoint_mcse_N=max(z$maximum_endpoint_mcse_N),
       maximum_mean_delta_vs_100_N=max(z$maximum_mean_delta_vs_100_N),
-      passed=all(z$maximum_endpoint_mcse_N<=passage_bundle$stochastic$config$mcse_target_N))
+      screening_ensemble_mcse_N=max(z$maximum_endpoint_mcse_N)/sqrt(50),
+      passed=max(z$maximum_endpoint_mcse_N)/sqrt(50)<=passage_bundle$stochastic$config$mcse_target_N)
   }))
   f7ft_atomic_write_tsv(summary,file.path(run_paths$run_root,"stochastic_pilot_selection.tsv"))
   eligible <- summary$replicates[summary$passed]
-  if (!length(eligible)) stop("Pilot needs more than 100 repeats; inspect convergence before a full run.")
+  if (!length(eligible)) {
+    estimate <- ceiling(max(results$maximum_within_sd_N[results$replicates==100L])^2 /
+      (50*passage_bundle$stochastic$config$mcse_target_N^2))
+    stop("Pilot screening of the 50-endpoint mean suggests approximately ", estimate,
+      " repeats; confirm the compute strategy before increasing beyond 100.")
+  }
   selected <- min(eligible)
   # Preserve representative full-range trajectories/variance in the final run;
   # runtime estimates are empirical, not an assertion of guaranteed wall time.

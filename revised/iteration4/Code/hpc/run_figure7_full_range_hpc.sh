@@ -37,6 +37,7 @@ STOCHASTIC_REPLICATES=20
 STOCHASTIC_ALLOCATION=fixed
 STOCHASTIC_MASTER_SEED=20260904
 PRECISION_RESCUE_BASE_RUN=""
+PRECISION_RESCUE_AGGREGATE_ONLY=FALSE
 
 for argument in "$@"; do
   case "${argument}" in
@@ -52,12 +53,14 @@ for argument in "$@"; do
     --allocation=*) STOCHASTIC_ALLOCATION="${argument#*=}" ;;
     --master-seed=*) STOCHASTIC_MASTER_SEED="${argument#*=}" ;;
     --precision-rescue-base-run=*) PRECISION_RESCUE_BASE_RUN="${argument#*=}" ;;
+    --precision-rescue-aggregate-only) PRECISION_RESCUE_AGGREGATE_ONLY=TRUE ;;
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--o2-chunk-size=N] [--run-id=ID]" \
         "          [--preflight-only|--draw-only|--compute-only]" \
         "          [--pilot-only] [--replicates=N] [--allocation=fixed|independent_calibration]" \
         "          [--master-seed=N] [--precision-rescue-base-run=ABSOLUTE_RUN_DIRECTORY]" \
+        "          [--precision-rescue-aggregate-only]" \
         "          [--reuse-continuous-run=ABSOLUTE_RUN_DIRECTORY]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -137,6 +140,7 @@ require_file "${CODE_ROOT}/util/analysis/figure7_stochastic_propagator.cpp" "sto
 require_file "${CODE_ROOT}/util/analysis/figure7_ab_layout.R" "A/B layout"
 require_file "${CODE_ROOT}/util/analysis/figure7_precision_rescue.R" "precision-rescue implementation"
 require_file "${CODE_ROOT}/rescue_Figure7_stochastic_precision.R" "precision-rescue entry point"
+require_file "${CODE_ROOT}/resume_Figure7_precision_rescue_aggregation.R" "precision-rescue aggregation entry point"
 require_file "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "publication archive"
 for index in 8 9 10 11 12 13; do
   require_file "${CODE_ROOT}/draw_Supp_Figure7_${index}.R" "supplement drawing entry point"
@@ -161,6 +165,10 @@ if [[ -n "${PRECISION_RESCUE_BASE_RUN}" ]]; then
   [[ "${STOCHASTIC_ALLOCATION}" == fixed ]] || {
     echo "The precision rescue requires fixed allocation." >&2; exit 2;
   }
+fi
+if [[ "${PRECISION_RESCUE_AGGREGATE_ONLY}" == TRUE && -z "${PRECISION_RESCUE_BASE_RUN}" ]]; then
+  echo "--precision-rescue-aggregate-only requires --precision-rescue-base-run." >&2
+  exit 2
 fi
 require_command pdftotext "for PDF word-level validation"
 require_command pdffonts "for PDF font validation"
@@ -347,12 +355,18 @@ if [[ "${DRAW_ONLY}" != TRUE ]]; then
   RUN_STATUS="COMPUTE_FULL_RANGE"
   write_status RUNNING 0 "${RUN_STATUS}"
   if [[ -n "${PRECISION_RESCUE_BASE_RUN}" ]]; then
-    container_command Rscript --vanilla \
-      "${CODE_ROOT}/rescue_Figure7_stochastic_precision.R" \
-      "--n-core=${N_CORE}" "--run-id=${RUN_ID}" \
-      "--base-run=${PRECISION_RESCUE_BASE_RUN}" \
-      "--replicates=${STOCHASTIC_REPLICATES}" \
-      "--master-seed=${STOCHASTIC_MASTER_SEED}" --publish-current=TRUE
+    if [[ "${PRECISION_RESCUE_AGGREGATE_ONLY}" == TRUE ]]; then
+      container_command Rscript --vanilla \
+        "${CODE_ROOT}/resume_Figure7_precision_rescue_aggregation.R" \
+        "--run-id=${RUN_ID}" "--base-run=${PRECISION_RESCUE_BASE_RUN}"
+    else
+      container_command Rscript --vanilla \
+        "${CODE_ROOT}/rescue_Figure7_stochastic_precision.R" \
+        "--n-core=${N_CORE}" "--run-id=${RUN_ID}" \
+        "--base-run=${PRECISION_RESCUE_BASE_RUN}" \
+        "--replicates=${STOCHASTIC_REPLICATES}" \
+        "--master-seed=${STOCHASTIC_MASTER_SEED}" --publish-current=TRUE
+    fi
   else
     container_command Rscript --vanilla \
       "${CODE_ROOT}/data_Figure7_full_range_q10.R" \

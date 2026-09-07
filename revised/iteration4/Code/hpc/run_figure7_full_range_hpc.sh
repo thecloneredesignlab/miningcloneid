@@ -35,6 +35,8 @@ REUSE_CONTINUOUS_RUN=""
 PILOT_ONLY=FALSE
 STOCHASTIC_REPLICATES=20
 STOCHASTIC_ALLOCATION=fixed
+STOCHASTIC_MASTER_SEED=20260904
+PRECISION_RESCUE_BASE_RUN=""
 
 for argument in "$@"; do
   case "${argument}" in
@@ -48,11 +50,14 @@ for argument in "$@"; do
     --pilot-only) PILOT_ONLY=TRUE ;;
     --replicates=*) STOCHASTIC_REPLICATES="${argument#*=}" ;;
     --allocation=*) STOCHASTIC_ALLOCATION="${argument#*=}" ;;
+    --master-seed=*) STOCHASTIC_MASTER_SEED="${argument#*=}" ;;
+    --precision-rescue-base-run=*) PRECISION_RESCUE_BASE_RUN="${argument#*=}" ;;
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--o2-chunk-size=N] [--run-id=ID]" \
         "          [--preflight-only|--draw-only|--compute-only]" \
         "          [--pilot-only] [--replicates=N] [--allocation=fixed|independent_calibration]" \
+        "          [--master-seed=N] [--precision-rescue-base-run=ABSOLUTE_RUN_DIRECTORY]" \
         "          [--reuse-continuous-run=ABSOLUTE_RUN_DIRECTORY]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -65,6 +70,9 @@ if ! [[ "${N_CORE}" =~ ^[1-9][0-9]*$ ]] || (( N_CORE > 63 )); then
 fi
 if ! [[ "${STOCHASTIC_REPLICATES}" =~ ^[1-9][0-9]*$ ]] || (( STOCHASTIC_REPLICATES < 2 )); then
   echo "--replicates must be an integer >=2" >&2; exit 2
+fi
+if ! [[ "${STOCHASTIC_MASTER_SEED}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "--master-seed must be a positive integer" >&2; exit 2
 fi
 [[ "${STOCHASTIC_ALLOCATION}" == fixed || "${STOCHASTIC_ALLOCATION}" == independent_calibration ]] || {
   echo "Invalid stochastic allocation policy" >&2; exit 2
@@ -127,6 +135,8 @@ require_file "${CODE_ROOT}/util/analysis/figure7_full_range_propagator.cpp" "C++
 require_file "${CODE_ROOT}/util/analysis/figure7_stochastic_validation.R" "stochastic validation"
 require_file "${CODE_ROOT}/util/analysis/figure7_stochastic_propagator.cpp" "stochastic propagator"
 require_file "${CODE_ROOT}/util/analysis/figure7_ab_layout.R" "A/B layout"
+require_file "${CODE_ROOT}/util/analysis/figure7_precision_rescue.R" "precision-rescue implementation"
+require_file "${CODE_ROOT}/rescue_Figure7_stochastic_precision.R" "precision-rescue entry point"
 require_file "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "publication archive"
 for index in 8 9 10 11 12 13; do
   require_file "${CODE_ROOT}/draw_Supp_Figure7_${index}.R" "supplement drawing entry point"
@@ -137,6 +147,20 @@ if [[ -n "${REUSE_CONTINUOUS_RUN}" ]]; then
     *) echo "Continuous reuse must be inside iteration4 Figure7 runs." >&2; exit 2 ;;
   esac
   require_file "${REUSE_CONTINUOUS_RUN}/q10_unique_endpoint_manifest.tsv" "continuous endpoint manifest"
+fi
+if [[ -n "${PRECISION_RESCUE_BASE_RUN}" ]]; then
+  case "${PRECISION_RESCUE_BASE_RUN}" in
+    "${ITERATION_ROOT}/data/Figures/Figure7/fixed_pmisseg_v1/finite_time_full_q10_runs/"*) ;;
+    *) echo "Precision-rescue base must be inside iteration4 Figure7 runs." >&2; exit 2 ;;
+  esac
+  require_file "${PRECISION_RESCUE_BASE_RUN}/full_range_task_manifest.tsv" "precision-rescue base task manifest"
+  require_file "${PRECISION_RESCUE_BASE_RUN}/task_cache/full_range_task_0337.rds" "precision-rescue failed task cache"
+  [[ "${STOCHASTIC_REPLICATES}" == 200 ]] || {
+    echo "The audited precision rescue requires --replicates=200." >&2; exit 2;
+  }
+  [[ "${STOCHASTIC_ALLOCATION}" == fixed ]] || {
+    echo "The precision rescue requires fixed allocation." >&2; exit 2;
+  }
 fi
 require_command pdftotext "for PDF word-level validation"
 require_command pdffonts "for PDF font validation"
@@ -253,6 +277,7 @@ CONTAINER_ARGS=(
   --env "FIGURE7_REUSE_CONTINUOUS_RUN=${REUSE_CONTINUOUS_RUN}"
   --env "FIGURE7_STOCHASTIC_REPLICATES=${STOCHASTIC_REPLICATES}"
   --env "FIGURE7_STOCHASTIC_ALLOCATION=${STOCHASTIC_ALLOCATION}"
+  --env "FIGURE7_STOCHASTIC_MASTER_SEED=${STOCHASTIC_MASTER_SEED}"
   --env "FIGURE7_STOCHASTIC_PILOT_ONLY=${PILOT_ONLY}"
   --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
   --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"
@@ -321,10 +346,19 @@ fi
 if [[ "${DRAW_ONLY}" != TRUE ]]; then
   RUN_STATUS="COMPUTE_FULL_RANGE"
   write_status RUNNING 0 "${RUN_STATUS}"
-  container_command Rscript --vanilla \
-    "${CODE_ROOT}/data_Figure7_full_range_q10.R" \
-    "--n-core=${N_CORE}" "--o2-chunk-size=${O2_CHUNK_SIZE}" \
-    "--run-id=${RUN_ID}" --smoke=FALSE "--publish-current=$([[ "${PILOT_ONLY}" == TRUE ]] && echo FALSE || echo TRUE)"
+  if [[ -n "${PRECISION_RESCUE_BASE_RUN}" ]]; then
+    container_command Rscript --vanilla \
+      "${CODE_ROOT}/rescue_Figure7_stochastic_precision.R" \
+      "--n-core=${N_CORE}" "--run-id=${RUN_ID}" \
+      "--base-run=${PRECISION_RESCUE_BASE_RUN}" \
+      "--replicates=${STOCHASTIC_REPLICATES}" \
+      "--master-seed=${STOCHASTIC_MASTER_SEED}" --publish-current=TRUE
+  else
+    container_command Rscript --vanilla \
+      "${CODE_ROOT}/data_Figure7_full_range_q10.R" \
+      "--n-core=${N_CORE}" "--o2-chunk-size=${O2_CHUNK_SIZE}" \
+      "--run-id=${RUN_ID}" --smoke=FALSE "--publish-current=$([[ "${PILOT_ONLY}" == TRUE ]] && echo FALSE || echo TRUE)"
+  fi
 fi
 
 if [[ "${PILOT_ONLY}" == TRUE ]]; then

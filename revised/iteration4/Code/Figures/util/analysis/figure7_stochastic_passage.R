@@ -3,9 +3,11 @@
 f7s_config <- function() {
   reps <- as.integer(Sys.getenv("FIGURE7_STOCHASTIC_REPLICATES", "20"))
   stopifnot(length(reps) == 1L, !is.na(reps), reps >= 2L, reps <= 10000L)
+  master_seed <- as.integer(Sys.getenv("FIGURE7_STOCHASTIC_MASTER_SEED", "20260904"))
+  stopifnot(length(master_seed) == 1L, !is.na(master_seed), master_seed > 0L)
   allocation <- Sys.getenv("FIGURE7_STOCHASTIC_ALLOCATION", "fixed")
   stopifnot(allocation %in% c("fixed", "independent_calibration"))
-  list(master_seed = 20260904L, rng_kind = "L'Ecuyer-CMRG", replicates = reps,
+  list(master_seed = master_seed, rng_kind = "L'Ecuyer-CMRG", replicates = reps,
     allocation = allocation, calibration_replicates = 100L,
     calibration_variance_safety_factor = 2, ensemble_size = 50L,
     stream_policy = "even_substreams_production_odd_substreams_calibration_v1",
@@ -134,7 +136,11 @@ f7s_moments <- function(trajectories, multiplicity, replicates) {
 # a checkpoint is removed; task checkpoints retain completed oxygen conditions.
 f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
     bundle, checkpoint_path = NULL, fingerprint = "test", keep_trace = FALSE,
-    replicates = bundle$stochastic$config$replicates) {
+    replicates = bundle$stochastic$config$replicates,
+    initial_ploidy_values = f7ft_initial_ploidy()) {
+  initial_ploidy_values <- as.numeric(initial_ploidy_values)
+  stopifnot(length(initial_ploidy_values) == ncol(initial),
+    all(is.finite(initial_ploidy_values)))
   seeds <- as.integer(strsplit(endpoint$represented_seed_numbers[[1]], ",", fixed=TRUE)[[1]])
   weight <- length(seeds)
   stopifnot(weight == endpoint$endpoint_multiplicity_q10[[1]])
@@ -161,7 +167,7 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
     if (is.null(state$allocation[[as.character(i)]])) {
       state$allocation[[as.character(i)]] <- if (calibrated) {
         f7s_calibrate(step, initial[,i,drop=FALSE], ploidy, endpoint, oxygen, p,
-          f7ft_initial_ploidy()[i], days, bundle, isTRUE(scan$no_crossing[[i]]))
+          initial_ploidy_values[i], days, bundle, isTRUE(scan$no_crossing[[i]]))
       } else list(replicates=fixed_replicates, calibration_replicates=0L,
         calibration_maximum_variance_N2=NA_real_, calibration_no_crossing=scan$no_crossing[[i]])
       if (!is.null(checkpoint_path)) f7ft_atomic_save_rds(state, checkpoint_path, compress=FALSE)
@@ -169,7 +175,7 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
     allocation <- state$allocation[[as.character(i)]]
     replicates <- allocation$replicates
     rng <- f7s_streams(bundle$stochastic$catalog, endpoint$pair_label[[1]], seeds,
-      oxygen, p, f7ft_initial_ploidy()[i], replicates)
+      oxygen, p, initial_ploidy_values[i], replicates)
     if (is.null(state$active)) state$active <- list(
       composition = initial[, rep(i, weight*replicates), drop=FALSE],
       log_population = rep(log(seed), weight*replicates), rng = rng,
@@ -225,7 +231,7 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
         calibration_replicates=allocation$calibration_replicates,
         calibration_maximum_variance_N2=allocation$calibration_maximum_variance_N2,
         calibration_no_crossing=allocation$calibration_no_crossing,
-        p_misseg=p, O2_pct=oxygen, initial_ploidy=f7ft_initial_ploidy()[i],
+        p_misseg=p, O2_pct=oxygen, initial_ploidy=initial_ploidy_values[i],
         passage_count=mean(a$count[z]), no_crossing=mean(a$count[z]==0L),
         first_passage_day=if (all(is.na(a$first[z]))) NA_real_ else min(a$first[z], na.rm=TRUE),
         last_passage_day=if (all(is.na(a$last[z]))) NA_real_ else max(a$last[z], na.rm=TRUE),
@@ -234,7 +240,7 @@ f7s_operator <- function(step, initial, ploidy, endpoint, oxygen, p, days,
         earlier_than_segment_end_count=0L, selected_relative_target_distance_sum=NA_real_)
     })
     state$summary[[i]] <- do.call(rbind, rows)
-    if (keep_trace) state$traces[[i]] <- list(initial_ploidy=f7ft_initial_ploidy()[i],
+    if (keep_trace) state$traces[[i]] <- list(initial_ploidy=initial_ploidy_values[i],
       events=as.data.frame(data.table::rbindlist(a$events)),
       trajectories=as.data.frame(data.table::rbindlist(a$trajectories)),
       continuous=scan$mean_ploidy[i, ], rng_initial=rng, rng_final=a$rng)

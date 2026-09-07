@@ -496,8 +496,11 @@ f7g_aggregate_passage <- function(passage_rows, run_paths) {
 }
 
 f7g_aggregate <- function(
-    tasks, run_paths, fingerprint, passage_bundle, smoke = FALSE
+    tasks, run_paths, fingerprint, passage_bundle, smoke = FALSE,
+    accepted_cache_fingerprints = fingerprint
 ) {
+  stopifnot(length(accepted_cache_fingerprints) >= 1L,
+    all(nzchar(accepted_cache_fingerprints)))
   task_qc <- as.data.frame(data.table::rbindlist(
     lapply(tasks$cache_path, function(path) readRDS(path)$qc), fill = TRUE))
   qc_path <- f7ft_atomic_write_tsv(
@@ -537,7 +540,7 @@ f7g_aggregate <- function(
     for (task_index in seq_len(nrow(selected_tasks))) {
       task <- selected_tasks[task_index, , drop = FALSE]
       cached <- readRDS(task$cache_path[[1L]])
-      if (!identical(cached$fingerprint, fingerprint)) {
+      if (!cached$fingerprint %in% accepted_cache_fingerprints) {
         stop("Full-range task fingerprint mismatch.")
       }
       p_index <- match(as.numeric(task$p_misseg[[1L]]), p_values)

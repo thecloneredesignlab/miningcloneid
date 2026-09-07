@@ -141,6 +141,7 @@ require_file "${CODE_ROOT}/util/analysis/figure7_ab_layout.R" "A/B layout"
 require_file "${CODE_ROOT}/util/analysis/figure7_precision_rescue.R" "precision-rescue implementation"
 require_file "${CODE_ROOT}/rescue_Figure7_stochastic_precision.R" "precision-rescue entry point"
 require_file "${CODE_ROOT}/resume_Figure7_precision_rescue_aggregation.R" "precision-rescue aggregation entry point"
+require_file "${CODE_ROOT}/prepare_Figure7_precision_rescue_traces.R" "precision-rescue trace entry point"
 require_file "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "publication archive"
 for index in 8 9 10 11 12 13; do
   require_file "${CODE_ROOT}/draw_Supp_Figure7_${index}.R" "supplement drawing entry point"
@@ -393,6 +394,11 @@ fi
 
 RUN_STATUS="HEADLESS_RENDER"
 write_status RUNNING 0 "${RUN_STATUS}"
+if [[ -n "${PRECISION_RESCUE_BASE_RUN}" ]]; then
+  container_command Rscript --vanilla \
+    "${CODE_ROOT}/prepare_Figure7_precision_rescue_traces.R" \
+    "--run-id=${RUN_ID}" "--base-run=${PRECISION_RESCUE_BASE_RUN}"
+fi
 container_command Rscript --vanilla -e '
 source("Code/Figures/draw_Figure7.R")
 paths <- f7r_paths(); run <- f7g_paths(paths)

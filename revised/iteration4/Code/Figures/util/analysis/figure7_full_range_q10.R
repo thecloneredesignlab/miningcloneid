@@ -467,11 +467,11 @@ f7g_aggregate_passage <- function(passage_rows, run_paths) {
       endpoint_multiplicity_q10 * as.numeric(no_crossing)
     ) / sum(endpoint_multiplicity_q10),
     earliest_first_passage_day = if (all(is.na(first_passage_day))) {
-      NA_integer_
-    } else min(first_passage_day, na.rm = TRUE),
+      NA_real_
+    } else as.numeric(min(first_passage_day, na.rm = TRUE)),
     latest_last_passage_day = if (all(is.na(last_passage_day))) {
-      NA_integer_
-    } else max(last_passage_day, na.rm = TRUE),
+      NA_real_
+    } else as.numeric(max(last_passage_day, na.rm = TRUE)),
     maximum_pre_post_mean_error = max(maximum_pre_post_mean_error),
     maximum_boundary_mean_jump = max(maximum_boundary_mean_jump),
     weighted_mean_selected_model_day = sum(endpoint_multiplicity_q10 * selected_model_day_sum) /
@@ -480,8 +480,8 @@ f7g_aggregate_passage <- function(passage_rows, run_paths) {
       sum(endpoint_multiplicity_q10 * passage_count),
     weighted_protocol_infeasible_fraction = sum(endpoint_multiplicity_q10 * !is.na(protocol_failure_day)) /
       sum(endpoint_multiplicity_q10),
-    earliest_protocol_failure_day = if (all(is.na(protocol_failure_day))) NA_integer_ else
-      min(protocol_failure_day, na.rm = TRUE)
+    earliest_protocol_failure_day = if (all(is.na(protocol_failure_day))) NA_real_ else
+      as.numeric(min(protocol_failure_day, na.rm = TRUE))
   ), by = .(pair_label, p_misseg, O2_pct, initial_ploidy)]
   full_path <- f7ft_atomic_save_rds(
     as.data.frame(rows),

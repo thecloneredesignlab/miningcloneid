@@ -23,8 +23,7 @@ HPC files only configure resources and invoke those canonical entrypoints.
 
 ## Primary submitter
 
-Use the unified submitter for production in-vivo, in-vitro, joint, or complete
-`all` fitting:
+Use the unified submitter for production in-vivo, in-vitro, and joint fitting:
 
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
@@ -35,19 +34,6 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
 
 Use `--dry_run=TRUE` to inspect submissions without calling `sbatch`. Detailed
 fit modes and resource arguments remain documented in `../../../README.md`.
-
-For `--fitting_mode=joint`, both `--invivo_run_dir` and `--invitro_run_dir` are
-required. The only joint path builds pooled t-SNE coordinates, clusters the
-in-vivo best points, selects the objective-minimum seed from every in-vivo
-primary cluster, pairs each with the single global objective-minimum in-vitro
-seed, and submits one pair-by-seed array. Use
-`--joint_dependency=JOBID_OR_ARRAY_WILDCARD` when the joint-only controller must
-wait for an existing Slurm job or complete array.
-
-For `--fitting_mode=all`, the submitter constructs both separate-fit result
-directories from `out_root` and their run prefixes. It submits the in-vitro
-array after successful completion of the in-vivo array, then submits the same
-cluster/joint controller after successful completion of the in-vitro array.
 
 ## Operational contract
 

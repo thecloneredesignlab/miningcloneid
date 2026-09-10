@@ -64,16 +64,19 @@ create_integrated_seed_links <- function(manifest, root, out_dir) {
   dir.create(integrated_run_dir, recursive = TRUE, showWarnings = FALSE)
 
   rows <- list()
+  integrated_seed_index <- 0L
   for (i in seq_len(nrow(manifest))) {
     warmup_label <- safe_component(if ("warmup_label" %in% names(manifest)) manifest$warmup_label[[i]] else i)
     joint_prefix <- if ("joint_run_prefix" %in% names(manifest)) as.character(manifest$joint_run_prefix[[i]]) else paste0("fit_joint_", warmup_label)
     source_run_dir <- normalizePath(file.path(root, joint_prefix), mustWork = FALSE)
     seed_dirs <- find_valid_seed_dirs(source_run_dir)
     if (!length(seed_dirs)) next
-    seed_dirs <- seed_dirs[order(seed_dirs)]
+    raw_seed_index <- suppressWarnings(as.integer(sub("^seed", "", basename(seed_dirs))))
+    seed_dirs <- seed_dirs[order(raw_seed_index, basename(seed_dirs), na.last = TRUE)]
     for (seed_dir in seed_dirs) {
       raw_seed <- basename(seed_dir)
-      integrated_seed <- paste0(warmup_label, "__", raw_seed)
+      integrated_seed_index <- integrated_seed_index + 1L
+      integrated_seed <- paste0("seed", integrated_seed_index)
       target_dir <- file.path(integrated_run_dir, integrated_seed)
       if (!file.symlink(normalizePath(seed_dir, mustWork = TRUE), target_dir)) {
         stop("Failed to create integrated seed symlink: ", target_dir, " -> ", seed_dir)
@@ -82,6 +85,7 @@ create_integrated_seed_links <- function(manifest, root, out_dir) {
         warmup_label = warmup_label,
         joint_run_prefix = joint_prefix,
         raw_seed = raw_seed,
+        integrated_seed_index = integrated_seed_index,
         integrated_seed = integrated_seed,
         source_seed_dir = normalizePath(seed_dir, mustWork = TRUE),
         integrated_seed_dir = target_dir,
@@ -116,7 +120,7 @@ run_integrated_extra_results <- function(integrated_run_dir) {
   )
   log_path <- file.path(integrated_run_dir, "integrated_extra_results_run.log")
   rscript <- file.path(R.home("bin"), "Rscript")
-  message("Running integrated joint extra_results.R for ", length(seed_dirs), " prefixed seeds.")
+  message("Running integrated joint extra_results.R for ", length(seed_dirs), " integrated seeds.")
   out <- suppressWarnings(system2(rscript, args = c(extra_results_script, args), stdout = TRUE, stderr = TRUE))
   writeLines(out, log_path, useBytes = TRUE)
   status <- attr(out, "status")

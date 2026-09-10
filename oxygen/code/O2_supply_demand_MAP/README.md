@@ -118,19 +118,9 @@ Its reusable `ivt_*` functions now live in canonical `util/` modules, loaded by:
 util/o2_supply_demand_map_invitro_utils.R
 ```
 
-In-vitro fitting uses one fixed passage implementation, identified in output
-provenance as `v2`. At each passage boundary it selects the closest available
-state from above and never increases cell count; an unreachable inoculum
-produces a finite objective penalty and no child segment. The paired low-oxygen
-observations O1 and O2 inherit their common pre-branch parent and then advance
-as separate passage-state chains. Control and shared-parent segments are
-unchanged. The former `passage_mode` configuration/CLI/environment input has
-been removed; supplying it is an explicit error.
-
-Pure in-vitro plot constructors live under `vis/invitro/`. The canonical
-`ivt_*` API remains available apart from the deliberately removed
-`passage_mode` arguments, and fixed-v2 numerical regression checks preserve the
-committed passage behavior.
+Pure in-vitro plot constructors live under `vis/invitro/`. All 58 historical
+`ivt_*` functions and their formal arguments remain available, and the seed10
+objective/table/figure goldens are preserved.
 
 ## Compatibility paths
 

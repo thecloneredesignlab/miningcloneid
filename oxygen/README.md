@@ -659,20 +659,15 @@ This runner executes prediction simulation, analysis, visualization, and report
 assembly. To reassemble only the HTML report after its upstream tables and
 figures already exist:
 
-For standalone in vitro fits that require the historical 24-file
-`extra_results` artifact set and report layout, use the dedicated
-reference-compatible entrypoint:
+For standalone in vitro fits, use the same unified extra-results entrypoint:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/runner/fit_results/run_invitro_extra_results_reference.R \
+Rscript oxygen/code/O2_supply_demand_MAP/runner/fit_results/run_extra_results.R \
   --run_dir=oxygen/results/fit_invitro_O2_buffering_500seed
 ```
 
-This entrypoint also backfills DEoptim iteration metadata from each legacy
-`fit_result.rds` when the corresponding `fit_summary.tsv` predates those
-fields, so early-stopped fits are not misclassified as unconverged.
-Its objective violin and HTML report helpers are pinned to the same historical
-standalone in vitro layout rather than the generic joint/in vivo report.
+The runner detects the standalone in vitro outputs and generates their
+extra-results tables, figures, and HTML report through the maintained pipeline.
 
 ```bash
 Rscript oxygen/code/O2_supply_demand_MAP/report/fit_results/render_extra_results_report.R \

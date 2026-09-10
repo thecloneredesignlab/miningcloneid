@@ -391,10 +391,6 @@ build_joint_invivo_context <- function(cfg_raw) {
 }
 
 build_joint_invitro_context <- function(cfg_raw) {
-  INVITRO_ENV$ivt_reject_removed_passage_mode(
-    cfg_raw$passage_mode,
-    source = "the joint fit configuration"
-  )
   parameter_table <- trim_cli_scalar_local(.first_non_null_local(
     cfg_raw$invitro_parameter_table,
     cfg_raw$parameter_table_invitro
@@ -1452,45 +1448,11 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   par_t
 }
 
-refresh_joint_invitro_cpp_bindings <- function() {
-  cpp_info <- INVITRO_ENV$o2simps_cpp_dll_info()
-  wrapper_path <- as.character(.first_non_null_local(cpp_info$wrapper_path, ""))
-  if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
-    stop("Unable to refresh the joint in-vitro C++ bindings: wrapper file is missing.", call. = FALSE)
-  }
-  sys.source(wrapper_path, envir = INVITRO_ENV)
-  required_cpp <- c(
-    "cpp_o2simps_build_G_for_o2_triplet",
-    "cpp_o2simps_simulate_one",
-    "cpp_o2simps_objective_components_map"
-  )
-  missing_cpp <- required_cpp[!vapply(
-    required_cpp,
-    exists,
-    logical(1),
-    envir = INVITRO_ENV,
-    mode = "function",
-    inherits = TRUE
-  )]
-  if (length(missing_cpp) > 0L) {
-    stop(
-      "Unable to refresh the joint in-vitro C++ bindings; missing functions: ",
-      paste(missing_cpp, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  invisible(cpp_info)
-}
-
 build_joint_context <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
   restriction_flags <- resolve_joint_restriction_flags(cfg_raw)
   invivo <- build_joint_invivo_context(cfg_raw)
   invitro <- build_joint_invitro_context(cfg_raw)
-  # Building the in-vivo context loads the same sourceCpp DLL after the
-  # in-vitro backend was initialized. Refresh the in-vitro wrappers so their
-  # native-symbol pointers refer to the currently loaded DLL.
-  refresh_joint_invitro_cpp_bindings()
 
   invivo_names <- names(invivo$param_bundle$optimizer$init)
   shared_ivt <- shared_invitro_param_names()
@@ -2602,7 +2564,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
-    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$death_df, ctx), file.path(out_dir, "invitro_death_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
 
     dist_summary <- dplyr::bind_rows(
@@ -2662,8 +2623,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective_invitro",
       "invitro_growth_loglik",
       "invitro_ploidy_loglik",
-      "invitro_flow_loglik",
-      "invitro_death_loglik"
+      "invitro_flow_loglik"
     ),
     value = c(
       scalar_chr(best_comp$objective),
@@ -2685,8 +2645,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(best_comp$invitro$objective),
       scalar_chr(best_comp$invitro$growth_loglik),
       scalar_chr(best_comp$invitro$ploidy_loglik),
-      scalar_chr(best_comp$invitro$flow_loglik),
-      scalar_chr(best_comp$invitro$death_loglik)
+      scalar_chr(best_comp$invitro$flow_loglik)
     ),
     stringsAsFactors = FALSE
   )
@@ -2794,7 +2753,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     metric = c(
       "fit_status",
       "fit_mode",
-      "passage_mode",
       "invivo_prediction_status",
       "invivo_prediction_error",
       "invitro_output_status",
@@ -2835,15 +2793,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_necrosis",
       "n_necrosis_obs_total",
       "objective_invitro",
-      "invitro_death_loglik",
-      "invitro_death_loglik_sum",
-      "invitro_sigma_death_logit",
-      "invitro_death_fraction_eps",
-      "invitro_death_weight",
-      "invitro_n_death_observations",
-      "invitro_death_data_path",
-      "invitro_death_data_md5",
-      "invitro_death_data_n_file_rows",
       "objective_soft_coupling",
       "objective_constraints",
       "joint_weight_invivo",
@@ -2878,7 +2827,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     value = c(
       fit_status,
       "fit_joint",
-      INVITRO_ENV$INVITRO_PASSAGE_IMPLEMENTATION,
       invivo_prediction_status,
       invivo_prediction_error,
       invitro_output_status,
@@ -2919,15 +2867,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
       scalar_chr(best_comp$invitro$objective),
-      scalar_chr(best_comp$invitro$death_loglik),
-      scalar_chr(best_comp$invitro$death_loglik_sum),
-      scalar_chr(best_comp$invitro$sigma_death_logit),
-      scalar_chr(best_comp$invitro$death_fraction_eps),
-      scalar_chr(best_comp$invitro$death_weight),
-      scalar_chr(best_comp$invitro$n_death_observations),
-      scalar_chr(best_comp$invitro$death_data_path),
-      scalar_chr(best_comp$invitro$death_data_md5),
-      scalar_chr(best_comp$invitro$death_data_n_file_rows),
       as.character(as_num(best_comp$objective_soft_coupling, 0)),
       as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
       as.character(ctx$joint_weight_invivo),
@@ -3049,8 +2988,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       ),
       deoptim = de_fit,
       local_optim = local_fit,
-      invivo_run_params = best_comp$invivo_run_params,
-      invitro_run_params = best_comp$invitro_run_params,
       best_components = best_comp
     ),
     file = file.path(out_dir, "fit_result.rds")
@@ -3063,10 +3000,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 
 validate_fit_joint_inputs <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
-  INVITRO_ENV$ivt_reject_removed_passage_mode(
-    cfg_raw$passage_mode,
-    source = "the joint fit configuration"
-  )
   invivo_parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(invivo_parameter_table)) {
     invivo_parameter_table <- default_o2_parameter_table_path_common(
@@ -3145,7 +3078,6 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       INVIVO_ENV$.runner_git_rows(normalizePath(file.path(out_dir, ".."), mustWork = FALSE)),
       INVIVO_ENV$.runner_provenance_rows("fit", list(
         fit_mode = "fit_joint",
-        passage_mode = INVITRO_ENV$INVITRO_PASSAGE_IMPLEMENTATION,
         seed = ctx$seed,
         out_dir = normalizePath(out_dir, mustWork = FALSE)
       )),

@@ -119,6 +119,52 @@ testthat::test_that("historical multi-warmup and fixed-O2 eigen entries are thin
   testthat::expect_true(all(grepl("runner|simulation|report", text, ignore.case = TRUE)))
 })
 
+testthat::test_that("integrated multi-warmup seeds use the standard seed directory contract", {
+  canonical_tmp <- normalizePath(tempdir(), mustWork = TRUE)
+  root <- tempfile("multi_warmup_integrated_source_", tmpdir = canonical_tmp)
+  out_dir <- tempfile("multi_warmup_integrated_output_", tmpdir = canonical_tmp)
+  dir.create(root)
+  dir.create(out_dir)
+  on.exit(unlink(c(root, out_dir), recursive = TRUE, force = TRUE), add = TRUE)
+
+  manifest <- data.frame(
+    warmup_label = c("pair_a", "pair_b"),
+    joint_run_prefix = c("fit_joint_pair_a", "fit_joint_pair_b"),
+    stringsAsFactors = FALSE
+  )
+  for (run_prefix in manifest$joint_run_prefix) {
+    for (seed in c("seed10", "seed2")) {
+      seed_dir <- file.path(root, run_prefix, seed)
+      dir.create(seed_dir, recursive = TRUE)
+      file.create(file.path(seed_dir, "fit_summary.tsv"))
+      file.create(file.path(seed_dir, "best_params.tsv"))
+    }
+  }
+
+  env <- new.env(parent = globalenv())
+  source(
+    stage_split_path("runner", "multi_warmup", "run_multi_warmup_results_pipeline.R"),
+    local = env,
+    chdir = FALSE
+  )
+  integrated <- env$create_integrated_seed_links(manifest, root, out_dir)
+
+  testthat::expect_identical(
+    basename(integrated$seed_manifest$integrated_seed_dir),
+    paste0("seed", 1:4)
+  )
+  testthat::expect_identical(
+    integrated$seed_manifest$raw_seed,
+    c("seed2", "seed10", "seed2", "seed10")
+  )
+  testthat::expect_identical(
+    integrated$seed_manifest$integrated_seed_index,
+    1:4
+  )
+  testthat::expect_true(all(file.info(integrated$seed_manifest$integrated_seed_dir)$isdir))
+  testthat::expect_length(env$find_valid_seed_dirs(integrated$run_dir), 4L)
+})
+
 testthat::test_that("fixed-O2 eigen numerical producer has no rendering behavior", {
   path <- stage_split_path(
     "simulation", "o2", "fixed_o2", "eigen_attractor",

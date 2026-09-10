@@ -31,7 +31,6 @@ DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2_supply_demand/pa
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
 DEFAULT_FLOW_DENSITY_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
 DEFAULT_ITERMAX="1000"
-DEFAULT_ITERMAX_MAX="1000"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
@@ -51,16 +50,10 @@ PARAMETER_TABLE="${PARAMETER_TABLE:-${DEFAULT_PARAMETER_TABLE}}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${DEFAULT_FIT_OBJECTS_DIR}}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${DEFAULT_FLOW_DENSITY_PATH}}"
 ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
-ITERMAX_MAX="${ITERMAX_MAX:-${DEFAULT_ITERMAX_MAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
-
-if [[ -n "${PASSAGE_MODE:-}" ]]; then
-  echo "PASSAGE_MODE has been removed; in vitro always uses the fixed v2 passage implementation."
-  exit 2
-fi
 
 if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
@@ -143,7 +136,7 @@ if [[ "${FLOW_DENSITY_ENABLED}" == "TRUE" ]]; then
   FLOW_DENSITY_ARGS=(--flow_density_path="${FLOW_DENSITY_PATH}")
 fi
 
-for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK N_CORES ITERMAX ITERMAX_MAX DE_STEPTOL NP; do
+for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK N_CORES ITERMAX DE_STEPTOL NP; do
   var_val="${!var_name}"
   if ! [[ "${var_val}" =~ ^[0-9]+$ ]]; then
     echo "${var_name} must be a positive integer, got: ${var_val}"
@@ -165,9 +158,14 @@ if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]];
   exit 1
 fi
 
-if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 || ITERMAX <= 0 || ITERMAX_MAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
-  echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES, ITERMAX, ITERMAX_MAX, DE_STEPTOL, and NP must all be > 0"
+if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 || ITERMAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
+  echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES, ITERMAX, DE_STEPTOL, and NP must all be > 0"
   exit 1
+fi
+
+if (( ITERMAX > 1000 )); then
+  echo "ITERMAX=${ITERMAX} exceeds the in vitro maximum of 1000; capping to 1000."
+  ITERMAX="1000"
 fi
 
 if (( ARRAY_TASKS * SEEDS_PER_TASK != TOTAL_SEEDS )); then
@@ -207,10 +205,8 @@ o2sd_prov_write_many "${RUN_DIR}" \
   fit total_seeds "${TOTAL_SEEDS}" \
   fit array_tasks "${ARRAY_TASKS}" \
   fit seeds_per_task "${SEEDS_PER_TASK}" \
-  fit passage_implementation "v2" \
   optimizer n_cores "${N_CORES}" \
   optimizer itermax "${ITERMAX}" \
-  optimizer itermax_max "${ITERMAX_MAX}" \
   optimizer NP "${NP}" \
   optimizer de_reltol "${DE_RELTOL}" \
   optimizer de_steptol "${DE_STEPTOL}" \
@@ -232,7 +228,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "seeds_per_task\t%s\n" "${SEEDS_PER_TASK}"
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "itermax\t%s\n" "${ITERMAX}"
-    printf "itermax_max\t%s\n" "${ITERMAX_MAX}"
     printf "de_reltol\t%s\n" "${DE_RELTOL}"
     printf "de_steptol\t%s\n" "${DE_STEPTOL}"
     printf "NP\t%s\n" "${NP}"
@@ -241,7 +236,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
     printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
-    printf "passage_implementation\tv2\n"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
@@ -257,7 +251,6 @@ echo "  run_dir: ${RUN_DIR}"
 echo "  config_path: ${CONFIG_PATH}"
 echo "  n_cores: ${N_CORES}"
 echo "  itermax: ${ITERMAX}"
-echo "  itermax_max: ${ITERMAX_MAX}"
 echo "  de_reltol: ${DE_RELTOL}"
 echo "  de_steptol: ${DE_STEPTOL}"
 echo "  NP: ${NP}"
@@ -266,7 +259,6 @@ echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
 echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
 echo "  auto_viz: ${AUTO_VIZ}"
-echo "  passage_implementation: v2"
 echo "  r_module: ${R_MODULE}"
 
 for seed in $(seq "${SEED_START}" "${SEED_END}"); do
@@ -281,7 +273,6 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     "--config=${CONFIG_PATH}" \
     "--seed=${seed}" \
     "--itermax=${ITERMAX}" \
-    "--itermax_max=${ITERMAX_MAX}" \
     "--de_reltol=${DE_RELTOL}" \
     "--de_steptol=${DE_STEPTOL}" \
     "--NP=${NP}" \
@@ -296,7 +287,6 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     --config="${CONFIG_PATH}" \
     --seed="${seed}" \
     --itermax="${ITERMAX}" \
-    --itermax_max="${ITERMAX_MAX}" \
     --de_reltol="${DE_RELTOL}" \
     --de_steptol="${DE_STEPTOL}" \
     --NP="${NP}" \

@@ -32,125 +32,12 @@ ivt_build_job_table_adapter <- function(jobs,
       observed = obs
     )
   })
-  adapter <- list(
+  list(
     cohort = cohort,
     terminal_sim_key = NA_character_,
     n_segments = length(segments),
     segments = segments
   )
-  passage_branch_id <- function(passage_id) {
-    passage_id <- as.character(passage_id)
-    out <- rep(NA_character_, length(passage_id))
-    out[grepl("_O1_", passage_id, fixed = TRUE)] <- "O1"
-    out[grepl("_O2_", passage_id, fixed = TRUE)] <- "O2"
-    out
-  }
-  branch_segment_id <- function(segment_id, branch_id) {
-    paste0(as.character(segment_id), "::", as.character(branch_id))
-  }
-
-  job_keys <- as.character(jobs$sim_key)
-  if (anyDuplicated(job_keys)) {
-    stop("In vitro branch splitting requires unique jobs$sim_key values.")
-  }
-
-  branch_ids_by_job <- lapply(jobs$data_ids, passage_branch_id)
-  is_branch_job <- vapply(
-    branch_ids_by_job,
-    function(x) any(!is.na(x)),
-    logical(1)
-  )
-  branch_values_by_job <- lapply(seq_along(branch_ids_by_job), function(i) {
-    values <- branch_ids_by_job[[i]]
-    if (is_branch_job[[i]] && any(is.na(values))) {
-      stop(
-        "In vitro cannot split a job that mixes O1/O2 and non-branch observations: ",
-        job_keys[[i]], "."
-      )
-    }
-    intersect(c("O1", "O2"), unique(values[!is.na(values)]))
-  })
-
-  split_segments <- list()
-  split_n <- 0L
-  for (i in seq_along(adapter$segments)) {
-    segment <- adapter$segments[[i]]
-    branches <- branch_values_by_job[[i]]
-    if (!length(branches)) {
-      split_n <- split_n + 1L
-      split_segments[[split_n]] <- segment
-      next
-    }
-
-    ids <- as.character(jobs$data_ids[[i]])
-    id_branches <- branch_ids_by_job[[i]]
-    parent_key <- as.character(jobs$parent_key[[i]])
-    parent_index <- match(parent_key, job_keys)
-    parent_is_branch <- !is.na(parent_index) && is_branch_job[[parent_index]]
-
-    for (branch_id in branches) {
-      branch_ids <- ids[id_branches == branch_id]
-      branch_observed <- lapply(branch_ids, function(id) {
-        observed <- ivt_observed_passage_summary(fit_data[[id]])
-        observed$passage_id <- id
-        observed
-      })
-      duration_use <- ivt_segment_median_value(
-        branch_observed,
-        "passage_duration",
-        default = fallback_max_passage_days
-      )
-      if (!is.finite(duration_use) || duration_use <= 0) {
-        duration_use <- as.numeric(fallback_max_passage_days)
-      }
-
-      branch_segment <- segment
-      branch_segment$segment_id <- branch_segment_id(
-        segment$segment_id,
-        branch_id
-      )
-      branch_segment$parent_segment_id <- if (parent_is_branch) {
-        parent_branches <- branch_values_by_job[[parent_index]]
-        if (!branch_id %in% parent_branches) {
-          stop(
-            "In vitro branch ", branch_id, " is missing from parent job ",
-            parent_key, "."
-          )
-        }
-        branch_segment_id(parent_key, branch_id)
-      } else {
-        segment$parent_segment_id
-      }
-      branch_segment$duration_days <- duration_use
-      branch_segment$initial_cells <- ivt_segment_median_value(
-        branch_observed,
-        "initial_cells",
-        default = NA_real_
-      )
-      branch_segment$final_cells <- ivt_segment_median_value(
-        branch_observed,
-        "final_cells",
-        default = NA_real_
-      )
-      branch_segment$obs_days_local <- sort(unique(c(
-        seq(0, duration_use, by = 1),
-        duration_use
-      )))
-      branch_segment$data_ids <- branch_ids
-      branch_segment$observed <- branch_observed
-
-      split_n <- split_n + 1L
-      split_segments[[split_n]] <- branch_segment
-    }
-  }
-
-  split_ids <- vapply(split_segments, `[[`, character(1), "segment_id")
-  if (anyDuplicated(split_ids)) {
-    stop("In vitro branch splitting produced duplicate segment identifiers.")
-  }
-  adapter$n_segments <- length(split_segments)
-  adapter$segments <- split_segments
-  adapter
 }
 
 ivt_optimizer_spec <- function(cfg) {
@@ -701,230 +588,26 @@ ivt_flow_overlay_df <- function(run,
   dplyr::bind_rows(out)
 }
 
-ivt_objective_components <- local({
-  ivt_empty_death_loglik_df <- function() {
-    data.frame(
-      observation_id = character(),
-      model_passage_id = character(),
-      segment_id = character(),
-      matched_old_segment_id = character(),
-      cohort = character(),
-      lineage_id = character(),
-      selected_index = integer(),
-      selected_day = numeric(),
-      observed_dead_count = numeric(),
-      observed_live_count = numeric(),
-      eligible_denominator = numeric(),
-      predicted_dead_hypoxia_count = numeric(),
-      predicted_dead_buffer_count = numeric(),
-      predicted_dead_count = numeric(),
-      predicted_live_count = numeric(),
-      observed_dead_fraction = numeric(),
-      predicted_dead_fraction = numeric(),
-      observed_dead_logit = numeric(),
-      predicted_dead_logit = numeric(),
-      logit_residual = numeric(),
-      sigma_death_logit = numeric(),
-      death_fraction_eps = numeric(),
-      loglik = numeric(),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  ivt_death_loglik_df <- function(run_2N,
-                                  run_4N,
-                                  death_data,
-                                  sigma_death_logit = 0.75,
-                                  death_fraction_eps = 1e-4) {
-    if (is.null(death_data) || !is.data.frame(death_data) || nrow(death_data) == 0L) {
-      return(ivt_empty_death_loglik_df())
-    }
-    if (nrow(death_data) != 90L) {
-      stop("Death likelihood requires exactly 90 validated observation rows.")
-    }
-    required_cols <- c(
-      "observation_id", "model_passage_id", "cohort", "lineage_id",
-      "dead_count", "observed_live_count", "eligible_denominator",
-      "observed_dead_fraction"
-    )
-    missing_cols <- setdiff(required_cols, names(death_data))
-    if (length(missing_cols) > 0L) {
-      stop("Validated Death data are missing: ", paste(missing_cols, collapse = ", "))
-    }
-    sigma_use <- as.numeric(sigma_death_logit)
-    eps_use <- as.numeric(death_fraction_eps)
-    if (length(sigma_use) != 1L || !is.finite(sigma_use) || sigma_use <= 0) {
-      stop("sigma_death_logit must be one finite strictly positive value.")
-    }
-    if (length(eps_use) != 1L || !is.finite(eps_use) || eps_use <= 0 || eps_use >= 0.5) {
-      stop("death_fraction_eps must be one finite value strictly between 0 and 0.5.")
-    }
-
-    collect_run_map <- function(run) {
-      rows <- lapply(run$segment_results, function(seg_res) {
-        seg <- seg_res$segment
-        passage_ids <- as.character(seg$data_ids)
-        if (!length(passage_ids)) return(NULL)
-
-        selected_index <- as.integer(seg_res$selection$selected_index)
-        selected_day <- as.numeric(seg_res$selection$selected_day)
-        live_cells <- as.numeric(seg_res$sim$Ntot_live_obs)
-        dead_hypoxia <- as.numeric(seg_res$sim$Ntot_dead_hypoxia_obs)
-        dead_buffer <- as.numeric(seg_res$sim$Ntot_dead_buffer_obs)
-        trajectory_lengths <- c(length(live_cells), length(dead_hypoxia), length(dead_buffer))
-        if (length(unique(trajectory_lengths)) != 1L || trajectory_lengths[[1]] == 0L) {
-          stop(
-            "Live/dead stock trajectories are missing or have incompatible lengths for segment ",
-            seg$segment_id, "."
-          )
-        }
-        if (length(selected_index) != 1L || is.na(selected_index) ||
-            selected_index < 1L || selected_index > trajectory_lengths[[1]]) {
-          stop("Invalid selected_index for Death likelihood segment ", seg$segment_id, ".")
-        }
-        if (length(selected_day) != 1L || !is.finite(selected_day)) {
-          stop("Invalid selected_day for Death likelihood segment ", seg$segment_id, ".")
-        }
-        if (length(seg$obs_days_local) >= selected_index &&
-            !isTRUE(all.equal(
-              selected_day,
-              as.numeric(seg$obs_days_local[[selected_index]]),
-              tolerance = 1e-12
-            ))) {
-          stop("selected_index and selected_day disagree for Death likelihood segment ", seg$segment_id, ".")
-        }
-
-        predicted_live <- live_cells[[selected_index]]
-        predicted_dead_hypoxia <- dead_hypoxia[[selected_index]]
-        predicted_dead_buffer <- dead_buffer[[selected_index]]
-        predicted_dead <- predicted_dead_hypoxia + predicted_dead_buffer
-        selected_live <- as.numeric(seg_res$selection$selected_live_cells)
-        if (!isTRUE(all.equal(predicted_live, selected_live, tolerance = 1e-12))) {
-          stop(
-            "Death likelihood live prediction does not use the existing selected_index for segment ",
-            seg$segment_id, "."
-          )
-        }
-        predicted_counts <- c(
-          predicted_live, predicted_dead_hypoxia, predicted_dead_buffer, predicted_dead
-        )
-        if (any(!is.finite(predicted_counts)) || predicted_live <= 0 ||
-            any(predicted_counts[-1L] < 0)) {
-          stop("Death likelihood encountered invalid selected live/dead stock for segment ", seg$segment_id, ".")
-        }
-
-        old_segment_id <- sub("::O[12]$", "", as.character(seg$segment_id))
-        data.frame(
-          model_passage_id = passage_ids,
-          matched_old_segment_id = rep(old_segment_id, length(passage_ids)),
-          cohort = rep(as.character(seg$cohort), length(passage_ids)),
-          selected_index = rep(selected_index, length(passage_ids)),
-          selected_day = rep(selected_day, length(passage_ids)),
-          predicted_live_count = rep(predicted_live, length(passage_ids)),
-          predicted_dead_hypoxia_count = rep(predicted_dead_hypoxia, length(passage_ids)),
-          predicted_dead_buffer_count = rep(predicted_dead_buffer, length(passage_ids)),
-          predicted_dead_count = rep(predicted_dead, length(passage_ids)),
-          stringsAsFactors = FALSE
-        )
-      })
-      dplyr::bind_rows(rows)
-    }
-
-    passage_map <- dplyr::bind_rows(collect_run_map(run_2N), collect_run_map(run_4N))
-    passage_match_counts <- table(passage_map$model_passage_id)
-    matched_counts <- unname(passage_match_counts[death_data$model_passage_id])
-    if (any(is.na(matched_counts)) || any(matched_counts != 1L)) {
-      stop("Every Death observation must match exactly one old adapter segment by model_passage_id.")
-    }
-    hit <- match(death_data$model_passage_id, passage_map$model_passage_id)
-    matched <- passage_map[hit, , drop = FALSE]
-    if (any(death_data$cohort != matched$cohort)) {
-      stop("Death observation cohort disagrees with its matched old adapter segment.")
-    }
-
-    segment_key <- paste(matched$cohort, matched$matched_old_segment_id, sep = "::")
-    segment_counts <- table(segment_key)
-    if (length(segment_counts) != 45L || any(segment_counts != 2L)) {
-      stop("Death likelihood mapping must yield 45 old segments with exactly two observations each.")
-    }
-    lineage_by_segment <- split(as.character(death_data$lineage_id), segment_key)
-    lineage_ok <- vapply(
-      lineage_by_segment,
-      function(x) identical(sort(x), c("O1", "O2")),
-      logical(1)
-    )
-    if (any(!lineage_ok)) {
-      stop("Each Death likelihood segment must contain one O1 and one O2 observation.")
-    }
-
-    observed_dead_fraction <- as.numeric(death_data$observed_dead_fraction)
-    predicted_dead_fraction <- matched$predicted_dead_count /
-      (matched$predicted_live_count + matched$predicted_dead_count)
-    clamp_probability <- function(x) pmin(pmax(as.numeric(x), eps_use), 1 - eps_use)
-    observed_dead_logit <- stats::qlogis(clamp_probability(observed_dead_fraction))
-    predicted_dead_logit <- stats::qlogis(clamp_probability(predicted_dead_fraction))
-    row_loglik <- stats::dnorm(
-      observed_dead_logit,
-      mean = predicted_dead_logit,
-      sd = sigma_use,
-      log = TRUE
-    )
-    if (any(!is.finite(observed_dead_logit)) || any(!is.finite(predicted_dead_logit)) ||
-        any(!is.finite(row_loglik))) {
-      stop("Death likelihood produced a non-finite logit or row log-likelihood.")
-    }
-
-    data.frame(
-      observation_id = as.character(death_data$observation_id),
-      model_passage_id = as.character(death_data$model_passage_id),
-      segment_id = matched$matched_old_segment_id,
-      matched_old_segment_id = matched$matched_old_segment_id,
-      cohort = as.character(death_data$cohort),
-      lineage_id = as.character(death_data$lineage_id),
-      selected_index = matched$selected_index,
-      selected_day = matched$selected_day,
-      observed_dead_count = as.numeric(death_data$dead_count),
-      observed_live_count = as.numeric(death_data$observed_live_count),
-      eligible_denominator = as.numeric(death_data$eligible_denominator),
-      predicted_dead_hypoxia_count = matched$predicted_dead_hypoxia_count,
-      predicted_dead_buffer_count = matched$predicted_dead_buffer_count,
-      predicted_dead_count = matched$predicted_dead_count,
-      predicted_live_count = matched$predicted_live_count,
-      observed_dead_fraction = observed_dead_fraction,
-      predicted_dead_fraction = predicted_dead_fraction,
-      observed_dead_logit = observed_dead_logit,
-      predicted_dead_logit = predicted_dead_logit,
-      logit_residual = observed_dead_logit - predicted_dead_logit,
-      sigma_death_logit = rep(sigma_use, length(row_loglik)),
-      death_fraction_eps = rep(eps_use, length(row_loglik)),
-      loglik = row_loglik,
-      stringsAsFactors = FALSE,
-      check.names = FALSE
-    )
-  }
-
-  function(run_params,
-           fit_objects,
-           cfg,
-           fallback_max_passage_days = 14,
-           growth_weight = 1,
-           ploidy_weight = 1,
-           flow_weight = 1,
-           ploidy_prob_floor = 1e-12,
-           flow_density_floor = 1e-12,
-           flow_kernel_sd_ploidy = NULL) {
+ivt_objective_components <- function(run_params,
+                                     fit_objects,
+                                     cfg,
+                                     fallback_max_passage_days = 14,
+                                     growth_weight = 1,
+                                     ploidy_weight = 1,
+                                     flow_weight = 1,
+                                     ploidy_prob_floor = 1e-12,
+                                     flow_density_floor = 1e-12,
+                                     flow_kernel_sd_ploidy = NULL) {
   model_core <- build_model_core(cfg = cfg)
 
-  jobs_2N <- fit_objects$jobs_2N
-  jobs_4N <- fit_objects$jobs_4N
   adapter_2N <- ivt_build_job_table_adapter(
-    jobs = jobs_2N,
+    jobs = fit_objects$jobs_2N,
     fit_data = fit_objects$fit_data,
     cohort = "2N",
     fallback_max_passage_days = fallback_max_passage_days
   )
   adapter_4N <- ivt_build_job_table_adapter(
-    jobs = jobs_4N,
+    jobs = fit_objects$jobs_4N,
     fit_data = fit_objects$fit_data,
     cohort = "4N",
     fallback_max_passage_days = fallback_max_passage_days
@@ -962,56 +645,17 @@ ivt_objective_components <- local({
     ivt_flow_overlay_df(run = run_2N, fit_data = fit_objects$fit_data, n_unit = cfg$N_UNIT, sigma_flow_ploidy = sigma_flow_ploidy),
     ivt_flow_overlay_df(run = run_4N, fit_data = fit_objects$fit_data, n_unit = cfg$N_UNIT, sigma_flow_ploidy = sigma_flow_ploidy)
   )
-  death_enabled <- isTRUE(fit_objects$death_enabled)
-  death_has_data <- is.data.frame(fit_objects$death_data) &&
-    nrow(fit_objects$death_data) > 0L
-  death_active <- death_enabled && death_has_data
-  sigma_death_logit <- 0.75
-  death_fraction_eps <- 1e-4
-  death_weight <- if (death_active) 1.0 else 0.0
-  death_df <- if (death_active) {
-    ivt_death_loglik_df(
-      run_2N = run_2N,
-      run_4N = run_4N,
-      death_data = fit_objects$death_data,
-      sigma_death_logit = sigma_death_logit,
-      death_fraction_eps = death_fraction_eps
-    )
-  } else {
-    ivt_empty_death_loglik_df()
-  }
 
   growth_loglik_sum <- if (nrow(growth_df) > 0L) sum(growth_df$loglik) else 0
   ploidy_loglik_sum <- if (nrow(ploidy_df) > 0L) sum(ploidy_df$mean_loglik) else 0
   flow_loglik_sum <- if (nrow(flow_df) > 0L) sum(flow_df$mean_loglik) else 0
-  death_loglik_sum <- if (death_active) sum(death_df$loglik) else NA_real_
   growth_loglik <- if (nrow(growth_df) > 0L) growth_loglik_sum / nrow(growth_df) else 0
   ploidy_loglik <- if (nrow(ploidy_df) > 0L) ploidy_loglik_sum / nrow(ploidy_df) else 0
   flow_loglik <- if (nrow(flow_df) > 0L) flow_loglik_sum / nrow(flow_df) else 0
-  death_loglik <- if (death_active) death_loglik_sum / nrow(death_df) else NA_real_
   total_loglik <- as.numeric(growth_weight) * growth_loglik +
     as.numeric(ploidy_weight) * ploidy_loglik +
     as.numeric(flow_weight) * flow_loglik
-  if (death_active) {
-    total_loglik <- total_loglik + death_weight * death_loglik
-  }
   total <- -total_loglik
-
-  death_data_path <- if (death_active && length(fit_objects$death_data_path)) {
-    as.character(fit_objects$death_data_path[[1]])
-  } else {
-    NA_character_
-  }
-  death_data_md5 <- if (death_active && length(fit_objects$death_data_md5)) {
-    as.character(fit_objects$death_data_md5[[1]])
-  } else {
-    NA_character_
-  }
-  death_data_n_file_rows <- if (death_active && length(fit_objects$death_data_n_file_rows)) {
-    as.integer(fit_objects$death_data_n_file_rows[[1]])
-  } else {
-    0L
-  }
 
   list(
     objective = total,
@@ -1019,17 +663,12 @@ ivt_objective_components <- local({
     growth_loglik = growth_loglik,
     ploidy_loglik = ploidy_loglik,
     flow_loglik = flow_loglik,
-    death_loglik = death_loglik,
     growth_loglik_sum = growth_loglik_sum,
     ploidy_loglik_sum = ploidy_loglik_sum,
     flow_loglik_sum = flow_loglik_sum,
-    death_loglik_sum = death_loglik_sum,
     sigma_growth = sigma_growth,
     sigma_kary = sigma_kary,
     sigma_flow_ploidy = sigma_flow_ploidy,
-    sigma_death_logit = sigma_death_logit,
-    death_fraction_eps = death_fraction_eps,
-    death_weight = death_weight,
     n_growth = nrow(growth_df),
     n_growth_observed = n_growth_observed,
     n_growth_missing_pred = n_growth_missing_pred,
@@ -1038,21 +677,15 @@ ivt_objective_components <- local({
     n_kary_cells = sum(ploidy_df$n_cells),
     n_flow_passages = nrow(flow_df),
     n_flow_samples = nrow(flow_df),
-    n_death_observations = nrow(death_df),
-    death_data_path = death_data_path,
-    death_data_md5 = death_data_md5,
-    death_data_n_file_rows = death_data_n_file_rows,
     summary = summary_df,
     growth_df = growth_df,
     ploidy_df = ploidy_df,
     flow_df = flow_df,
-    death_df = death_df,
     flow_overlay_df = flow_overlay_df,
     run_2N = run_2N,
     run_4N = run_4N
   )
-  }
-})
+}
 
 ivt_objective <- function(run_params,
                           fit_objects,

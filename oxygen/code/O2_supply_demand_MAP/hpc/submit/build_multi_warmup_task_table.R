@@ -145,6 +145,7 @@ apply_cli_settings <- function(settings, argv) {
   set_from_arg("n_cores", c("joint_n_cores", "n_cores"))
   set_from_arg("r_module", "r_module")
   set_from_arg("auto_viz", "auto_viz")
+  set_from_arg("joint_fitting_mode", "joint_fitting_mode")
   set_from_arg("itermax", "itermax")
   set_from_arg("de_reltol", "de_reltol")
   set_from_arg("de_steptol", "de_steptol")
@@ -287,7 +288,8 @@ build_tasks <- function(manifest,
       n_cores = setting(settings, "n_cores", "22"),
       r_module = setting(settings, "r_module", "R/4.4"),
       auto_viz = setting(settings, "auto_viz", "TRUE"),
-      itermax = setting(settings, "itermax", "1000"),
+      joint_fitting_mode = setting(settings, "joint_fitting_mode", "DIRECT"),
+      itermax = setting(settings, "itermax", "500"),
       de_reltol = setting(settings, "de_reltol", "1e-4"),
       de_steptol = setting(settings, "de_steptol", "25"),
       NP = setting(settings, "NP", "80"),

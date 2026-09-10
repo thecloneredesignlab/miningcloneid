@@ -15,16 +15,8 @@ downstream `figures/` and `report/` directories.
 ### `build_multi_warmup_landscape_tables.R`
 
 - Consumes materialized parameter-landscape seed tables.
-- For the active joint workflow, produces a pooled t-SNE, clusters only the
-  in-vivo best points at the primary level, selects each in-vivo cluster's
-  objective-minimum seed, and pairs every representative with the single global
-  objective-minimum in-vitro seed.
-- Does not run in-vitro clustering, second-level clustering, or curve filtering.
-
-### `build_joint_primary_cluster_pairs.R`
-
-- Canonical command-line entry for the only supported joint pair-selection
-  workflow.
+- Produces PCA/UMAP/t-SNE coordinates, cluster/subcluster tables, seed groups,
+  pair manifests, seed-space task tables, and validation comparisons.
 
 ### `collect_multi_warmup_tables.R`
 
@@ -41,6 +33,6 @@ downstream `figures/` and `report/` directories.
 
 - `build_multi_warmup_seed_plan.R` delegates to the seed-plan runner.
 - `build_multi_warmup_pairs_from_landscape_subclusters.R` delegates to the
-  landscape-pair runner for archived callers; unified fitting does not call it.
+  landscape-pair runner.
 - `collect_multi_warmup_results.R` delegates to the collection runner.
 - `multi_warmup_results_report.R` delegates to the visualization/report runner.

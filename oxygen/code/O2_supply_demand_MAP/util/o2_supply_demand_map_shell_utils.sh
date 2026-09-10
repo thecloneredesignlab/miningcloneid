@@ -26,7 +26,6 @@ normalize_fitting_mode() {
     invivo) echo "invivo" ;;
     invitro) echo "invitro" ;;
     joint) echo "joint" ;;
-    all) echo "all" ;;
     *) echo "" ;;
   esac
 }

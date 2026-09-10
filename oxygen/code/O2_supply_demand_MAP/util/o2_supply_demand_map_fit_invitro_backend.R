@@ -44,29 +44,6 @@ source(
 rm(.o2_bootstrap_script_dir)
 
 parse_args <- o2sd_parse_args
-
-invitro_deoptim_iter_completed <- function(de_fit, iter_target = NA_integer_) {
-  iter <- suppressWarnings(as.integer(de_fit$optim$iter %||% NA_integer_))
-  if (length(iter) != 1L || !is.finite(iter) || is.na(iter) || iter < 0L) {
-    return(NA_integer_)
-  }
-  target <- suppressWarnings(as.integer(iter_target))
-  if (length(target) == 1L && is.finite(target) && !is.na(target) && target >= 0L) {
-    iter <- min(iter, target)
-  }
-  iter
-}
-
-invitro_deoptim_stop_reason <- function(iter_completed, iter_target, interrupted = FALSE) {
-  if (isTRUE(interrupted)) return("interrupted")
-  iter_completed <- suppressWarnings(as.integer(iter_completed))
-  iter_target <- suppressWarnings(as.integer(iter_target))
-  if (length(iter_completed) != 1L || length(iter_target) != 1L ||
-      !is.finite(iter_completed) || !is.finite(iter_target)) {
-    return(NA_character_)
-  }
-  if (iter_completed < iter_target) "early_stop_reltol_or_steptol" else "itermax_reached"
-}
 as_num <- o2sd_as_num
 as_int <- o2sd_as_int
 as_bool <- o2sd_as_bool
@@ -111,33 +88,6 @@ default_out_dir <- function(script_dir = SCRIPT_DIR) {
 
 normalize_invitro_n_cores <- o2sd_normalize_n_cores
 
-build_invitro_de_initial_population <- function(NP, lower, upper, init) {
-  lower <- as.numeric(lower)
-  upper <- as.numeric(upper)
-  init <- as.numeric(init)
-  if (length(lower) == 0L || length(upper) != length(lower) ||
-      length(init) != length(lower)) {
-    stop("DE initial-population vectors must have the same non-zero length.")
-  }
-  if (any(!is.finite(lower)) || any(!is.finite(upper)) ||
-      any(!is.finite(init)) || any(lower > upper)) {
-    stop("DE initial-population bounds and init values must be finite and ordered.")
-  }
-  NP <- as.integer(NP)
-  if (length(NP) != 1L || is.na(NP) || NP < 1L) {
-    stop("DE initial-population NP must be one positive integer.")
-  }
-  population <- matrix(
-    stats::runif(NP * length(lower)),
-    nrow = NP,
-    ncol = length(lower)
-  )
-  population <- sweep(population, 2L, upper - lower, `*`)
-  population <- sweep(population, 2L, lower, `+`)
-  population[1L, ] <- pmin(pmax(init, lower), upper)
-  population
-}
-
 start_invitro_deoptim_cluster <- function(n_cores) {
   n_use <- normalize_invitro_n_cores(n_cores)
   if (n_use <= 1L) return(NULL)
@@ -145,489 +95,6 @@ start_invitro_deoptim_cluster <- function(n_cores) {
     return(parallel::makeForkCluster(n_use))
   }
   parallel::makePSOCKcluster(n_use)
-}
-
-INVITRO_DE_PREFLIGHT_MAX_RETRIES <- 5L
-
-invitro_de_preflight_text <- function(x) {
-  value <- if (is.null(x) || !length(x)) NA_character_ else as.character(x[[1L]])
-  if (is.na(value)) return(NA_character_)
-  trimws(gsub("[\t\r\n]+", " ", value))
-}
-
-write_invitro_de_preflight_audit <- function(audit, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  utils::write.table(
-    audit,
-    file = path,
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE,
-    na = "NA"
-  )
-  invisible(path)
-}
-
-initialize_invitro_deoptim_workers <- function(cluster, cpp_info) {
-  wrapper_path <- as.character(cpp_info$wrapper_path %||% "")
-  dll_path <- as.character(cpp_info$path %||% "")
-  required_cpp <- c(
-    "cpp_o2simps_build_G_for_o2_triplet",
-    "cpp_o2simps_simulate_one",
-    "cpp_o2simps_objective_components_map"
-  )
-  worker_results <- parallel::clusterCall(
-    cluster,
-    function(wrapper_path, dll_path, required_cpp) {
-      Sys.setenv(
-        OMP_NUM_THREADS = "1",
-        MKL_NUM_THREADS = "1",
-        OPENBLAS_NUM_THREADS = "1"
-      )
-      tryCatch({
-        if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
-          stop("C++ wrapper does not exist: ", wrapper_path)
-        }
-        if (!nzchar(dll_path) || !file.exists(dll_path)) {
-          stop("C++ DLL does not exist: ", dll_path)
-        }
-
-        # The generated sourceCpp wrapper begins with dyn.load(dll_path), then
-        # reconstructs process-local Rcpp functions bound to that DLL.
-        source(wrapper_path, local = .GlobalEnv)
-        missing_cpp <- required_cpp[!vapply(
-          required_cpp,
-          exists,
-          logical(1),
-          envir = .GlobalEnv,
-          mode = "function",
-          inherits = TRUE
-        )]
-        if (length(missing_cpp)) {
-          stop(
-            "Worker C++ wrapper is missing required functions: ",
-            paste(missing_cpp, collapse = ", ")
-          )
-        }
-        build_formals <- names(formals(get(
-          "cpp_o2simps_build_G_for_o2_triplet",
-          envir = .GlobalEnv,
-          inherits = TRUE
-        )))
-        sim_formals <- names(formals(get(
-          "cpp_o2simps_simulate_one",
-          envir = .GlobalEnv,
-          inherits = TRUE
-        )))
-        objective_formals <- names(formals(get(
-          "cpp_o2simps_objective_components_map",
-          envir = .GlobalEnv,
-          inherits = TRUE
-        )))
-        if (!("p_wgd" %in% build_formals) ||
-            !("sim_args" %in% sim_formals) ||
-            !all(c("scenario_data", "objective_data", "state_data", "sim_args") %in%
-              objective_formals)) {
-          stop("Worker C++ wrapper has stale or incompatible function signatures.")
-        }
-        list(
-          ok = TRUE,
-          status = "PASS_WRAPPER_DLL_LOADED",
-          error = NA_character_
-        )
-      }, error = function(e) {
-        list(
-          ok = FALSE,
-          status = "WORKER_CPP_INIT_ERROR",
-          error = conditionMessage(e)
-        )
-      })
-    },
-    wrapper_path,
-    dll_path,
-    required_cpp
-  )
-
-  do.call(rbind, lapply(seq_along(worker_results), function(i) {
-    result <- worker_results[[i]]
-    data.frame(
-      worker = as.integer(i),
-      role = "worker_init",
-      ok = isTRUE(result$ok),
-      status = invitro_de_preflight_text(result$status),
-      objective = NA_real_,
-      penalty_reason = NA_character_,
-      error = invitro_de_preflight_text(result$error),
-      stringsAsFactors = FALSE
-    )
-  }))
-}
-
-invitro_de_preflight_evaluate <- function(fn,
-                                          par,
-                                          penalty_value = INVITRO_DE_PENALTY_OBJECTIVE) {
-  tryCatch({
-    comp <- fn(par)
-    objective <- suppressWarnings(as.numeric(comp$objective))
-    penalty_reason <- if (!is.null(comp$penalty_reason) && length(comp$penalty_reason)) {
-      as.character(comp$penalty_reason[[1L]])
-    } else {
-      NA_character_
-    }
-    protocol_penalty <- !is.na(penalty_reason) &&
-      grepl("^protocol_infeasible:", trimws(penalty_reason))
-    objective_numeric_ok <- length(objective) == 1L && is.finite(objective)
-    objective_fit_ok <- objective_numeric_ok && objective < penalty_value
-    objective_environment_ok <- objective_fit_ok ||
-      (objective_numeric_ok && protocol_penalty && objective >= penalty_value)
-    reason_environment_ok <- is.na(penalty_reason) ||
-      !nzchar(trimws(penalty_reason)) || protocol_penalty
-    status <- if (protocol_penalty && objective_numeric_ok) {
-      "MODEL_PROTOCOL_INFEASIBLE"
-    } else if (!objective_fit_ok) {
-      if (length(objective) == 1L && is.finite(objective) && objective >= penalty_value) {
-        "PENALTY_OBJECTIVE"
-      } else {
-        "INVALID_OBJECTIVE"
-      }
-    } else if (!reason_environment_ok) {
-      "PENALTY_REASON"
-    } else {
-      "PASS"
-    }
-    list(
-      ok = isTRUE(objective_environment_ok) && isTRUE(reason_environment_ok),
-      status = status,
-      objective = if (length(objective) == 1L) objective else NA_real_,
-      penalty_reason = penalty_reason,
-      error = NA_character_
-    )
-  }, error = function(e) {
-    list(
-      ok = FALSE,
-      status = "OBJECTIVE_ERROR",
-      objective = NA_real_,
-      penalty_reason = NA_character_,
-      error = conditionMessage(e)
-    )
-  })
-}
-
-run_invitro_de_worker_preflight <- function(cluster,
-                                            objective_from_free,
-                                            objective_value,
-                                            init_free,
-                                            penalty_objective = INVITRO_DE_PENALTY_OBJECTIVE,
-                                            objective_tolerance = 1e-8) {
-  master_probe <- invitro_de_preflight_evaluate(
-    objective_from_free,
-    init_free,
-    penalty_objective
-  )
-  worker_probes <- tryCatch(
-    parallel::clusterCall(
-      cluster,
-      function(fn, par, penalty_value, evaluator) {
-        evaluator(fn, par, penalty_value)
-      },
-      objective_from_free,
-      init_free,
-      penalty_objective,
-      invitro_de_preflight_evaluate
-    ),
-    error = function(e) {
-      list(list(
-        ok = FALSE,
-        status = "CLUSTER_CALL_ERROR",
-        objective = NA_real_,
-        penalty_reason = NA_character_,
-        error = conditionMessage(e)
-      ))
-    }
-  )
-
-  deoptim_path_error <- NULL
-  deoptim_path_values <- tryCatch({
-    parallel::clusterExport(
-      cluster,
-      varlist = "objective_value",
-      envir = environment()
-    )
-    probe_matrix <- matrix(
-      rep(as.numeric(init_free), times = length(cluster)),
-      nrow = length(cluster),
-      byrow = TRUE
-    )
-    colnames(probe_matrix) <- names(init_free)
-    as.numeric(parallel::parApply(
-      cluster,
-      probe_matrix,
-      MARGIN = 1L,
-      FUN = objective_value
-    ))
-  }, error = function(e) {
-    deoptim_path_error <<- conditionMessage(e)
-    numeric(0)
-  })
-
-  probes <- c(list(master_probe), worker_probes)
-  worker_ids <- c(0L, seq_along(worker_probes))
-  rows <- do.call(rbind, lapply(seq_along(probes), function(i) {
-    probe <- probes[[i]]
-    data.frame(
-      worker = worker_ids[[i]],
-      role = if (worker_ids[[i]] == 0L) "master" else "worker",
-      ok = isTRUE(probe$ok),
-      status = invitro_de_preflight_text(probe$status),
-      objective = suppressWarnings(as.numeric(probe$objective %||% NA_real_)),
-      penalty_reason = invitro_de_preflight_text(probe$penalty_reason),
-      error = invitro_de_preflight_text(probe$error),
-      stringsAsFactors = FALSE
-    )
-  }))
-  deoptim_rows <- if (length(deoptim_path_values) == length(cluster)) {
-    protocol_penalty_ok <- identical(
-      as.character(master_probe$status),
-      "MODEL_PROTOCOL_INFEASIBLE"
-    )
-    deoptim_ok <- is.finite(deoptim_path_values) &
-      (deoptim_path_values < penalty_objective |
-         (protocol_penalty_ok &
-            abs(deoptim_path_values - master_probe$objective) <= objective_tolerance *
-              max(1, abs(master_probe$objective))))
-    data.frame(
-      worker = seq_along(deoptim_path_values),
-      role = "deoptim_path",
-      ok = deoptim_ok,
-      status = ifelse(
-        deoptim_ok,
-        if (protocol_penalty_ok) "MODEL_PROTOCOL_INFEASIBLE" else "PASS",
-        "PENALTY_OR_INVALID_OBJECTIVE"
-      ),
-      objective = deoptim_path_values,
-      penalty_reason = NA_character_,
-      error = NA_character_,
-      stringsAsFactors = FALSE
-    )
-  } else {
-    data.frame(
-      worker = NA_integer_,
-      role = "deoptim_path",
-      ok = FALSE,
-      status = "DEOPTIM_PATH_ERROR",
-      objective = NA_real_,
-      penalty_reason = NA_character_,
-      error = deoptim_path_error %||% "DEoptim-style preflight returned the wrong number of values",
-      stringsAsFactors = FALSE
-    )
-  }
-  rows <- rbind(rows, deoptim_rows)
-
-  if (isTRUE(master_probe$ok) && all(rows$ok)) {
-    comparable_rows <- which(rows$role %in% c("worker", "deoptim_path"))
-    worker_values <- rows$objective[comparable_rows]
-    scale <- max(1, abs(master_probe$objective))
-    mismatch <- !is.finite(worker_values) |
-      abs(worker_values - master_probe$objective) > objective_tolerance * scale
-    if (any(mismatch)) {
-      bad_rows <- comparable_rows[mismatch]
-      rows$ok[bad_rows] <- FALSE
-      rows$status[bad_rows] <- "OBJECTIVE_MISMATCH"
-      rows$error[bad_rows] <- paste0(
-        "worker objective differs from master objective ",
-        format(master_probe$objective, digits = 17)
-      )
-    }
-  }
-
-  rows
-}
-
-start_invitro_deoptim_cluster_with_preflight <- function(
-    n_cores,
-    objective_from_free,
-    objective_value,
-    init_free,
-    cpp_info,
-    audit_path,
-    max_retries = INVITRO_DE_PREFLIGHT_MAX_RETRIES,
-    cluster_factory = start_invitro_deoptim_cluster,
-    cluster_stopper = function(cluster) parallel::stopCluster(cluster),
-    worker_initializer = initialize_invitro_deoptim_workers,
-    preflight_runner = run_invitro_de_worker_preflight,
-    audit_context = list(),
-    sleep_fn = Sys.sleep) {
-  retries_use <- suppressWarnings(as.integer(max_retries))
-  if (!is.finite(retries_use) || is.na(retries_use) || retries_use < 0L) {
-    retries_use <- INVITRO_DE_PREFLIGHT_MAX_RETRIES
-  }
-  max_attempts <- retries_use + 1L
-  audit_rows <- list()
-
-  append_audit <- function(rows, attempt) {
-    for (column in c("status", "penalty_reason", "error")) {
-      rows[[column]] <- vapply(
-        rows[[column]],
-        invitro_de_preflight_text,
-        character(1)
-      )
-    }
-    rows$attempt <- as.integer(attempt)
-    rows$retry_number <- as.integer(attempt - 1L)
-    rows$timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
-    context_names <- names(audit_context)
-    if (length(context_names)) {
-      for (name in context_names) {
-        rows[[name]] <- rep(
-          invitro_de_preflight_text(audit_context[[name]]),
-          nrow(rows)
-        )
-      }
-    }
-    rows <- rows[, c(
-      "timestamp", "attempt", "retry_number", "worker", "role", "ok",
-      "status", "objective", "penalty_reason", "error", context_names
-    ), drop = FALSE]
-    audit_rows[[length(audit_rows) + 1L]] <<- rows
-    audit <- do.call(rbind, audit_rows)
-    write_invitro_de_preflight_audit(audit, audit_path)
-    audit
-  }
-
-  last_error <- "unknown preflight failure"
-  for (attempt in seq_len(max_attempts)) {
-    cluster <- NULL
-    start_error <- NULL
-    cluster <- tryCatch(
-      cluster_factory(n_cores),
-      error = function(e) {
-        start_error <<- conditionMessage(e)
-        NULL
-      }
-    )
-
-    if (is.null(cluster)) {
-      last_error <- if (!is.null(start_error)) start_error else "cluster factory returned NULL"
-      attempt_rows <- data.frame(
-        worker = NA_integer_,
-        role = "cluster",
-        ok = FALSE,
-        status = "CLUSTER_START_ERROR",
-        objective = NA_real_,
-        penalty_reason = NA_character_,
-        error = last_error,
-        stringsAsFactors = FALSE
-      )
-    } else {
-      init_rows <- tryCatch(
-        worker_initializer(
-          cluster = cluster,
-          cpp_info = cpp_info
-        ),
-        error = function(e) {
-          data.frame(
-            worker = NA_integer_,
-            role = "worker_init",
-            ok = FALSE,
-            status = "WORKER_CPP_INIT_ERROR",
-            objective = NA_real_,
-            penalty_reason = NA_character_,
-            error = conditionMessage(e),
-            stringsAsFactors = FALSE
-          )
-        }
-      )
-      if (is.data.frame(init_rows) && nrow(init_rows) &&
-          all(c("ok", "status", "error") %in% names(init_rows)) &&
-          isTRUE(all(init_rows$ok))) {
-        preflight_rows <- tryCatch(
-          preflight_runner(
-            cluster = cluster,
-            objective_from_free = objective_from_free,
-            objective_value = objective_value,
-            init_free = init_free
-          ),
-          error = function(e) {
-            data.frame(
-              worker = NA_integer_,
-              role = "cluster",
-              ok = FALSE,
-              status = "PREFLIGHT_ERROR",
-              objective = NA_real_,
-              penalty_reason = NA_character_,
-              error = conditionMessage(e),
-              stringsAsFactors = FALSE
-            )
-          }
-        )
-        attempt_rows <- rbind(init_rows, preflight_rows)
-      } else {
-        attempt_rows <- init_rows
-      }
-      required_preflight_columns <- c(
-        "worker", "role", "ok", "status", "objective",
-        "penalty_reason", "error"
-      )
-      if (!is.data.frame(attempt_rows) || !nrow(attempt_rows) ||
-          !all(required_preflight_columns %in% names(attempt_rows))) {
-        attempt_rows <- data.frame(
-          worker = NA_integer_,
-          role = "cluster",
-          ok = FALSE,
-          status = "INVALID_PREFLIGHT_RESULT",
-          objective = NA_real_,
-          penalty_reason = NA_character_,
-          error = "preflight runner returned an invalid audit table",
-          stringsAsFactors = FALSE
-        )
-      }
-      failed_rows <- attempt_rows[!attempt_rows$ok, , drop = FALSE]
-      if (nrow(failed_rows)) {
-        detail <- failed_rows$error
-        detail[is.na(detail) | !nzchar(detail)] <- failed_rows$penalty_reason[
-          is.na(detail) | !nzchar(detail)
-        ]
-        detail[is.na(detail) | !nzchar(detail)] <- failed_rows$status[
-          is.na(detail) | !nzchar(detail)
-        ]
-        last_error <- paste(unique(detail), collapse = " | ")
-      }
-    }
-
-    audit <- append_audit(attempt_rows, attempt)
-    if (!is.null(cluster) && isTRUE(all(attempt_rows$ok))) {
-      message(
-        "[fit_invitro] DEoptim worker preflight passed on attempt ", attempt,
-        " (retries=", attempt - 1L, ")."
-      )
-      return(list(
-        cluster = cluster,
-        active_cores = length(cluster),
-        attempts = as.integer(attempt),
-        retries = as.integer(attempt - 1L),
-        audit = audit
-      ))
-    }
-
-    if (!is.null(cluster)) {
-      try(cluster_stopper(cluster), silent = TRUE)
-    }
-    if (attempt < max_attempts) {
-      message(
-        "[fit_invitro] DEoptim worker preflight failed on attempt ", attempt,
-        "; retrying with a fresh cluster (retry ", attempt, "/", retries_use,
-        "). Reason: ", last_error
-      )
-      sleep_fn(min(0.25 * attempt, 1))
-    }
-  }
-
-  stop(
-    "[fit_invitro] DEoptim worker preflight failed after ", max_attempts,
-    " attempts (", retries_use, " retries). See ", audit_path,
-    ". Last error: ", last_error,
-    call. = FALSE
-  )
 }
 
 resolve_optional_flow_density_path <- function(raw_path = NULL) {
@@ -652,13 +119,7 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
   if ("flow_csv_path" %in% load_formals) {
     call_args$flow_csv_path <- flow_density_path
   }
-  loaded <- do.call(ivt_load_fit_objects, call_args)
-  loaded$death_enabled <- FALSE
-  loaded$death_data <- data.frame()
-  loaded$death_data_path <- NA_character_
-  loaded$death_data_md5 <- NA_character_
-  loaded$death_data_n_file_rows <- 0L
-  loaded
+  do.call(ivt_load_fit_objects, call_args)
 }
 
 build_invitro_cfg <- function(parameter_table,
@@ -706,10 +167,7 @@ validate_invitro_fit_objects <- function(fit_objects_dir,
   invisible(TRUE)
 }
 
-INVITRO_DE_PENALTY_OBJECTIVE <- 1e9
-
-make_penalty_components <- function(objective = INVITRO_DE_PENALTY_OBJECTIVE,
-                                    reason = "penalty") {
+make_penalty_components <- function(objective = 1e9, reason = "penalty") {
   empty_summary <- data.frame()
   empty_result <- list(
     adapter = NULL,
@@ -723,17 +181,12 @@ make_penalty_components <- function(objective = INVITRO_DE_PENALTY_OBJECTIVE,
     growth_loglik = -as.numeric(objective),
     ploidy_loglik = 0.0,
     flow_loglik = 0.0,
-    death_loglik = NA_real_,
     growth_loglik_sum = -as.numeric(objective),
     ploidy_loglik_sum = 0.0,
     flow_loglik_sum = 0.0,
-    death_loglik_sum = NA_real_,
     sigma_growth = NA_real_,
     sigma_kary = NA_real_,
     sigma_flow_ploidy = NA_real_,
-    sigma_death_logit = 0.75,
-    death_fraction_eps = 1e-4,
-    death_weight = 0.0,
     n_growth = 0L,
     n_growth_observed = 0L,
     n_growth_missing_pred = 0L,
@@ -742,61 +195,15 @@ make_penalty_components <- function(objective = INVITRO_DE_PENALTY_OBJECTIVE,
     n_kary_cells = 0L,
     n_flow_passages = 0L,
     n_flow_samples = 0L,
-    n_death_observations = 0L,
-    death_data_path = NA_character_,
-    death_data_md5 = NA_character_,
-    death_data_n_file_rows = 0L,
     summary = empty_summary,
     growth_df = data.frame(),
     ploidy_df = data.frame(),
     flow_df = data.frame(),
-    death_df = data.frame(),
     flow_overlay_df = data.frame(),
     run_2N = empty_result,
     run_4N = empty_result,
     penalty_reason = as.character(reason)
   )
-}
-
-invitro_protocol_penalty_objective <- function(condition,
-                                                base_penalty = 1e6,
-                                                remaining_segment_penalty = 1e4,
-                                                relative_shortfall_penalty = 1e3) {
-  if (!inherits(condition, "invitro_protocol_infeasible")) {
-    return(INVITRO_DE_PENALTY_OBJECTIVE)
-  }
-  ordinal <- suppressWarnings(as.integer(condition$segment_ordinal))
-  cohort_count <- suppressWarnings(as.integer(condition$segment_count))
-  cohort <- as.character(condition$segment$cohort %||% "")
-  if (length(ordinal) != 1L || !is.finite(ordinal) || ordinal < 1L ||
-      length(cohort_count) != 1L || !is.finite(cohort_count) || cohort_count < 1L) {
-    return(INVITRO_DE_PENALTY_OBJECTIVE - 1)
-  }
-
-  prior_completed <- if (identical(cohort, "4N")) cohort_count else 0L
-  completed_segments <- prior_completed + ordinal - 1L
-  total_segments <- 2L * cohort_count
-  remaining_segments <- max(total_segments - completed_segments, 1L)
-
-  required_cells <- suppressWarnings(as.numeric(
-    condition$selection$required_cells %||%
-      condition$selection$threshold_target_cells
-  ))
-  available_cells <- suppressWarnings(as.numeric(
-    condition$selection$available_cells %||%
-      condition$selection$max_live_cells_in_search
-  ))
-  relative_shortfall <- if (length(required_cells) == 1L &&
-                            is.finite(required_cells) && required_cells > 0 &&
-                            length(available_cells) == 1L && is.finite(available_cells)) {
-    max((required_cells - available_cells) / required_cells, 0)
-  } else {
-    1
-  }
-  score <- as.numeric(base_penalty) +
-    as.numeric(remaining_segment_penalty) * remaining_segments +
-    as.numeric(relative_shortfall_penalty) * min(relative_shortfall, 10)
-  min(score, INVITRO_DE_PENALTY_OBJECTIVE - 1)
 }
 
 write_tsv_if_nonempty <- o2sd_write_tsv_if_nonempty
@@ -891,7 +298,7 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
   out
 }
 
-write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores, de_include_parameter_init) {
+write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
     command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
@@ -907,9 +314,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     paste0("--NP=", NP),
     paste0("--de_reltol=", de_reltol),
     paste0("--de_steptol=", de_steptol),
-    paste0("--n_cores=", n_cores),
-    paste0("--passage_implementation=", INVITRO_PASSAGE_IMPLEMENTATION),
-    paste0("--de_include_parameter_init=", de_include_parameter_init)
+    paste0("--n_cores=", n_cores)
   )
   if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
     args <- c(args, paste0("--flow_density_path=", flow_density_path))
@@ -925,13 +330,13 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     section = c(
       "execution", "execution", "execution", "execution",
       "scripts", "input_config", "input_config", "input_config",
-      "fit", "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
       "slurm", "slurm"
     ),
     key = c(
       "timestamp", "hostname", "user", "fit_command_file",
       "array_script", "parameter_table", "fit_objects_dir", "flow_density_path",
-      "seed", "passage_mode", "itermax", "NP", "de_reltol", "de_steptol", "n_cores", "de_include_parameter_init",
+      "seed", "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
       "array_job_id", "array_task_id"
     ),
     value = c(
@@ -944,13 +349,11 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
       fit_objects_dir,
       flow_density_path %||% "",
       seed,
-      INVITRO_PASSAGE_IMPLEMENTATION,
       itermax,
       NP,
       de_reltol,
       de_steptol,
       n_cores,
-      de_include_parameter_init,
       Sys.getenv("O2SD_SLURM_ARRAY_JOB_ID", unset = NA_character_),
       Sys.getenv("O2SD_SLURM_ARRAY_TASK_ID", unset = NA_character_)
     ),
@@ -962,7 +365,6 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
 }
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
-  ivt_reject_removed_passage_mode(argv$passage_mode, source = "the in vitro CLI")
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table
   } else {
@@ -992,7 +394,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
-  de_include_parameter_init <- TRUE
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
@@ -1020,8 +421,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     NP = NP_requested,
     de_reltol = de_reltol,
     de_steptol = de_steptol,
-    n_cores = n_cores_requested,
-    de_include_parameter_init = de_include_parameter_init
+    n_cores = n_cores_requested
   )
   set.seed(seed)
 
@@ -1058,17 +458,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         flow_weight = 1
       ),
       error = function(e) {
-        if (inherits(e, "invitro_protocol_infeasible")) {
-          make_penalty_components(
-            objective = invitro_protocol_penalty_objective(e),
-            reason = conditionMessage(e)
-          )
-        } else {
-          make_penalty_components(
-            objective = INVITRO_DE_PENALTY_OBJECTIVE,
-            reason = paste0("simulation_error: ", conditionMessage(e))
-          )
-        }
+        make_penalty_components(reason = paste0("simulation_error: ", conditionMessage(e)))
       }
     )
     comp$run_params <- run_params
@@ -1080,17 +470,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     objective_from_free(par_free_t)$objective
   }
 
-  cpp_info <- tryCatch(
-    o2simps_cpp_dll_info(),
-    error = function(e) {
-      stop(
-        "[fit_invitro] Failed to resolve compiled C++ wrapper/DLL: ",
-        conditionMessage(e),
-        call. = FALSE
-      )
-    }
-  )
-
   NP_use <- 256L
   de_ctrl <- list(
     trace = TRUE,
@@ -1099,43 +478,16 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     reltol = de_reltol,
     steptol = de_steptol
   )
-  if (isTRUE(de_include_parameter_init)) {
-    de_ctrl$initialpop <- build_invitro_de_initial_population(
-      NP = NP_use,
-      lower = lower_free,
-      upper = upper_free,
-      init = init_free
-    )
-    colnames(de_ctrl$initialpop) <- free_names
-    utils::write.table(
-      data.frame(
-        parameter = free_names,
-        transformed_init = as.numeric(init_free),
-        transformed_lower = as.numeric(lower_free),
-        transformed_upper = as.numeric(upper_free),
-        stringsAsFactors = FALSE
-      ),
-      file.path(out_dir, "de_parameter_init.tsv"),
-      sep = "\t",
-      quote = FALSE,
-      row.names = FALSE
-    )
-    message("[fit_invitro] v2 parameter-table init inserted as DE population member 1.")
-  }
   de_cluster <- NULL
   de_active_cores <- 1L
   if (n_cores_requested > 1L) {
     message("[fit_invitro] DEoptim parallel requested with n_cores=", n_cores_requested, ".")
-    preflight <- start_invitro_deoptim_cluster_with_preflight(
-      n_cores = n_cores_requested,
-      objective_from_free = objective_from_free,
-      objective_value = objective_value,
-      init_free = init_free,
-      cpp_info = cpp_info,
-      audit_path = file.path(out_dir, "de_worker_preflight.tsv"),
-      audit_context = list(passage_implementation = INVITRO_PASSAGE_IMPLEMENTATION)
+    de_cluster <- tryCatch(
+      start_invitro_deoptim_cluster(n_cores_requested),
+      error = function(e) {
+        stop("[fit_invitro] Could not start DEoptim workers: ", conditionMessage(e), call. = FALSE)
+      }
     )
-    de_cluster <- preflight$cluster
     on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
     parallel::clusterExport(
       de_cluster,
@@ -1143,7 +495,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       envir = environment()
     )
     de_ctrl$cluster <- de_cluster
-    de_active_cores <- preflight$active_cores
+    de_active_cores <- length(de_cluster)
     message("[fit_invitro] DEoptim parallel enabled: workers=", de_active_cores, ".")
   } else {
     de_ctrl$parallelType <- "none"
@@ -1158,9 +510,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_best_free_t <- as.numeric(de_fit$optim$bestmem)
   names(de_best_free_t) <- free_names
   de_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
-  de_iter_target <- suppressWarnings(as.integer(de_ctrl$itermax))
-  de_iter_completed <- invitro_deoptim_iter_completed(de_fit, de_iter_target)
-  de_stop_reason <- invitro_deoptim_stop_reason(de_iter_completed, de_iter_target)
   best_free_t <- de_best_free_t
 
   local_maxit <- as_int(.first_non_null_local(argv$local_optim_maxit, argv$optim_maxit, 200L), 200L)
@@ -1218,11 +567,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     local_accepted = isTRUE(local_accepted),
     local_convergence = as.integer(local_convergence),
     local_maxit = as.integer(local_maxit),
-    local_message = local_message,
-    interrupted = FALSE,
-    iter_completed = de_iter_completed,
-    iter_target = de_iter_target,
-    deoptim_stop_reason = de_stop_reason
+    local_message = local_message
   )
 
   best_comp <- objective_from_free(best_free_t)
@@ -1253,7 +598,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   write_tsv_if_nonempty(best_comp$growth_df, file.path(out_dir, "invitro_growth_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$ploidy_df, file.path(out_dir, "invitro_ploidy_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_df, file.path(out_dir, "invitro_flow_loglik.tsv"))
-  write_tsv_if_nonempty(best_comp$death_df, file.path(out_dir, "invitro_death_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_overlay_df, file.path(out_dir, "invitro_flow_overlay.tsv"))
 
   dist_summary <- dplyr::bind_rows(
@@ -1290,7 +634,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
-      "passage_mode",
       "optimizer_method",
       "optimizer_deoptim_objective",
       "optimizer_local_objective",
@@ -1298,26 +641,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "optimizer_local_accepted",
       "optimizer_local_convergence",
       "optimizer_local_maxit",
-      "optimizer_interrupted",
-      "optimizer_iter_completed",
-      "optimizer_iter_target",
-      "deoptim_stop_reason",
       "objective_total",
       "total_loglik",
       "growth_loglik",
       "ploidy_loglik",
       "flow_loglik",
-      "death_loglik",
       "growth_loglik_sum",
       "ploidy_loglik_sum",
       "flow_loglik_sum",
-      "death_loglik_sum",
       "sigma_growth",
       "sigma_kary",
       "sigma_flow_ploidy",
-      "sigma_death_logit",
-      "death_fraction_eps",
-      "death_weight",
       "n_growth",
       "n_growth_observed",
       "n_growth_missing_pred",
@@ -1326,10 +660,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "n_kary_cells",
       "n_flow_passages",
       "n_flow_samples",
-      "n_death_observations",
-      "death_data_path",
-      "death_data_md5",
-      "death_data_n_file_rows",
       "seed",
       "itermax",
       "itermax_requested",
@@ -1348,7 +678,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     value = c(
       "fit_invitro",
-      INVITRO_PASSAGE_IMPLEMENTATION,
       optimizer_method,
       as.character(de_best_objective),
       as.character(local_best_objective),
@@ -1356,26 +685,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(local_accepted),
       as.character(local_convergence),
       as.character(local_maxit),
-      "FALSE",
-      as.character(de_iter_completed),
-      as.character(de_iter_target),
-      as.character(de_stop_reason),
       as.character(best_comp$objective),
       as.character(best_comp$total_loglik),
       as.character(best_comp$growth_loglik),
       as.character(best_comp$ploidy_loglik),
       as.character(best_comp$flow_loglik),
-      as.character(best_comp$death_loglik),
       as.character(best_comp$growth_loglik_sum),
       as.character(best_comp$ploidy_loglik_sum),
       as.character(best_comp$flow_loglik_sum),
-      as.character(best_comp$death_loglik_sum),
       as.character(best_comp$sigma_growth),
       as.character(best_comp$sigma_kary),
       as.character(best_comp$sigma_flow_ploidy),
-      as.character(best_comp$sigma_death_logit),
-      as.character(best_comp$death_fraction_eps),
-      as.character(best_comp$death_weight),
       as.character(best_comp$n_growth),
       as.character(best_comp$n_growth_observed),
       as.character(best_comp$n_growth_missing_pred),
@@ -1384,10 +704,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$n_kary_cells),
       as.character(best_comp$n_flow_passages),
       as.character(best_comp$n_flow_samples),
-      as.character(best_comp$n_death_observations),
-      as.character(best_comp$death_data_path),
-      as.character(best_comp$death_data_md5),
-      as.character(best_comp$death_data_n_file_rows),
       as.character(seed),
       as.character(itermax),
       as.character(itermax_requested),

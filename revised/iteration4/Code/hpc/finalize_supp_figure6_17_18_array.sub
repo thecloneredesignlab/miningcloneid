@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+: "${RUN_ID:?RUN_ID is required}"
+: "${CAMPAIGN_ROOT:?CAMPAIGN_ROOT is required}"
+
+ITERATION_ROOT="/share/lab_crd/taoli/Project/HypoxiaLTEEFigures/revised/iteration4"
+CODE_ROOT="${ITERATION_ROOT}/Code/Figures"
+SIF_IMAGE="/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif"
+MODEL_CODE_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
+RESULTS_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results"
+INVIVO_RESULT_ROOT="${RESULTS_ROOT}/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
+INVITRO_RESULT_ROOT="${RESULTS_ROOT}/fit_invitro_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
+JOINT_RESULT_ROOT="${RESULTS_ROOT}/fit_joint_unified_global_invitro_500seed_all_xxlarge_r442_exact_20260828_145253"
+SOURCE_FIXED_ROOT="${ITERATION_ROOT}/data/Figures/Figure7/fixed_pmisseg_v1"
+SOURCE_POINTER="${SOURCE_FIXED_ROOT}/finite_time_full_q10_current.tsv"
+FIGURE6_DATA_ROOT="${ITERATION_ROOT}/data/Figures/Figure6/fixed_pmisseg_v1"
+RUN_ROOT="${FIGURE6_DATA_ROOT}/net_growth_full_range_q10_runs/${RUN_ID}"
+TASK_CACHE="${RUN_ROOT}/task_cache"
+STATUS_PATH="${ITERATION_ROOT}/audit/hpc_supp_figure6_17_18/${RUN_ID}/status.tsv"
+OUTPUT_SHA256="${CAMPAIGN_ROOT}/output_sha256.tsv"
+
+RED_EASYBUILD_ROOT="/app/eb"
+CONTAINER_LD_LIBRARY_PATH="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64:${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib:${RED_EASYBUILD_ROOT}/software/GCCcore/13.3.0/lib64:${RED_EASYBUILD_ROOT}/software/binutils/2.42-GCCcore-13.3.0/lib:/opt/rh/gcc-toolset-13/root/usr/lib64"
+
+write_status() {
+  {
+    printf 'run_id\tstatus\texit_code\tstage\thost\tn_core\tgit_head\tupdated_at\n'
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${RUN_ID}" "$1" "$2" "$3" "$(hostname -s)" "1" \
+      "$(git -C "${ITERATION_ROOT}/../.." rev-parse HEAD)" "$(date -Iseconds)"
+  } > "${STATUS_PATH}"
+}
+
+stage="VERIFY_ARRAY"
+cleanup() {
+  exit_code="$?"
+  set +e
+  trap - EXIT TERM INT
+  if (( exit_code != 0 )); then write_status FAILED "${exit_code}" "${stage}"; fi
+  [[ -z "${TASK_TMP_DIR:-}" ]] || rm -rf -- "${TASK_TMP_DIR}"
+  exit "${exit_code}"
+}
+trap cleanup EXIT TERM INT
+
+completed="$(find "${TASK_CACHE}" -maxdepth 1 -type f \
+  -name 'net_growth_task_[0-9][0-9][0-9][0-9].rds' -printf '.' | wc -c)"
+if [[ "${completed}" -ne 4020 ]]; then
+  printf 'expected_tasks\tcompleted_tasks\tmissing_tasks\n4020\t%s\t%s\n' \
+    "${completed}" "$((4020 - completed))" > "${CAMPAIGN_ROOT}/incomplete_array.tsv"
+  echo "Array left $((4020 - completed)) incomplete tasks." >&2
+  exit 1
+fi
+
+if command -v apptainer >/dev/null 2>&1; then
+  CONTAINER_RUNTIME="$(command -v apptainer)"
+elif command -v singularity >/dev/null 2>&1; then
+  CONTAINER_RUNTIME="$(command -v singularity)"
+else
+  echo "No apptainer/singularity runtime found." >&2
+  exit 2
+fi
+
+SOURCE_RELATIVE_RUN="$(awk -F '\t' 'NR==2 {print $2}' "${SOURCE_POINTER}")"
+SOURCE_RUN_ROOT="${SOURCE_FIXED_ROOT}/${SOURCE_RELATIVE_RUN}"
+TEMPLATE_ROOT="${CAMPAIGN_ROOT}/rcpp_cache_template"
+TASK_TMP_DIR="$(mktemp -d "/tmp/supp6-finalize.${SLURM_JOB_ID:-manual}.XXXXXX")"
+mkdir -p "${TASK_TMP_DIR}/home" "${TASK_TMP_DIR}/cache" \
+  "${TASK_TMP_DIR}/model_rcpp_cache" "${TASK_TMP_DIR}/full_range_cache" \
+  "${TASK_TMP_DIR}/net_growth_cache"
+cp -a "${TEMPLATE_ROOT}/model/." "${TASK_TMP_DIR}/model_rcpp_cache/"
+cp -a "${TEMPLATE_ROOT}/full_range/." "${TASK_TMP_DIR}/full_range_cache/"
+cp -a "${TEMPLATE_ROOT}/net_growth/." "${TASK_TMP_DIR}/net_growth_cache/"
+printf '%s\n' 'options(bitmapType = "cairo", device = "png", warn = 1)' \
+  > "${TASK_TMP_DIR}/Rprofile"
+
+CONTAINER_ARGS=(
+  exec --cleanenv --containall --pwd "${ITERATION_ROOT}"
+  --home "${TASK_TMP_DIR}/home"
+  --env "TMPDIR=/tmp" --env "TMP=/tmp" --env "TEMP=/tmp"
+  --env "XDG_CACHE_HOME=${TASK_TMP_DIR}/cache"
+  --env "FONTCONFIG_PATH=/etc/fonts"
+  --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
+  --env "R_MAKEVARS_USER=${ITERATION_ROOT}/Code/hpc/figure6_compiler_makevars"
+  --env "R_HOME=/opt/R/4.4.2/lib64/R"
+  --env "LD_LIBRARY_PATH=${CONTAINER_LD_LIBRARY_PATH}"
+  --env "DISPLAY=" --env "QT_QPA_PLATFORM=offscreen" --env "MPLBACKEND=Agg"
+  --env "FIGURE_WORKSPACE_ROOT=${ITERATION_ROOT}"
+  --env "FIGURE_MODEL_CODE_ROOT=${MODEL_CODE_ROOT}"
+  --env "FIGURE_INVIVO_RESULT_ROOT=${INVIVO_RESULT_ROOT}"
+  --env "FIGURE_INVITRO_RESULT_ROOT=${INVITRO_RESULT_ROOT}"
+  --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
+  --env "FIGURE6_FULL_RANGE_SOURCE_RUN_ROOT=${SOURCE_RUN_ROOT}"
+  --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
+  --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"
+  --env "RCPP_PARALLEL_NUM_THREADS=1" --env "KMP_USE_SHM=0"
+  --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
+  --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
+  --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
+  --bind "${TASK_TMP_DIR}/model_rcpp_cache:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"
+  --bind "${TASK_TMP_DIR}/full_range_cache:${FIGURE6_DATA_ROOT}/.rcpp_cache_full_range:rw"
+  --bind "${TASK_TMP_DIR}/net_growth_cache:${FIGURE6_DATA_ROOT}/.rcpp_cache_net_growth:rw"
+  --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
+  --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
+  --bind "${TASK_TMP_DIR}:/tmp:rw"
+  --bind "${TASK_TMP_DIR}:/var/tmp:rw"
+)
+container_command() {
+  "${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "$@"
+}
+
+stage="AGGREGATE"
+write_status RUNNING 0 "${stage}"
+container_command Rscript --vanilla \
+  "${CODE_ROOT}/data_Supp_Figure6_14_Full_Range.R" \
+  "--n-core=1" "--o2-chunk-size=1" "--run-id=${RUN_ID}" \
+  "--smoke=FALSE" "--publish-current=TRUE"
+
+stage="HEADLESS_RENDER"
+write_status RUNNING 0 "${stage}"
+for script in draw_Supp_Figure6_17.R draw_Supp_Figure6_18.R; do
+  container_command Rscript --vanilla "${CODE_ROOT}/${script}"
+done
+
+stage="VALIDATE"
+write_status RUNNING 0 "${stage}"
+OUTPUTS=(
+  "${ITERATION_ROOT}/Figures/supp_fig6-17_population_net_live_growth_rate_signed_log_invivo_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig6-17_population_net_live_growth_rate_signed_log_invivo_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig6-18_population_net_live_growth_rate_signed_log_invitro_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig6-18_population_net_live_growth_rate_signed_log_invitro_full_range.png"
+)
+VALIDATIONS=(
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure6_17/supp_fig6-17_population_net_live_growth_rate_signed_log_invivo_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure6_18/supp_fig6-18_population_net_live_growth_rate_signed_log_invitro_full_range_render_validation.tsv"
+)
+for path in "${VALIDATIONS[@]}"; do
+  [[ -s "${path}" ]] || { echo "Missing render validation: ${path}" >&2; exit 1; }
+  awk -F '\t' '
+    NR == 1 {for (i=1; i<=NF; i++) if ($i=="passed") c=i; next}
+    c>0 && toupper($c)!="TRUE" {bad=1}
+    END {if (NR<2 || c==0 || bad) exit 1}
+  ' "${path}"
+done
+{
+  printf 'sha256\tsize_bytes\tpath\n'
+  for path in "${OUTPUTS[@]}"; do
+    [[ -s "${path}" ]] || { echo "Missing output: ${path}" >&2; exit 1; }
+    printf '%s\t%s\t%s\n' "$(sha256sum "${path}" | awk '{print $1}')" \
+      "$(stat -c '%s' "${path}")" "${path}"
+  done
+} > "${OUTPUT_SHA256}"
+{
+  printf 'pdf\ttext_words_present\tfont_count\tno_type3\tpassed\n'
+  for pdf in "${OUTPUTS[@]}"; do
+    [[ "${pdf}" == *.pdf ]] || continue
+    text_path="${TASK_TMP_DIR}/$(basename "${pdf}").txt"
+    pdftotext -layout "${pdf}" "${text_path}"
+    words_present=FALSE
+    grep -Eiq 'oxygen|ploidy|growth|misseg' "${text_path}" && words_present=TRUE
+    font_count="$(pdffonts "${pdf}" | awk 'NR>2 {n++} END {print n+0}')"
+    no_type3=TRUE
+    pdffonts "${pdf}" | awk 'NR>2 && $2=="Type 3" {bad=1} END {exit bad}' || no_type3=FALSE
+    passed=FALSE
+    [[ "${words_present}" == TRUE && "${font_count}" -gt 0 && "${no_type3}" == TRUE ]] && passed=TRUE
+    printf '%s\t%s\t%s\t%s\t%s\n' "${pdf}" "${words_present}" \
+      "${font_count}" "${no_type3}" "${passed}"
+    [[ "${passed}" == TRUE ]] || exit 1
+  done
+} > "${CAMPAIGN_ROOT}/pdf_text_font_validation.tsv"
+
+stage="COMPLETE"
+write_status COMPLETE 0 COMPLETE
+printf 'Supplementary Figure 6-17/18 array resume complete: %s\n' "$(date -Iseconds)"

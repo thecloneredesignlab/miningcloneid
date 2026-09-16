@@ -9,21 +9,110 @@
 
 options(stringsAsFactors = FALSE, warn = 1)
 
+# Figure 6 scans the fitted mechanistic amplitude p_misseg.  Unlike the
+# historical Figure 6 forcing helper, this preserves p_mis_base and k_o_mis so
+# that the external model continues to derive p_mis(N, O2) from the current
+# ploidy- and oxygen-dependent effective growth rate.
+figure6_force_p_misseg <- function(run_params, p_misseg) {
+  value <- as.numeric(p_misseg)
+  lower <- 0.005
+  upper <- 0.5
+  tolerance <- 1e-12
+  if (length(value) != 1L || !is.finite(value) ||
+      value < lower - tolerance || value > upper + tolerance) {
+    stop("Figure 6 p_misseg must be within the joint bound [0.005, 0.5].",
+         call. = FALSE)
+  }
+  # log-space construction can place a mathematical endpoint a few ulps
+  # outside its declared bound; publish and evaluate the exact bound instead.
+  value <- min(max(value, lower), upper)
+  required <- c("p_mis_base", "p_misseg", "k_o_mis")
+  missing <- setdiff(required, names(run_params))
+  if (length(missing)) {
+    stop("Prepared model parameters lack: ", paste(missing, collapse = ", "),
+         call. = FALSE)
+  }
+  out <- run_params
+  baseline <- out[c("p_mis_base", "k_o_mis")]
+  out$p_misseg <- value
+  if (!identical(out[c("p_mis_base", "k_o_mis")], baseline) ||
+      !isTRUE(all.equal(as.numeric(out$p_misseg), value, tolerance = 0))) {
+    stop("Figure 6 p_misseg override changed a protected fitted parameter.",
+         call. = FALSE)
+  }
+  out
+}
+
+figure6_p_misseg_formula_qc <- function(
+    run_params, p_values,
+    o2_values = c(0, 0.5, 5), n_values = c(22, 44, 88)
+) {
+  required_functions <- c(".mu_eff_of_O2", ".pmisseg_of_O2")
+  missing <- required_functions[!vapply(
+    required_functions, exists, logical(1L), inherits = TRUE
+  )]
+  if (length(missing)) {
+    stop("External model formula helpers are unavailable: ",
+         paste(missing, collapse = ", "))
+  }
+  errors <- numeric()
+  for (p_value in p_values) {
+    forced <- figure6_force_p_misseg(run_params, p_value)
+    for (n_value in n_values) for (o2_value in o2_values) {
+      mu_eff <- .mu_eff_of_O2(
+        O2 = o2_value, run_params = forced, N = n_value
+      )
+      direct <- pmin(1, pmax(
+        0,
+        as.numeric(forced$p_mis_base) + as.numeric(forced$p_misseg) *
+          mu_eff / (mu_eff + as.numeric(forced$k_o_mis))
+      ))
+      model <- .pmisseg_of_O2(
+        O2 = o2_value, run_params = forced, N = n_value
+      )
+      errors <- c(errors, abs(as.numeric(model) - as.numeric(direct)))
+    }
+  }
+  data.frame(
+    n_parameter_value = length(p_values),
+    n_ploidy = length(n_values),
+    n_oxygen = length(o2_values),
+    maximum_direct_formula_error = max(errors),
+    passed = all(is.finite(errors)) && max(errors) <= 1e-12,
+    stringsAsFactors = FALSE
+  )
+}
+
 f6r_family_levels <- function() {
   if (exists("JOINT_FAMILY_LEVELS", inherits = TRUE)) {
     levels <- get("JOINT_FAMILY_LEVELS", inherits = TRUE)
   } else {
     joint_root <- Sys.getenv("FIGURE_JOINT_RESULT_ROOT", unset = "")
     manifest_path <- file.path(joint_root, "multi_warmup_manifest.tsv")
-    if (!nzchar(joint_root) || !file.exists(manifest_path)) {
-      stop("Cannot resolve the joint primary-family manifest.")
+    if (nzchar(joint_root) && file.exists(manifest_path)) {
+      manifest <- utils::read.delim(
+        manifest_path, check.names = FALSE, stringsAsFactors = FALSE
+      )
+      levels <- regmatches(
+        manifest$warmup_label, regexpr("C[0-9]{2}", manifest$warmup_label)
+      )
+    } else {
+      workspace_root <- f6r_find_workspace_root()
+      cached_summary <- file.path(
+        workspace_root, "data", "Figures", "Figure6", "fixed_pmisseg_v1",
+        "figure7d_fixed_p_curve_family.tsv"
+      )
+      if (!file.exists(cached_summary)) {
+        stop("Cannot resolve the joint primary-family manifest or Figure 6 cache.")
+      }
+      cached <- utils::read.delim(
+        cached_summary, check.names = FALSE, stringsAsFactors = FALSE
+      )
+      if (!"pair_label" %in% names(cached)) {
+        stop("Figure 6 cache lacks pair_label: ", cached_summary)
+      }
+      levels <- unique(as.character(cached$pair_label))
     }
-    manifest <- utils::read.delim(
-      manifest_path, check.names = FALSE, stringsAsFactors = FALSE
-    )
-    levels <- regmatches(
-      manifest$warmup_label, regexpr("C[0-9]{2}", manifest$warmup_label)
-    )
     levels <- levels[order(as.integer(sub("^C", "", levels)))]
   }
   expected <- sprintf("C%02d", seq_along(levels))
@@ -65,7 +154,10 @@ f6r_paths <- function(workspace_root = f6r_find_workspace_root()) {
     repository_root = repository_root,
     oxygen_code = normalizePath(model_code_root, mustWork = TRUE),
     code = file.path(root, "Code", "Figures"),
-    figure6 = file.path(root, "data", "Figures", "Figure6"),
+    figure6_root = file.path(root, "data", "Figures", "Figure6"),
+    figure6 = file.path(
+      root, "data", "Figures", "Figure6", "fixed_pmisseg_v1"
+    ),
     figure4 = file.path(root, "data", "Figures", "Figure4"),
     figure5 = file.path(root, "data", "Figures", "Figure5"),
     supp5_1 = file.path(root, "data", "Figures", "Supp_Figure5_1"),
@@ -94,9 +186,19 @@ f6r_resilient_lapply <- function(X, FUN, n_core = 1L) {
   )
   result <- if (n_core > 1L) {
     f6r_require_packages(c("future", "future.apply"))
-    # Multisession workers are independent R processes rather than forked
-    # children. This permits the multi-seed, dense-grid, and inverse stages to
-    # create successive pools without exhausting macOS/OpenMP shared memory.
+    # Keep independent sessions as the workstation-safe default.  On the
+    # dedicated Linux HPC node the caller may request multicore so workers
+    # inherit the already-loaded external model DLL instead of recompiling it
+    # for every future.
+    requested_plan <- tolower(trimws(Sys.getenv(
+      "FIGURE6_FUTURE_PLAN", unset = "multisession"
+    )))
+    if (!requested_plan %in% c("multisession", "multicore")) {
+      stop("Unsupported FIGURE6_FUTURE_PLAN: ", requested_plan)
+    }
+    if (requested_plan == "multicore" && .Platform$OS.type != "unix") {
+      stop("FIGURE6_FUTURE_PLAN=multicore requires a Unix-like platform.")
+    }
     previous_plan <- future::plan()
     on.exit(future::plan(previous_plan), add = TRUE)
     previous_worker_limit <- getOption("parallelly.maxWorkers.localhost")
@@ -107,10 +209,12 @@ f6r_resilient_lapply <- function(X, FUN, n_core = 1L) {
     options(
       parallelly.maxWorkers.localhost = max(3, as.integer(n_core))
     )
-    future::plan(
-      future::multisession,
-      workers = min(as.integer(n_core), length(X))
-    )
+    strategy <- if (requested_plan == "multicore") {
+      future::multicore
+    } else {
+      future::multisession
+    }
+    future::plan(strategy, workers = min(as.integer(n_core), length(X)))
     future.apply::future_lapply(
       X, FUN,
       future.seed = TRUE,
@@ -916,9 +1020,9 @@ f6r_compute_seed_cache <- function(
     simulation_mode = "joint", model_source_fingerprint
 ) {
   requested_surface_profile <- if (isTRUE(full_surface)) {
-    "full_201x60"
+    "fixed_pmisseg_full_201x60_v1"
   } else {
-    "claim_diagnostic_union"
+    "fixed_pmisseg_claim_diagnostic_union_v1"
   }
   existing <- NULL
   if (file.exists(cache_path) && !isTRUE(force_rebuild)) {
@@ -982,7 +1086,9 @@ f6r_compute_seed_cache <- function(
 
   o2_values <- seq(0, 5, length.out = 201L)
   cin_values <- 10^seq(log10(0.005), log10(0.5), length.out = 60L)
+  cin_values[c(1L, length(cin_values))] <- c(0.005, 0.5)
   seed_id <- paste0("seed", seed_number)
+  formula_qc <- figure6_p_misseg_formula_qc(run_params, cin_values)
 
   trajectory_rows <- lapply(o2_values, function(o2) {
     fixo2_dominant_attractor_one(
@@ -998,11 +1104,14 @@ f6r_compute_seed_cache <- function(
     "O2_pct", "status", "population_average_p_misseg",
     "dominant_mean_ploidy", "spectral_gap", "dominant_growth_rate"
   ), drop = FALSE]
+  trajectory$fitted_p_misseg <- as.numeric(run_params$p_misseg)
+  trajectory$fitted_p_mis_base <- as.numeric(run_params$p_mis_base)
+  trajectory$fitted_k_o_mis <- as.numeric(run_params$k_o_mis)
 
   if (isTRUE(full_surface)) {
     surface_grid <- expand.grid(
       O2_pct = o2_values,
-      effective_p_misseg = cin_values,
+      p_misseg = cin_values,
       KEEP.OUT.ATTRS = FALSE,
       stringsAsFactors = FALSE
     )
@@ -1013,25 +1122,25 @@ f6r_compute_seed_cache <- function(
     surface_grid <- unique(rbind(
       expand.grid(
         O2_pct = o2_values,
-        effective_p_misseg = cin_targets,
+        p_misseg = cin_targets,
         KEEP.OUT.ATTRS = FALSE,
         stringsAsFactors = FALSE
       ),
       expand.grid(
         O2_pct = c(0, 1, 5),
-        effective_p_misseg = cin_values,
+        p_misseg = cin_values,
         KEEP.OUT.ATTRS = FALSE,
         stringsAsFactors = FALSE
       )
     ))
   }
   surface_rows <- lapply(
-    sort(unique(surface_grid$effective_p_misseg)),
+    sort(unique(surface_grid$p_misseg)),
     function(cin) {
     o2_subset <- surface_grid$O2_pct[
-      abs(surface_grid$effective_p_misseg - cin) < 1e-12
+      abs(surface_grid$p_misseg - cin) < 1e-12
     ]
-    forced <- response_force_effective_p_misseg(run_params, cin)
+    forced <- figure6_force_p_misseg(run_params, cin)
     rows <- lapply(o2_subset, function(o2) {
       z <- fixo2_dominant_attractor_one(
         seed_id = seed_id,
@@ -1042,9 +1151,10 @@ f6r_compute_seed_cache <- function(
       )
       data.frame(
         O2_pct = as.numeric(z$O2_pct[[1L]]),
-        effective_p_misseg = cin,
+        p_misseg = cin,
+        forced_p_misseg = as.numeric(forced$p_misseg),
         status = as.character(z$status[[1L]]),
-        actual_effective_p_misseg =
+        population_average_p_misseg =
           as.numeric(z$population_average_p_misseg[[1L]]),
         dominant_mean_ploidy = as.numeric(z$dominant_mean_ploidy[[1L]]),
         spectral_gap = as.numeric(z$spectral_gap[[1L]]),
@@ -1056,7 +1166,7 @@ f6r_compute_seed_cache <- function(
   })
   surface <- do.call(rbind, surface_rows)
   surface <- surface[order(
-    surface$effective_p_misseg, surface$O2_pct
+    surface$p_misseg, surface$O2_pct
   ), , drop = FALSE]
   trajectory$pair_id <- pair_id
   trajectory$pair_label <- context$pair_label
@@ -1077,9 +1187,22 @@ f6r_compute_seed_cache <- function(
   valid_surface <- all(surface$status == "ok") && all(is.finite(
     surface$dominant_mean_ploidy
   )) && all(is.finite(surface$spectral_gap))
-  max_error <- max(abs(
-    surface$actual_effective_p_misseg - surface$effective_p_misseg
-  ), na.rm = TRUE)
+  effective_probability_bounds_ok <- all(
+    surface$population_average_p_misseg >=
+      as.numeric(run_params$p_mis_base) - 1e-10 &
+    surface$population_average_p_misseg <=
+      pmin(1, as.numeric(run_params$p_mis_base) + surface$p_misseg) + 1e-10
+  )
+  # The model-derived population-average effective probability is expected to
+  # differ from the scanned amplitude.  Validate the parameter override itself
+  # rather than incorrectly comparing those two distinct quantities.
+  max_error <- max(vapply(
+    sort(unique(surface$p_misseg)),
+    function(value) abs(
+      as.numeric(figure6_force_p_misseg(run_params, value)$p_misseg) - value
+    ),
+    numeric(1L)
+  ))
   qc <- data.frame(
     pair_id = pair_id,
     pair_label = context$pair_label,
@@ -1091,8 +1214,19 @@ f6r_compute_seed_cache <- function(
     n_surface = nrow(surface),
     trajectory_all_status_ok = valid_trajectory,
     surface_all_status_ok = valid_surface,
-    max_abs_actual_minus_requested_p_misseg = max_error,
+    max_abs_forced_minus_requested_p_misseg = max_error,
+    fitted_p_mis_base = as.numeric(run_params$p_mis_base),
+    fitted_k_o_mis = as.numeric(run_params$k_o_mis),
+    minimum_population_average_effective_p =
+      min(surface$population_average_p_misseg),
+    maximum_population_average_effective_p =
+      max(surface$population_average_p_misseg),
+    population_average_effective_p_within_model_bounds =
+      effective_probability_bounds_ok,
+    maximum_direct_formula_error = formula_qc$maximum_direct_formula_error,
     operator_qc_pass = valid_trajectory && valid_surface &&
+      effective_probability_bounds_ok &&
+      isTRUE(formula_qc$passed) &&
       is.finite(max_error) && max_error <= 1e-8,
     cache_path = normalizePath(cache_path, mustWork = FALSE),
     stringsAsFactors = FALSE
@@ -1124,15 +1258,15 @@ f6r_compute_seed_cache <- function(
   qc
 }
 
-f6r_figure6d_p_values <- function() {
+f6r_figure7d_p_values <- function() {
   seq.int(5L, 500L, by = 1L) / 1000
 }
 
-f6r_figure6d_o2_values <- function() {
+f6r_figure7d_o2_values <- function() {
   seq(0, 5, length.out = 201L)
 }
 
-f6r_figure6d_endpoint_manifest <- function(paths, objective_bundle) {
+f6r_figure7d_endpoint_manifest <- function(paths, objective_bundle) {
   acceptance <- objective_bundle$objectives
   display_manifest <- f6r_display_pair_manifest(acceptance$pair_id, "D")
   selected <- acceptance[
@@ -1199,7 +1333,7 @@ f6r_figure6d_endpoint_manifest <- function(paths, objective_bundle) {
   }
   manifest_path <- f6r_write_tsv(
     endpoints,
-    file.path(paths$figure6, "figure6d_dense_endpoint_manifest.tsv")
+    file.path(paths$figure6, "figure7d_dense_endpoint_manifest.tsv")
   )
   invisible(list(
     endpoints = endpoints,
@@ -1208,15 +1342,15 @@ f6r_figure6d_endpoint_manifest <- function(paths, objective_bundle) {
   ))
 }
 
-f6r_figure6d_compute_endpoint_cache <- function(
+f6r_figure7d_compute_endpoint_cache <- function(
     metadata, parameters, context, cache_path, parameter_source,
     force_rebuild = FALSE, model_context = "in vivo",
     simulation_mode = "joint", model_source_fingerprint
 ) {
-  p_values <- f6r_figure6d_p_values()
-  o2_values <- f6r_figure6d_o2_values()
+  p_values <- f6r_figure7d_p_values()
+  o2_values <- f6r_figure7d_o2_values()
   expected_rows <- length(p_values) * length(o2_values)
-  profile <- "dense_201x496_step0p001_v1"
+  profile <- "fixed_pmisseg_dense_201x496_step0p001_v1"
   if (file.exists(cache_path) && !isTRUE(force_rebuild)) {
     existing <- tryCatch(readRDS(cache_path), error = function(e) NULL)
     existing_context <- if (!is.null(existing$metadata$model_context)) {
@@ -1281,6 +1415,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
   run_params$O2_growth <- isTRUE(config$O2_growth)
   run_params$ploidy_O2_death <- config$ploidy_O2_death
   seed_id <- paste0("seed", seed_number)
+  formula_qc <- figure6_p_misseg_formula_qc(run_params, p_values)
 
   # Preallocate the dense table.  The numerical operator and evaluation order
   # are unchanged; avoiding one single-row data.frame allocation per grid cell
@@ -1291,12 +1426,13 @@ f6r_figure6d_compute_endpoint_cache <- function(
   surface_p <- rep(p_values, each = n_o2)
   surface_status <- character(n_surface)
   surface_actual_p <- numeric(n_surface)
+  surface_forced_p <- numeric(n_surface)
   surface_ploidy <- numeric(n_surface)
   surface_gap <- numeric(n_surface)
   surface_growth <- numeric(n_surface)
   for (p_index in seq_along(p_values)) {
     p_fixed <- p_values[[p_index]]
-    forced <- response_force_effective_p_misseg(run_params, p_fixed)
+    forced <- figure6_force_p_misseg(run_params, p_fixed)
     offset <- (p_index - 1L) * n_o2
     for (o2_index in seq_along(o2_values)) {
       row_index <- offset + o2_index
@@ -1311,6 +1447,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
       surface_status[[row_index]] <- as.character(result$status[[1L]])
       surface_actual_p[[row_index]] <-
         as.numeric(result$population_average_p_misseg[[1L]])
+      surface_forced_p[[row_index]] <- as.numeric(forced$p_misseg)
       surface_ploidy[[row_index]] <-
         as.numeric(result$dominant_mean_ploidy[[1L]])
       surface_gap[[row_index]] <- as.numeric(result$spectral_gap[[1L]])
@@ -1320,21 +1457,20 @@ f6r_figure6d_compute_endpoint_cache <- function(
   }
   surface <- data.frame(
     O2_pct = surface_o2,
-    effective_p_misseg = surface_p,
+    p_misseg = surface_p,
+    forced_p_misseg = surface_forced_p,
     status = surface_status,
-    actual_effective_p_misseg = surface_actual_p,
+    population_average_p_misseg = surface_actual_p,
     dominant_mean_ploidy = surface_ploidy,
     spectral_gap = surface_gap,
     dominant_growth_rate = surface_growth,
     stringsAsFactors = FALSE
   )
   surface <- surface[order(
-    surface$effective_p_misseg, surface$O2_pct
+    surface$p_misseg, surface$O2_pct
   ), , drop = FALSE]
   surface$model_context <- model_context
-  forcing_error <- abs(
-    surface$actual_effective_p_misseg - surface$effective_p_misseg
-  )
+  forcing_error <- abs(surface$forced_p_misseg - surface$p_misseg)
   finite_forcing_error <- forcing_error[is.finite(forcing_error)]
   max_error <- if (length(finite_forcing_error)) {
     max(finite_forcing_error)
@@ -1346,6 +1482,11 @@ f6r_figure6d_compute_endpoint_cache <- function(
     all(is.finite(surface$dominant_mean_ploidy)) &&
     all(is.finite(surface$spectral_gap)) &&
     all(is.finite(surface$dominant_growth_rate)) &&
+    all(surface$population_average_p_misseg >=
+          as.numeric(run_params$p_mis_base) - 1e-10) &&
+    all(surface$population_average_p_misseg <=
+          pmin(1, as.numeric(run_params$p_mis_base) + surface$p_misseg) + 1e-10) &&
+    isTRUE(formula_qc$passed) &&
     is.finite(max_error) && max_error <= 1e-8
   qc <- data.frame(
     display_label = metadata$display_label,
@@ -1355,9 +1496,9 @@ f6r_figure6d_compute_endpoint_cache <- function(
     parameter_endpoint_group = metadata$parameter_endpoint_group,
     representative_seed_number = seed_number,
     endpoint_multiplicity_q10 = metadata$endpoint_multiplicity_q10,
-    n_fixed_p = length(unique(surface$effective_p_misseg)),
+    n_fixed_p = length(unique(surface$p_misseg)),
     n_o2_per_fixed_p = if (nrow(surface)) {
-      min(table(surface$effective_p_misseg))
+      min(table(surface$p_misseg))
     } else {
       0L
     },
@@ -1367,7 +1508,20 @@ f6r_figure6d_compute_endpoint_cache <- function(
       all(is.finite(surface$dominant_mean_ploidy)) &&
       all(is.finite(surface$spectral_gap)) &&
       all(is.finite(surface$dominant_growth_rate)),
-    max_abs_actual_minus_requested_p_misseg = max_error,
+    max_abs_forced_minus_requested_p_misseg = max_error,
+    fitted_p_mis_base = as.numeric(run_params$p_mis_base),
+    fitted_k_o_mis = as.numeric(run_params$k_o_mis),
+    minimum_population_average_effective_p =
+      min(surface$population_average_p_misseg),
+    maximum_population_average_effective_p =
+      max(surface$population_average_p_misseg),
+    population_average_effective_p_within_model_bounds = all(
+      surface$population_average_p_misseg >=
+        as.numeric(run_params$p_mis_base) - 1e-10 &
+      surface$population_average_p_misseg <=
+        pmin(1, as.numeric(run_params$p_mis_base) + surface$p_misseg) + 1e-10
+    ),
+    maximum_direct_formula_error = formula_qc$maximum_direct_formula_error,
     operator_qc_pass = valid,
     cache_path = normalizePath(cache_path, mustWork = FALSE),
     stringsAsFactors = FALSE
@@ -1405,7 +1559,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
   qc
 }
 
-f6r_figure6d_summarize_dense_caches <- function(
+f6r_figure7d_summarize_dense_caches <- function(
     paths, endpoint_manifest, cache_paths
 ) {
   f6r_require_packages("matrixStats")
@@ -1422,10 +1576,10 @@ f6r_figure6d_summarize_dense_caches <- function(
       stop("Figure 6D encountered a non-passing dense endpoint cache for ", pair)
     }
     reference <- objects[[1L]]$surface
-    key <- paste(reference$effective_p_misseg, reference$O2_pct, sep = "|")
+    key <- paste(reference$p_misseg, reference$O2_pct, sep = "|")
     same_grid <- vapply(objects, function(x) {
       identical(
-        paste(x$surface$effective_p_misseg, x$surface$O2_pct, sep = "|"),
+        paste(x$surface$p_misseg, x$surface$O2_pct, sep = "|"),
         key
       )
     }, logical(1L))
@@ -1466,9 +1620,10 @@ f6r_figure6d_summarize_dense_caches <- function(
       pair_id = pair,
       pair_label = metadata$pair_label[[1L]],
       O2_pct = reference$O2_pct,
-      effective_p_misseg = reference$effective_p_misseg,
+      p_misseg = reference$p_misseg,
       n_seed = 50L,
       n_unique_parameter_endpoint = nrow(metadata),
+      dominant_mean_ploidy_mean = rowMeans(ploidy_seed_weighted),
       dominant_mean_ploidy_median =
         matrixStats::rowMedians(ploidy_seed_weighted),
       dominant_mean_ploidy_q10 = ploidy_quantiles[, 1L],
@@ -1482,9 +1637,9 @@ f6r_figure6d_summarize_dense_caches <- function(
         rowMeans(gap_seed_weighted < 0.005),
       dominant_growth_rate_median =
         matrixStats::rowMedians(growth_seed_weighted),
-      max_abs_actual_minus_requested_p_misseg = max(vapply(
+      max_abs_forced_minus_requested_p_misseg = max(vapply(
         objects,
-        function(x) x$qc$max_abs_actual_minus_requested_p_misseg[[1L]],
+        function(x) x$qc$max_abs_forced_minus_requested_p_misseg[[1L]],
         numeric(1L)
       )),
       cutoff = "q10",
@@ -1500,13 +1655,13 @@ f6r_figure6d_summarize_dense_caches <- function(
       summary$display_label,
       endpoint_manifest$display_manifest$display_label
     ),
-    summary$effective_p_misseg, summary$O2_pct
+    summary$p_misseg, summary$O2_pct
   ), , drop = FALSE]
   rownames(summary) <- NULL
   summary
 }
 
-f6r_compute_figure6d_dense <- function(
+f6r_compute_figure7d_dense <- function(
     paths, objective_bundle, n_core = 8L, rebuild = FALSE
 ) {
   Sys.setenv(
@@ -1517,12 +1672,12 @@ f6r_compute_figure6d_dense <- function(
   )
   f6r_require_packages(c("Matrix", "Rcpp", "matrixStats"))
   f6r_load_response_engine(paths)
-  endpoint_manifest <- f6r_figure6d_endpoint_manifest(
+  endpoint_manifest <- f6r_figure7d_endpoint_manifest(
     paths, objective_bundle
   )
   endpoints <- endpoint_manifest$endpoints
   parameters <- objective_bundle$parameters
-  cache_root <- file.path(paths$figure6, "figure6d_dense_endpoint_cache")
+  cache_root <- file.path(paths$figure6, "figure7d_dense_endpoint_cache")
   dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
   cache_paths <- stats::setNames(
     file.path(
@@ -1550,7 +1705,7 @@ f6r_compute_figure6d_dense <- function(
       " seed", metadata$representative_seed_number,
       " (", i, "/", nrow(endpoints), ")"
     )
-    result <- f6r_figure6d_compute_endpoint_cache(
+    result <- f6r_figure7d_compute_endpoint_cache(
       metadata = metadata,
       parameters = parameters,
       context = contexts[[metadata$pair_id[[1L]]]],
@@ -1575,16 +1730,16 @@ f6r_compute_figure6d_dense <- function(
   if (!all(qc$operator_qc_pass)) {
     stop("Figure 6D dense endpoint operator QC failed.")
   }
-  summary <- f6r_figure6d_summarize_dense_caches(
+  summary <- f6r_figure7d_summarize_dense_caches(
     paths, endpoint_manifest, cache_paths
   )
   summary_path <- f6r_write_tsv(
     summary,
-    file.path(paths$figure6, "figure6d_fixed_p_curve_family.tsv")
+    file.path(paths$figure6, "figure7d_fixed_p_curve_family.tsv")
   )
   qc_path <- f6r_write_tsv(
     qc,
-    file.path(paths$figure6, "figure6d_dense_endpoint_qc.tsv")
+    file.path(paths$figure6, "figure7d_dense_endpoint_qc.tsv")
   )
 
   original <- f6r_read_tsv(file.path(
@@ -1593,25 +1748,31 @@ f6r_compute_figure6d_dense <- function(
   original <- original[
     original$cutoff == "q10" &
       original$pair_id %in% endpoint_manifest$display_manifest$pair_id &
-      original$effective_p_misseg %in% c(0.005, 0.5),
+      original$p_misseg %in% c(0.005, 0.5),
     c(
-      "pair_id", "O2_pct", "effective_p_misseg",
-      "dominant_mean_ploidy_median"
+      "pair_id", "O2_pct", "p_misseg",
+      "dominant_mean_ploidy_mean", "dominant_mean_ploidy_median"
     ), drop = FALSE
   ]
   overlap <- merge(
     summary[, c(
-      "pair_id", "O2_pct", "effective_p_misseg",
-      "dominant_mean_ploidy_median"
+      "pair_id", "O2_pct", "p_misseg",
+      "dominant_mean_ploidy_mean", "dominant_mean_ploidy_median"
     )],
     original,
-    by = c("pair_id", "O2_pct", "effective_p_misseg"),
+    by = c("pair_id", "O2_pct", "p_misseg"),
     suffixes = c("_dense", "_original"),
     all = FALSE, sort = FALSE
   )
-  overlap_difference <- max(abs(
-    overlap$dominant_mean_ploidy_median_dense -
-      overlap$dominant_mean_ploidy_median_original
+  overlap_difference <- max(c(
+    abs(
+      overlap$dominant_mean_ploidy_mean_dense -
+        overlap$dominant_mean_ploidy_mean_original
+    ),
+    abs(
+      overlap$dominant_mean_ploidy_median_dense -
+        overlap$dominant_mean_ploidy_median_original
+    )
   ))
   validation <- data.frame(
     check = c(
@@ -1624,7 +1785,7 @@ f6r_compute_figure6d_dense <- function(
       "all_endpoint_operator_qc_pass",
       "maximum_forcing_error",
       "overlap_row_count_with_original_surface",
-      "overlap_matches_original_surface"
+      "overlap_mean_and_median_match_original_surface"
     ),
     observed = c(
       nrow(qc),
@@ -1639,15 +1800,15 @@ f6r_compute_figure6d_dense <- function(
       nrow(summary),
       paste(as.integer(table(summary$pair_label) / 201L), collapse = ","),
       paste(sort(unique(as.integer(table(interaction(
-        summary$pair_id, summary$effective_p_misseg, drop = TRUE
+        summary$pair_id, summary$p_misseg, drop = TRUE
       ))))), collapse = ","),
       paste0(
-        min(summary$effective_p_misseg), "--",
-        max(summary$effective_p_misseg), " by ",
-        min(diff(sort(unique(summary$effective_p_misseg))))
+        min(summary$p_misseg), "--",
+        max(summary$p_misseg), " by ",
+        min(diff(sort(unique(summary$p_misseg))))
       ),
       all(qc$operator_qc_pass),
-      max(qc$max_abs_actual_minus_requested_p_misseg),
+      max(qc$max_abs_forced_minus_requested_p_misseg),
       nrow(overlap),
       overlap_difference
     ),
@@ -1676,25 +1837,25 @@ f6r_compute_figure6d_dense <- function(
     nrow(summary) == f6r_family_count() * 496L * 201L,
     all(table(summary$pair_label) / 201L == 496L),
     all(table(interaction(
-      summary$pair_id, summary$effective_p_misseg, drop = TRUE
+      summary$pair_id, summary$p_misseg, drop = TRUE
     )) == 201L),
     isTRUE(all.equal(
-      range(summary$effective_p_misseg), c(0.005, 0.5),
+      range(summary$p_misseg), c(0.005, 0.5),
       tolerance = 1e-12
     )) &&
       isTRUE(all.equal(
-        unique(round(diff(sort(unique(summary$effective_p_misseg))), 12)),
+        unique(round(diff(sort(unique(summary$p_misseg))), 12)),
         0.001,
         tolerance = 1e-12
       )),
     all(qc$operator_qc_pass),
-    max(qc$max_abs_actual_minus_requested_p_misseg) <= 1e-8,
+    max(qc$max_abs_forced_minus_requested_p_misseg) <= 1e-8,
     nrow(overlap) == f6r_family_count() * 2L * 201L,
     is.finite(overlap_difference) && overlap_difference <= 1e-12
   )
   validation_path <- f6r_write_tsv(
     validation,
-    file.path(paths$figure6, "figure6d_dense_model_validation.tsv")
+    file.path(paths$figure6, "figure7d_dense_model_validation.tsv")
   )
   if (!all(validation$passed)) {
     stop(
@@ -1732,12 +1893,12 @@ f6r_seed_claim_row <- function(cache_object) {
   tr5 <- get_o2(tr, 5)
   cin_targets <- c(low = 0.005, mid = 0.05, high = 0.5)
   diagnostic_cin <- unique(vapply(cin_targets, function(cin) {
-    sf$effective_p_misseg[[which.min(abs(sf$effective_p_misseg - cin))]]
+    sf$p_misseg[[which.min(abs(sf$p_misseg - cin))]]
   }, numeric(1L)))
   cin_delta <- vapply(cin_targets, function(cin) {
-    sub <- sf[which.min(abs(sf$effective_p_misseg - cin)), , drop = FALSE]
-    cin_used <- sub$effective_p_misseg[[1L]]
-    z <- sf[abs(sf$effective_p_misseg - cin_used) < 1e-12, , drop = FALSE]
+    sub <- sf[which.min(abs(sf$p_misseg - cin)), , drop = FALSE]
+    cin_used <- sub$p_misseg[[1L]]
+    z <- sf[abs(sf$p_misseg - cin_used) < 1e-12, , drop = FALSE]
     z5 <- get_o2(z, 5)$dominant_mean_ploidy[[1L]]
     z0 <- get_o2(z, 0)$dominant_mean_ploidy[[1L]]
     z5 - z0
@@ -1754,7 +1915,7 @@ f6r_seed_claim_row <- function(cache_object) {
   diagnostic_surface <- sf[
     vapply(sf$O2_pct, function(x) any(abs(x - c(0, 1, 5)) < 1e-12), logical(1L)) |
       vapply(
-        sf$effective_p_misseg,
+        sf$p_misseg,
         function(x) any(abs(x - diagnostic_cin) < 1e-12),
         logical(1L)
       ),
@@ -1830,13 +1991,16 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
       trajectory_unique <- trajectory_all[seed_number %in% eligible_unique]
       if (cutoff %in% c("q05", "q10")) {
         surface <- surface_all[
-          seed_number %in% eligible & surface_profile == "full_201x60"
+          seed_number %in% eligible &
+            surface_profile == "fixed_pmisseg_full_201x60_v1"
         ]
         surface_unique <- surface_all[
-          seed_number %in% eligible_unique & surface_profile == "full_201x60"
+          seed_number %in% eligible_unique &
+            surface_profile == "fixed_pmisseg_full_201x60_v1"
         ]
         surface_summary[[paste(pair, cutoff)]] <- surface[, .(
           n_seed = data.table::uniqueN(seed_number),
+          dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
           dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
           dominant_mean_ploidy_q10 = stats::quantile(dominant_mean_ploidy, 0.10),
           dominant_mean_ploidy_q25 = stats::quantile(dominant_mean_ploidy, 0.25),
@@ -1850,14 +2014,15 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
           spectral_gap_median = stats::median(spectral_gap),
           proportion_spectral_gap_below_0p005 = mean(spectral_gap < 0.005),
           dominant_growth_rate_median = stats::median(dominant_growth_rate),
-          max_abs_actual_minus_requested_p_misseg = max(abs(
-            actual_effective_p_misseg - effective_p_misseg
+          max_abs_forced_minus_requested_p_misseg = max(abs(
+            forced_p_misseg - p_misseg
           ))
-        ), by = .(pair_id, pair_label, O2_pct, effective_p_misseg)][
+        ), by = .(pair_id, pair_label, O2_pct, p_misseg)][
           , cutoff := cutoff
         ]
         surface_unique_summary[[paste(pair, cutoff)]] <- surface_unique[, .(
           n_seed = data.table::uniqueN(seed_number),
+          dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
           dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
           dominant_mean_ploidy_q10 = stats::quantile(dominant_mean_ploidy, 0.10),
           dominant_mean_ploidy_q90 = stats::quantile(dominant_mean_ploidy, 0.90),
@@ -1869,12 +2034,21 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
           spectral_gap_median = stats::median(spectral_gap),
           proportion_spectral_gap_below_0p005 = mean(spectral_gap < 0.005),
           dominant_growth_rate_median = stats::median(dominant_growth_rate)
-        ), by = .(pair_id, pair_label, O2_pct, effective_p_misseg)][
+        ), by = .(pair_id, pair_label, O2_pct, p_misseg)][
           , cutoff := cutoff
         ]
       }
       trajectory_summary[[paste(pair, cutoff)]] <- trajectory[, .(
         n_seed = data.table::uniqueN(seed_number),
+        fitted_p_misseg_mean = mean(fitted_p_misseg),
+        fitted_p_misseg_median = stats::median(fitted_p_misseg),
+        fitted_p_misseg_q10 = stats::quantile(fitted_p_misseg, 0.10),
+        fitted_p_misseg_q90 = stats::quantile(fitted_p_misseg, 0.90),
+        fitted_p_mis_base_median = stats::median(fitted_p_mis_base),
+        fitted_k_o_mis_median = stats::median(fitted_k_o_mis),
+        population_average_p_misseg_mean = mean(
+          population_average_p_misseg
+        ),
         population_average_p_misseg_median = stats::median(
           population_average_p_misseg
         ),
@@ -1884,6 +2058,7 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
         population_average_p_misseg_q90 = stats::quantile(
           population_average_p_misseg, 0.90
         ),
+        dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
         dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
         dominant_mean_ploidy_q10 = stats::quantile(dominant_mean_ploidy, 0.10),
         dominant_mean_ploidy_q90 = stats::quantile(dominant_mean_ploidy, 0.90),
@@ -1892,9 +2067,15 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
       ), by = .(pair_id, pair_label, O2_pct)][, cutoff := cutoff]
       trajectory_unique_summary[[paste(pair, cutoff)]] <- trajectory_unique[, .(
         n_seed = data.table::uniqueN(seed_number),
+        fitted_p_misseg_mean = mean(fitted_p_misseg),
+        fitted_p_misseg_median = stats::median(fitted_p_misseg),
+        population_average_p_misseg_mean = mean(
+          population_average_p_misseg
+        ),
         population_average_p_misseg_median = stats::median(
           population_average_p_misseg
         ),
+        dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
         dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
         spectral_gap_median = stats::median(spectral_gap),
         proportion_spectral_gap_below_0p005 = mean(spectral_gap < 0.005)
@@ -1913,7 +2094,7 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
   surface_compare_grid <- merge(
     surface_summary,
     surface_unique_summary,
-    by = c("pair_id", "pair_label", "O2_pct", "effective_p_misseg", "cutoff"),
+    by = c("pair_id", "pair_label", "O2_pct", "p_misseg", "cutoff"),
     suffixes = c("_seed_weighted", "_unique_endpoint"),
     all = TRUE, sort = FALSE
   )
@@ -2030,15 +2211,15 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
       type = "direction", field = "trajectory_direction_o2_0_to_5"
     ),
     surface_direction_low_cin = list(
-      label = "Surface O2 response at low effective missegregation",
+      label = "Surface O2 response at low p_misseg",
       type = "direction", field = "surface_direction_o2_0_to_5_cin_low"
     ),
     surface_direction_mid_cin = list(
-      label = "Surface O2 response at intermediate effective missegregation",
+      label = "Surface O2 response at intermediate p_misseg",
       type = "direction", field = "surface_direction_o2_0_to_5_cin_mid"
     ),
     surface_direction_high_cin = list(
-      label = "Surface O2 response at high effective missegregation",
+      label = "Surface O2 response at high p_misseg",
       type = "direction", field = "surface_direction_o2_0_to_5_cin_high"
     ),
     spectral_gap_majority_reliable = list(
@@ -2505,7 +2686,7 @@ f6r_chart_contract <- function(paths) {
       "Do fixed-O2 response classes occupy distinct regions of pooled parameter space?",
       "Do fixed-O2 response classes differ in full MAP fit-quality distributions?",
       "Does the oxygen-CIN-ploidy topology persist across objective-eligible joint endpoints?",
-      "At each oxygen concentration and target dominant ploidy, is there a stable unique effective missegregation probability that reproduces that target?",
+      "At each oxygen concentration and target dominant ploidy, is there a stable unique p_misseg parameter that reproduces that target?",
       "How well supported is the saved primary warm-start partition?",
       "How stable is the saved primary partition under numerical and subsampling perturbations?",
       "Which numerical endpoints satisfy the objective-based eligibility rule?",
@@ -2526,7 +2707,7 @@ f6r_chart_contract <- function(paths) {
       "500 separate in-vivo fitted endpoints",
       paste0(
         f6r_family_count(),
-        " primary-region pairs x oxygen x effective missegregation, summarized over 50 seeds"
+        " primary-region pairs x oxygen x p_misseg, summarized over 50 seeds"
       ),
       paste0(
         f6r_family_count(),
@@ -2539,8 +2720,8 @@ f6r_chart_contract <- function(paths) {
       "individual fitted-endpoint curves by response-class color and pointwise class median in black",
       "response-class color; class-best black ring; warm-start-region outlines",
       "full-MAP objective density, quartiles, all seed-level endpoints, and global lowest-decile cutoff",
-      "original-unit ploidy labels with log-scaled seed-weighted median fill; trajectory median and 10-90% band; low-consensus marks; unique-parameter endpoint sensitivity in source tables",
-      "log-scaled color for the seed-weighted median unique inverse; gray for no stable unique inverse; hatching for endpoint-level multiple solutions; four black fixed-input trajectories and the red arithmetic mean across all 496 fixed-input trajectories",
+      "original-unit ploidy labels with log-scaled seed-weighted arithmetic-mean fill; fitted-p_misseg arithmetic mean and 10-90% band; low-consensus marks; unique-parameter endpoint sensitivity in source tables",
+      "log-scaled color for the seed-weighted arithmetic-mean unique inverse; gray for no stable unique inverse; hatching for endpoint-level multiple solutions; four black fixed-input trajectories and the red arithmetic mean across all 496 fixed-input trajectories",
       "average silhouette by k", "adjusted Rand index under perturbation",
       "delta full-MAP objective by rank",
       "minimum modal support across cutoffs; primary modal result and cutoff-consistency flag"
@@ -2558,7 +2739,7 @@ f6r_chart_contract <- function(paths) {
     ),
     stringsAsFactors = FALSE
   )
-  f6r_write_tsv(contract, file.path(paths$figure6, "figure6_chart_contract.tsv"))
+  f6r_write_tsv(contract, file.path(paths$figure6, "figure7_chart_contract.tsv"))
 }
 
 f6r_local_data_contract <- function(paths) {
@@ -2790,14 +2971,14 @@ f6r_data <- function(
     paths, objective_bundle, n_core = n_core, rebuild = rebuild
   )
   message("Figure 6D: computing/reusing exact 0.001-step fixed-missegregation caches.")
-  dense_figure6d_bundle <- f6r_compute_figure6d_dense(
+  dense_figure7d_bundle <- f6r_compute_figure7d_dense(
     paths, objective_bundle, n_core = n_core, rebuild = rebuild
   )
   message("Figure 6B: computing/reusing in-vivo inverse-response caches.")
   inverse_bundle <- f6r_inverse_panel_data(
     paths, rebuild = rebuild, n_core = n_core,
-    dense_qc_path = file.path(paths$figure6, "figure6d_dense_endpoint_qc.tsv"),
-    output_prefix = "figure6", model_context = "in vivo"
+    dense_qc_path = file.path(paths$figure6, "figure7d_dense_endpoint_qc.tsv"),
+    output_prefix = "figure7", model_context = "in vivo"
   )
   f6r_local_data_contract(paths)
   invisible(list(
@@ -2805,7 +2986,7 @@ f6r_data <- function(
     clusters = cluster_bundle,
     objective = objective_bundle,
     multiseed = multiseed_bundle,
-    dense_figure6d = dense_figure6d_bundle,
+    dense_figure7d = dense_figure7d_bundle,
     inverse = inverse_bundle,
     response_classes = response_class_bundle
   ))
@@ -3040,10 +3221,10 @@ f6r_weak_gap_hatch_data <- function(
     surface, threshold = 0.5, spacing = 0.14
 ) {
   x <- sort(unique(surface$O2_pct))
-  y <- sort(unique(surface$log10_effective_p_misseg))
+  y <- sort(unique(surface$log10_p_misseg))
   z <- matrix(NA_real_, nrow = length(y), ncol = length(x))
   z[cbind(
-    match(surface$log10_effective_p_misseg, y),
+    match(surface$log10_p_misseg, y),
     match(surface$O2_pct, x)
   )] <- surface$proportion_spectral_gap_below_0p005
   if (anyNA(z)) stop("Incomplete Figure 6D weak-gap surface grid.")
@@ -3056,7 +3237,7 @@ f6r_weak_gap_hatch_data <- function(
   geometries <- isoband::iso_to_sfg(bands)
   if (!length(geometries)) {
     return(data.frame(
-      O2_pct = numeric(), log10_effective_p_misseg = numeric(),
+      O2_pct = numeric(), log10_p_misseg = numeric(),
       hatch_group = integer()
     ))
   }
@@ -3064,7 +3245,7 @@ f6r_weak_gap_hatch_data <- function(
     geometries[[1L]], slope = diff(range(y)) / diff(range(x)),
     spacing = spacing
   )
-  names(hatch)[1:2] <- c("O2_pct", "log10_effective_p_misseg")
+  names(hatch)[1:2] <- c("O2_pct", "log10_p_misseg")
   hatch
 }
 
@@ -3093,16 +3274,16 @@ f6r_draw_surface_panel <- function(paths) {
   ordered_pairs <- display_manifest$pair_id
   f6r_write_tsv(
     display_manifest,
-    file.path(paths$figure6, "figure6a_displayed_pairs.tsv")
+    file.path(paths$figure6, "figure7a_displayed_pairs.tsv")
   )
   surface <- surface[surface$pair_id %in% ordered_pairs, , drop = FALSE]
   trajectory <- trajectory[trajectory$pair_id %in% ordered_pairs, , drop = FALSE]
-  surface$log10_effective_p_misseg <- log10(surface$effective_p_misseg)
+  surface$log10_p_misseg <- log10(surface$p_misseg)
   trajectory$log10_p_median <- log10(
-    trajectory$population_average_p_misseg_median
+    trajectory$fitted_p_misseg_median
   )
-  trajectory$log10_p_q10 <- log10(trajectory$population_average_p_misseg_q10)
-  trajectory$log10_p_q90 <- log10(trajectory$population_average_p_misseg_q90)
+  trajectory$log10_p_q10 <- log10(trajectory$fitted_p_misseg_q10)
+  trajectory$log10_p_q90 <- log10(trajectory$fitted_p_misseg_q90)
 
   fill_limits <- range(
     surface$dominant_mean_ploidy_median, c(1, 4), na.rm = TRUE
@@ -3114,7 +3295,7 @@ f6r_draw_surface_panel <- function(paths) {
   fill_breaks <- fill_breaks[
     fill_breaks >= fill_limits[[1L]] & fill_breaks <= fill_limits[[2L]]
   ]
-  y_breaks <- pretty(range(surface$log10_effective_p_misseg), n = 5)
+  y_breaks <- pretty(range(surface$log10_p_misseg), n = 5)
   y_labels <- function(x) formatC(10^x, format = "e", digits = 0)
 
   plots <- lapply(seq_along(ordered_pairs), function(i) {
@@ -3125,22 +3306,22 @@ f6r_draw_surface_panel <- function(paths) {
     low_consensus <- s[
       s$ploidy_regime_consensus < 0.80 &
         (match(s$O2_pct, sort(unique(s$O2_pct))) %% 8L == 1L) &
-        (match(s$effective_p_misseg,
-               sort(unique(s$effective_p_misseg))) %% 3L == 1L),
+        (match(s$p_misseg,
+               sort(unique(s$p_misseg))) %% 3L == 1L),
       , drop = FALSE
     ]
     p <- ggplot2::ggplot() +
       ggplot2::geom_tile(
         data = s,
         ggplot2::aes(
-          x = O2_pct, y = log10_effective_p_misseg,
+          x = O2_pct, y = log10_p_misseg,
           fill = dominant_mean_ploidy_median
         )
       ) +
       ggplot2::geom_path(
         data = hatch,
         ggplot2::aes(
-          x = O2_pct, y = log10_effective_p_misseg,
+          x = O2_pct, y = log10_p_misseg,
           group = hatch_group
         ),
         inherit.aes = FALSE, colour = "#9B59B6",
@@ -3150,7 +3331,7 @@ f6r_draw_surface_panel <- function(paths) {
       ggplot2::geom_contour(
         data = s,
         ggplot2::aes(
-          x = O2_pct, y = log10_effective_p_misseg,
+          x = O2_pct, y = log10_p_misseg,
           z = proportion_spectral_gap_below_0p005,
           colour = "Weak spectral-gap boundary",
           linetype = "Weak spectral-gap boundary"
@@ -3159,7 +3340,7 @@ f6r_draw_surface_panel <- function(paths) {
       ) +
       ggplot2::geom_point(
         data = low_consensus,
-        ggplot2::aes(x = O2_pct, y = log10_effective_p_misseg),
+        ggplot2::aes(x = O2_pct, y = log10_p_misseg),
         shape = 4, size = 0.42, stroke = 0.28,
         colour = "white", show.legend = FALSE
       ) +
@@ -3172,37 +3353,37 @@ f6r_draw_surface_panel <- function(paths) {
         data = t,
         ggplot2::aes(
           x = O2_pct, y = log10_p_median,
-          colour = "Model-implied median trajectory",
-          linetype = "Model-implied median trajectory"
+          colour = "Fitted p_misseg median",
+          linetype = "Fitted p_misseg median"
         ),
         linewidth = 0.58
       ) +
       ggplot2::scale_colour_manual(
         values = c(
-          "Model-implied median trajectory" = "#111111",
+          "Fitted p_misseg median" = "#111111",
           "Weak spectral-gap boundary" = "#9B59B6"
         ),
         breaks = c(
-          "Model-implied median trajectory",
+          "Fitted p_misseg median",
           "Weak spectral-gap boundary"
         ),
         labels = c(
-          "Median fitted\ntrajectory",
+          "Median fitted\np_misseg",
           "Weak-gap region\n(hatched)"
         ),
         name = "Overlays"
       ) +
       ggplot2::scale_linetype_manual(
         values = c(
-          "Model-implied median trajectory" = "solid",
+          "Fitted p_misseg median" = "solid",
           "Weak spectral-gap boundary" = "dotted"
         ),
         breaks = c(
-          "Model-implied median trajectory",
+          "Fitted p_misseg median",
           "Weak spectral-gap boundary"
         ),
         labels = c(
-          "Median fitted\ntrajectory",
+          "Median fitted\np_misseg",
           "Weak-gap region\n(hatched)"
         ),
         name = "Overlays"
@@ -3219,7 +3400,7 @@ f6r_draw_surface_panel <- function(paths) {
         breaks = y_breaks, labels = y_labels, expand = c(0, 0)
       ) +
       ggplot2::coord_cartesian(
-        ylim = range(s$log10_effective_p_misseg), expand = FALSE
+        ylim = range(s$log10_p_misseg), expand = FALSE
       ) +
       ggplot2::labs(
         title = names(display_pair_labels)[[i]],
@@ -3266,7 +3447,7 @@ f6r_draw_surface_panel <- function(paths) {
     composite,
     file.path(
       paths$figure6, "panels",
-      "pair_surface_o2_effective_p_misseg_primary_family_grid"
+      "pair_surface_o2_p_misseg_primary_family_grid"
     ),
     width = f6r_primary_row_width(), height = 3.55
   )
@@ -3308,8 +3489,8 @@ f6r_map_panel_c_gap_contour_to_panel_d <- function(
     s <- surface[surface$pair_id == pair, , drop = FALSE]
     d <- curve_data[curve_data$pair_id == pair, , drop = FALSE]
     surface_x <- sort(unique(s$O2_pct))
-    surface_y <- sort(unique(log10(s$effective_p_misseg)))
-    s <- s[order(log10(s$effective_p_misseg), s$O2_pct), , drop = FALSE]
+    surface_y <- sort(unique(log10(s$p_misseg)))
+    s <- s[order(log10(s$p_misseg), s$O2_pct), , drop = FALSE]
     gap_matrix <- matrix(
       s$proportion_spectral_gap_below_0p005,
       nrow = length(surface_y), ncol = length(surface_x), byrow = TRUE
@@ -3319,8 +3500,8 @@ f6r_map_panel_c_gap_contour_to_panel_d <- function(
     )
 
     dense_x <- sort(unique(d$O2_pct))
-    dense_y <- sort(unique(log10(d$effective_p_misseg)))
-    d <- d[order(log10(d$effective_p_misseg), d$O2_pct), , drop = FALSE]
+    dense_y <- sort(unique(log10(d$p_misseg)))
+    d <- d[order(log10(d$p_misseg), d$O2_pct), , drop = FALSE]
     ploidy_matrix <- matrix(
       d$dominant_mean_ploidy_median,
       nrow = length(dense_y), ncol = length(dense_x), byrow = TRUE
@@ -3334,7 +3515,7 @@ f6r_map_panel_c_gap_contour_to_panel_d <- function(
         display_label = d$display_label[[1L]],
         boundary_id = paste0(pair, "_gap_boundary_", sprintf("%03d", j)),
         O2_pct = contour$x,
-        effective_p_misseg = 10^contour$y,
+        p_misseg = 10^contour$y,
         dominant_mean_ploidy_median = f6r_bilinear_grid_value(
           dense_x, dense_y, ploidy_matrix, contour$x, contour$y
         ),
@@ -3352,10 +3533,10 @@ f6r_map_panel_c_gap_contour_to_panel_d <- function(
 
 f6r_panel_d_data <- function(paths) {
   curve_path <- file.path(
-    paths$figure6, "figure6d_fixed_p_curve_family.tsv"
+    paths$figure6, "figure7d_fixed_p_curve_family.tsv"
   )
   dense_validation_path <- file.path(
-    paths$figure6, "figure6d_dense_model_validation.tsv"
+    paths$figure6, "figure7d_dense_model_validation.tsv"
   )
   f6r_require_files(
     c(curve_path, dense_validation_path),
@@ -3371,29 +3552,29 @@ f6r_panel_d_data <- function(paths) {
   display_manifest <- f6r_display_pair_manifest(curve_data$pair_id, "D")
   display_manifest_path <- f6r_write_tsv(
     display_manifest,
-    file.path(paths$figure6, "figure6d_displayed_pairs.tsv")
+    file.path(paths$figure6, "figure7d_displayed_pairs.tsv")
   )
   curve_data$display_label <- display_manifest$display_label[
     match(curve_data$pair_id, display_manifest$pair_id)
   ]
   curve_data <- curve_data[order(
     match(curve_data$display_label, display_manifest$display_label),
-    curve_data$effective_p_misseg, curve_data$O2_pct
+    curve_data$p_misseg, curve_data$O2_pct
   ), , drop = FALSE]
   rownames(curve_data) <- NULL
 
   highlighted_p <- c(0.01, 0.10, 0.20, 0.30)
   highlighted <- curve_data[
-    curve_data$effective_p_misseg %in% highlighted_p,
+    curve_data$p_misseg %in% highlighted_p,
     , drop = FALSE
   ]
   highlighted$highlight_label <- factor(
-    sprintf("%.2f", highlighted$effective_p_misseg),
+    sprintf("%.2f", highlighted$p_misseg),
     levels = sprintf("%.2f", highlighted_p)
   )
   highlighted_path <- f6r_write_tsv(
     highlighted,
-    file.path(paths$figure6, "figure6d_highlighted_trajectories.tsv")
+    file.path(paths$figure6, "figure7d_highlighted_trajectories.tsv")
   )
   mean_curve <- stats::aggregate(
     curve_data$dominant_mean_ploidy_median,
@@ -3415,14 +3596,14 @@ f6r_panel_d_data <- function(paths) {
   rownames(mean_curve) <- NULL
   mean_curve_path <- f6r_write_tsv(
     mean_curve,
-    file.path(paths$figure6, "figure6b_mean_ploidy_across_fixed_p.tsv")
+    file.path(paths$figure6, "figure7b_mean_ploidy_across_fixed_p.tsv")
   )
   gap_boundary <- f6r_map_panel_c_gap_contour_to_panel_d(
     paths, curve_data, display_manifest
   )
   gap_boundary_path <- f6r_write_tsv(
     gap_boundary,
-    file.path(paths$figure6, "figure6d_spectral_gap_boundary.tsv")
+    file.path(paths$figure6, "figure7d_spectral_gap_boundary.tsv")
   )
 
   p_counts <- table(factor(
@@ -3430,18 +3611,18 @@ f6r_panel_d_data <- function(paths) {
     levels = f6r_family_levels()
   )) / 201L
   o2_counts <- table(interaction(
-    curve_data$pair_id, curve_data$effective_p_misseg, drop = TRUE
+    curve_data$pair_id, curve_data$p_misseg, drop = TRUE
   ))
   grid_key <- paste(
-    curve_data$pair_id, curve_data$effective_p_misseg, curve_data$O2_pct,
+    curve_data$pair_id, curve_data$p_misseg, curve_data$O2_pct,
     sep = "|"
   )
-  p_range <- range(curve_data$effective_p_misseg)
+  p_range <- range(curve_data$p_misseg)
   p_interval <- unique(round(diff(sort(unique(
-    curve_data$effective_p_misseg
+    curve_data$p_misseg
   ))), 12))
   max_forcing_error <- max(
-    curve_data$max_abs_actual_minus_requested_p_misseg, na.rm = TRUE
+    curve_data$max_abs_forced_minus_requested_p_misseg, na.rm = TRUE
   )
   validation <- data.frame(
     check = c(
@@ -3468,16 +3649,16 @@ f6r_panel_d_data <- function(paths) {
       paste(sort(unique(curve_data$n_seed)), collapse = ","),
       !anyDuplicated(grid_key),
       all(is.finite(curve_data$dominant_mean_ploidy_median)) &&
-        all(is.finite(curve_data$effective_p_misseg)) &&
+        all(is.finite(curve_data$p_misseg)) &&
         all(is.finite(curve_data$spectral_gap_median)),
-      all(curve_data$effective_p_misseg > 0),
+      all(curve_data$p_misseg > 0),
       paste(format(p_range, scientific = FALSE, trim = TRUE), collapse = ","),
       paste(format(p_interval, scientific = FALSE, trim = TRUE), collapse = ","),
       max_forcing_error,
       all(f6r_read_tsv(dense_validation_path)$passed),
-      paste(sort(unique(highlighted$effective_p_misseg)), collapse = ","),
+      paste(sort(unique(highlighted$p_misseg)), collapse = ","),
       paste(sort(unique(as.integer(table(interaction(
-        highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
+        highlighted$pair_id, highlighted$p_misseg, drop = TRUE
       ))))), collapse = ","),
       nrow(mean_curve), paste(unique(mean_curve$pair_label), collapse = ","),
       paste(sort(unique(as.integer(table(mean_curve$pair_id)))), collapse = ","),
@@ -3485,7 +3666,7 @@ f6r_panel_d_data <- function(paths) {
       all(is.finite(mean_curve$dominant_mean_ploidy_mean_across_fixed_p)),
       paste(unique(gap_boundary$pair_label), collapse = ","),
       all(is.finite(gap_boundary$O2_pct)) &&
-        all(is.finite(gap_boundary$effective_p_misseg)) &&
+        all(is.finite(gap_boundary$p_misseg)) &&
         all(is.finite(gap_boundary$dominant_mean_ploidy_median)),
       paste(unique(gap_boundary$criterion), collapse = ",")
     ),
@@ -3509,17 +3690,17 @@ f6r_panel_d_data <- function(paths) {
     all(o2_counts == 201L), all(curve_data$n_seed == 50L),
     !anyDuplicated(grid_key),
     all(is.finite(curve_data$dominant_mean_ploidy_median)) &&
-      all(is.finite(curve_data$effective_p_misseg)) &&
+      all(is.finite(curve_data$p_misseg)) &&
       all(is.finite(curve_data$spectral_gap_median)),
-    all(curve_data$effective_p_misseg > 0),
+    all(curve_data$p_misseg > 0),
     isTRUE(all.equal(unname(p_range), c(0.005, 0.5), tolerance = 1e-12)),
     isTRUE(all.equal(p_interval, 0.001, tolerance = 1e-12)),
     is.finite(max_forcing_error) && max_forcing_error <= 1e-8,
     all(f6r_read_tsv(dense_validation_path)$passed),
-    identical(sort(unique(highlighted$effective_p_misseg)), highlighted_p),
+    identical(sort(unique(highlighted$p_misseg)), highlighted_p),
     nrow(highlighted) == 4L * f6r_family_count() * 201L &&
       all(table(interaction(
-        highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
+        highlighted$pair_id, highlighted$p_misseg, drop = TRUE
       )) == 201L),
     nrow(mean_curve) == f6r_family_count() * 201L,
     identical(unique(mean_curve$pair_label),
@@ -3531,7 +3712,7 @@ f6r_panel_d_data <- function(paths) {
               f6r_family_levels()),
     nrow(gap_boundary) > 0L &&
       all(is.finite(gap_boundary$O2_pct)) &&
-      all(is.finite(gap_boundary$effective_p_misseg)) &&
+      all(is.finite(gap_boundary$p_misseg)) &&
       all(is.finite(gap_boundary$dominant_mean_ploidy_median)),
     identical(
       unique(gap_boundary$criterion),
@@ -3540,7 +3721,7 @@ f6r_panel_d_data <- function(paths) {
   )
   validation_path <- f6r_write_tsv(
     validation,
-    file.path(paths$figure6, "figure6d_validation.tsv")
+    file.path(paths$figure6, "figure7d_validation.tsv")
   )
   if (!all(validation$passed)) {
     stop(
@@ -3574,13 +3755,13 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
   display_manifest <- bundle$manifest
   reference_levels <- c(
     "0.01", "0.10", "0.20", "0.30",
-    "Mean across 496 fixed p_miss,eff values"
+    "Mean across 496 fixed p_misseg values"
   )
   mean_curve$reference_label <- factor(
-    "Mean across 496 fixed p_miss,eff values",
+    "Mean across 496 fixed p_misseg values",
     levels = reference_levels
   )
-  color_limits <- range(curve_data$effective_p_misseg, finite = TRUE)
+  color_limits <- range(curve_data$p_misseg, finite = TRUE)
   if (any(!is.finite(color_limits)) || color_limits[[1L]] <= 0) {
     stop("Figure 6D log-scaled colors require positive finite values.")
   }
@@ -3593,16 +3774,16 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
   plots <- lapply(seq_len(nrow(display_manifest)), function(i) {
     pair <- display_manifest$pair_id[[i]]
     d <- curve_data[curve_data$pair_id == pair, , drop = FALSE]
-    d <- d[order(d$effective_p_misseg, d$O2_pct), , drop = FALSE]
+    d <- d[order(d$p_misseg, d$O2_pct), , drop = FALSE]
     h <- highlighted[highlighted$pair_id == pair, , drop = FALSE]
-    h <- h[order(h$effective_p_misseg, h$O2_pct), , drop = FALSE]
+    h <- h[order(h$p_misseg, h$O2_pct), , drop = FALSE]
     m <- mean_curve[mean_curve$pair_id == pair, , drop = FALSE]
     m <- m[order(m$O2_pct), , drop = FALSE]
     p <- ggplot2::ggplot(
       d,
       ggplot2::aes(
         x = O2_pct, y = dominant_mean_ploidy_median,
-        group = effective_p_misseg, colour = effective_p_misseg
+        group = p_misseg, colour = p_misseg
       )
     ) +
       ggplot2::geom_path(
@@ -3630,7 +3811,7 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
         limits = color_limits, breaks = color_breaks, trans = "log10",
         labels = function(x) formatC(x, format = "e", digits = 1),
         name = paste0(
-          "Fixed p_miss,eff\n",
+          "Fixed p_misseg\n",
           "(log-scaled colors)"
         )
       ) +
@@ -3638,13 +3819,13 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
         values = c(
           "0.01" = "solid", "0.10" = "F28282",
           "0.20" = "dotdash", "0.30" = "dotted",
-          "Mean across 496 fixed p_miss,eff values" = "solid"
+          "Mean across 496 fixed p_misseg values" = "solid"
         ),
         breaks = reference_levels,
         labels = c(
-          "p_miss,eff = 0.01", "p_miss,eff = 0.10",
-          "p_miss,eff = 0.20", "p_miss,eff = 0.30",
-          "Mean across 496 fixed\np_miss,eff values"
+          "p_misseg = 0.01", "p_misseg = 0.10",
+          "p_misseg = 0.20", "p_misseg = 0.30",
+          "Mean across 496 fixed\np_misseg values"
         ),
         name = "Reference curves"
       ) +
@@ -3699,7 +3880,7 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
     composite,
     file.path(
       paths$figure6, "panels",
-      "pair_fixed_p_miss_eff_o2_ploidy_curve_primary_family_grid"
+      "pair_fixed_p_misseg_o2_ploidy_curve_primary_family_grid"
     ),
     width = f6r_primary_row_width(), height = 3.55
   )
@@ -3707,10 +3888,10 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
 }
 
 f6r_inverse_curve_solutions <- function(
-    effective_p_misseg, dominant_mean_ploidy, target_ploidy,
+    p_misseg, dominant_mean_ploidy, target_ploidy,
     numerical_tolerance = 1e-10
 ) {
-  p <- as.numeric(effective_p_misseg)
+  p <- as.numeric(p_misseg)
   y <- as.numeric(dominant_mean_ploidy)
   target <- as.numeric(target_ploidy)
   keep <- is.finite(p) & is.finite(y)
@@ -3849,7 +4030,7 @@ f6r_inverse_endpoint_cache <- function(
 
   dense <- readRDS(dense_cache_path)
   surface <- dense$surface
-  required <- c("O2_pct", "effective_p_misseg", "dominant_mean_ploidy")
+  required <- c("O2_pct", "p_misseg", "dominant_mean_ploidy")
   if (!all(required %in% names(surface))) {
     stop("Dense Figure 6 endpoint cache is missing inverse-response fields: ",
          dense_cache_path)
@@ -3857,9 +4038,9 @@ f6r_inverse_endpoint_cache <- function(
   oxygen_values <- sort(unique(surface$O2_pct))
   inverse_rows <- lapply(oxygen_values, function(o2) {
     current <- surface[surface$O2_pct == o2, , drop = FALSE]
-    current <- current[order(current$effective_p_misseg), , drop = FALSE]
+    current <- current[order(current$p_misseg), , drop = FALSE]
     result <- f6r_inverse_curve_solutions(
-      effective_p_misseg = current$effective_p_misseg,
+      p_misseg = current$p_misseg,
       dominant_mean_ploidy = current$dominant_mean_ploidy,
       target_ploidy = target_ploidy
     )
@@ -3933,12 +4114,20 @@ f6r_weighted_empirical_quantile <- function(values, weights, probs) {
   }, numeric(1L))
 }
 
+f6r_weighted_empirical_mean <- function(values, weights) {
+  keep <- is.finite(values) & is.finite(weights) & weights > 0
+  values <- values[keep]
+  weights <- weights[keep]
+  if (!length(values)) return(NA_real_)
+  stats::weighted.mean(values, weights)
+}
+
 f6r_inverse_panel_data <- function(
     paths, rebuild = FALSE, n_core = 1L,
     dense_qc_path = file.path(
-      paths$figure6, "figure6d_dense_endpoint_qc.tsv"
+      paths$figure6, "figure7d_dense_endpoint_qc.tsv"
     ),
-    output_prefix = "figure6", model_context = "in vivo"
+    output_prefix = "figure7", model_context = "in vivo"
 ) {
   f6r_require_packages("data.table")
   f6r_require_files(dense_qc_path, "Figure 6 dense endpoint QC")
@@ -4020,6 +4209,9 @@ f6r_inverse_panel_data <- function(
         p_unique[unique_solution], multiplicity[unique_solution],
         probs = c(0.10, 0.50, 0.90)
       )
+      mean_required <- f6r_weighted_empirical_mean(
+        p_unique[unique_solution], multiplicity[unique_solution]
+      )
       finite_min <- p_solution_min[any_solution & is.finite(p_solution_min)]
       finite_max <- p_solution_max[any_solution & is.finite(p_solution_max)]
       finite_error <- forward_reconstruction_error[
@@ -4036,6 +4228,7 @@ f6r_inverse_panel_data <- function(
         fraction_unique_solution = sum(multiplicity[unique_solution]) / n_seed,
         fraction_multiple_solutions = sum(multiplicity[multiple_solution]) / n_seed,
         p_unique_q10 = quantiles[[1L]],
+        p_unique_mean = mean_required,
         p_unique_median = quantiles[[2L]],
         p_unique_q90 = quantiles[[3L]],
         p_solution_min = if (length(finite_min)) min(finite_min) else NA_real_,
@@ -4067,7 +4260,7 @@ f6r_inverse_panel_data <- function(
   )
   inverse_summary$p_display <- ifelse(
     inverse_summary$inverse_class == "stable unique inverse",
-    inverse_summary$p_unique_median,
+    inverse_summary$p_unique_mean,
     NA_real_
   )
   inverse_summary <- inverse_summary[order(
@@ -4124,7 +4317,7 @@ f6r_inverse_panel_data <- function(
       "target_ploidy", "inverse_class", "n_seed",
       "fraction_any_solution", "fraction_unique_solution",
       "fraction_multiple_solutions", "p_unique_q10",
-      "p_unique_median", "p_unique_q90"
+      "p_unique_mean", "p_unique_median", "p_unique_q90"
     ), drop = FALSE
   ]
   anchor_summary <- anchor_summary[order(
@@ -4186,7 +4379,10 @@ f6r_inverse_panel_data <- function(
       "oxygen_count_per_pair_target", "target_ploidy_count_per_pair_oxygen",
       "target_ploidy_range", "target_ploidy_interval",
       "represented_seed_count_per_pair", "inverse_fraction_bounds",
-      "inverse_classes_valid", "display_values_only_for_stable_unique_cells",
+      "inverse_classes_valid",
+      "mean_required_available_when_unique_solution_exists",
+      "display_values_only_for_stable_unique_cells",
+      "display_equals_mean_for_stable_unique_cells",
       "display_probability_range", "forward_reconstruction_error",
       "inverse_endpoint_qc_pass", "ploidy4_anchor_row_count"
     ),
@@ -4215,8 +4411,14 @@ f6r_inverse_panel_data <- function(
         "stable unique inverse", "multiple solutions",
         "no stable unique inverse"
       )),
+      all(is.finite(inverse_summary$p_unique_mean) ==
+            (inverse_summary$n_seed_unique_solution > 0L)),
       all(is.finite(inverse_summary$p_display) ==
             (inverse_summary$inverse_class == "stable unique inverse")),
+      all(
+        !is.finite(inverse_summary$p_display) |
+          abs(inverse_summary$p_display - inverse_summary$p_unique_mean) <= 1e-12
+      ),
       all(!is.finite(inverse_summary$p_display) |
             (inverse_summary$p_display >= 0.005 &
                inverse_summary$p_display <= 0.500)),
@@ -4228,7 +4430,8 @@ f6r_inverse_panel_data <- function(
       as.character(f6r_family_count() * 201L * 241L),
       "201", "241", "1,7", "0.025",
       paste(rep(50L, f6r_family_count()), collapse = ","),
-      "TRUE", "TRUE", "TRUE", "TRUE", "<=1e-8", "TRUE",
+      "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE",
+      "<=1e-8", "TRUE",
       as.character(3L * f6r_family_count())
     ),
     stringsAsFactors = FALSE
@@ -4324,10 +4527,10 @@ f6r_draw_inverse_response_panel <- function(paths) {
   )
   reference_levels <- c(
     "0.01", "0.10", "0.20", "0.30",
-    "Mean across 496 fixed p_miss,eff values"
+    "Mean across 496 fixed p_misseg values"
   )
   mean_curve$reference_label <- factor(
-    "Mean across 496 fixed p_miss,eff values",
+    "Mean across 496 fixed p_misseg values",
     levels = reference_levels
   )
 
@@ -4336,7 +4539,7 @@ f6r_draw_inverse_response_panel <- function(paths) {
     current <- inverse_summary[inverse_summary$pair_id == pair, , drop = FALSE]
     hatch <- f6r_inverse_multivalue_hatch_data(current)
     h <- highlighted[highlighted$pair_id == pair, , drop = FALSE]
-    h <- h[order(h$effective_p_misseg, h$O2_pct), , drop = FALSE]
+    h <- h[order(h$p_misseg, h$O2_pct), , drop = FALSE]
     m <- mean_curve[mean_curve$pair_id == pair, , drop = FALSE]
     m <- m[order(m$O2_pct), , drop = FALSE]
     p <- ggplot2::ggplot() +
@@ -4401,7 +4604,7 @@ f6r_draw_inverse_response_panel <- function(paths) {
         na.value = "#EFEFEF",
         labels = function(x) formatC(x, format = "f", digits = 3),
         name = paste0(
-          "Median required\np_miss,eff\n(log colors)"
+          "Median required\np_misseg\n(log colors)"
         )
       ) +
       ggplot2::scale_colour_manual(
@@ -4413,13 +4616,13 @@ f6r_draw_inverse_response_panel <- function(paths) {
         values = c(
           "0.01" = "solid", "0.10" = "F28282",
           "0.20" = "dotdash", "0.30" = "dotted",
-          "Mean across 496 fixed p_miss,eff values" = "solid"
+          "Mean across 496 fixed p_misseg values" = "solid"
         ),
         breaks = reference_levels,
         labels = c(
-          "p_miss,eff = 0.01", "p_miss,eff = 0.10",
-          "p_miss,eff = 0.20", "p_miss,eff = 0.30",
-          "Mean across 496 fixed\np_miss,eff values"
+          "p_misseg = 0.01", "p_misseg = 0.10",
+          "p_misseg = 0.20", "p_misseg = 0.30",
+          "Mean across 496 fixed\np_misseg values"
         ),
         name = "Reference curves"
       ) +
@@ -4489,7 +4692,7 @@ f6r_draw_inverse_response_panel <- function(paths) {
   })
   composite <- f6r_compose_three_panel_row(
     plots,
-    title = "B. Effective missegregation required for target ploidy",
+    title = "B. p_misseg required for target ploidy",
     legend_rel_width = 0.72
   )
   output <- f6r_save_plot(
@@ -4788,7 +4991,7 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   highlighted <- overlay_bundle$highlighted
   mean_curve <- overlay_bundle$mean_curve
   curve_o2_counts <- table(interaction(
-    curve_data$pair_id, curve_data$effective_p_misseg, drop = TRUE
+    curve_data$pair_id, curve_data$p_misseg, drop = TRUE
   ))
   curve_p_counts <- table(factor(
     curve_data$pair_label,
@@ -4797,16 +5000,16 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   validation <- data.frame(
     check = c(
       "main_figure_exists", "main_figure_width", "main_figure_height",
-      "primary_family_seed_count", "figure6a_displayed_pair_labels",
-      "figure6b_displayed_pair_labels", "figure6b_inverse_grid_rows",
-      "figure6b_inverse_validation", "figure6b_fixed_p_reference_values",
-      "figure6b_fixed_p_reference_oxygen_count",
-      "figure6b_mean_curve_rows", "figure6b_mean_curve_values_finite",
-      "figure6b_curve_family_rows", "figure6b_fixed_p_count_per_pair",
-      "figure6b_oxygen_count_per_fixed_p",
-      "figure6b_endpoint_count_per_grid_point",
-      "figure6b_effective_missegregation_positive",
-      "figure6b_dense_model_validation",
+      "primary_family_seed_count", "figure7a_displayed_pair_labels",
+      "figure7b_displayed_pair_labels", "figure7b_inverse_grid_rows",
+      "figure7b_inverse_validation", "figure7b_fixed_p_reference_values",
+      "figure7b_fixed_p_reference_oxygen_count",
+      "figure7b_mean_curve_rows", "figure7b_mean_curve_values_finite",
+      "figure7b_curve_family_rows", "figure7b_fixed_p_count_per_pair",
+      "figure7b_oxygen_count_per_fixed_p",
+      "figure7b_endpoint_count_per_grid_point",
+      "figure7b_effective_missegregation_positive",
+      "figure7b_dense_model_validation",
       "surface_grid_per_pair",
       "trajectory_grid_per_pair", "operator_qc_all_primary",
       "primary_cutoff_pair_specific"
@@ -4817,16 +5020,16 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
         paths$figure6, "joint_multiseed_surface_summary.tsv"
       ))$n_seed), collapse = ","),
       paste(f6r_read_tsv(file.path(
-        paths$figure6, "figure6a_displayed_pairs.tsv"
+        paths$figure6, "figure7a_displayed_pairs.tsv"
       ))$pair_label, collapse = ","),
       paste(inverse_bundle$class_summary$pair_label, collapse = ","),
       nrow(inverse_bundle$summary),
       all(f6r_read_tsv(file.path(
-        paths$figure6, "figure6_inverse_validation.tsv"
+        paths$figure6, "figure7_inverse_validation.tsv"
       ))$passed),
-      paste(sort(unique(highlighted$effective_p_misseg)), collapse = ","),
+      paste(sort(unique(highlighted$p_misseg)), collapse = ","),
       paste(sort(unique(as.integer(table(interaction(
-        highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
+        highlighted$pair_id, highlighted$p_misseg, drop = TRUE
       ))))), collapse = ","),
       nrow(mean_curve),
       all(is.finite(mean_curve$dominant_mean_ploidy_mean_across_fixed_p)),
@@ -4834,9 +5037,9 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
       paste(as.integer(curve_p_counts), collapse = ","),
       paste(sort(unique(as.integer(curve_o2_counts))), collapse = ","),
       paste(sort(unique(curve_data$n_seed)), collapse = ","),
-      all(curve_data$effective_p_misseg > 0),
+      all(curve_data$p_misseg > 0),
       all(f6r_read_tsv(file.path(
-        paths$figure6, "figure6d_dense_model_validation.tsv"
+        paths$figure6, "figure7d_dense_model_validation.tsv"
       ))$passed),
       201L * 60L, 201L,
       all(f6r_read_tsv(file.path(
@@ -4866,7 +5069,7 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   validation$passed[validation$check == "primary_family_seed_count"] <-
     grepl("50", validation$observed[validation$check == "primary_family_seed_count"])
   f6r_write_tsv(
-    validation, file.path(paths$figure6, "figure6_multiseed_validation.tsv")
+    validation, file.path(paths$figure6, "figure7_multiseed_validation.tsv")
   )
   output_files <- c(
     panel_a_png = panel_a$paths[["png"]],
@@ -4896,10 +5099,10 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     panel_b_mean_ploidy_across_fixed_p_tsv =
       overlay_bundle$paths[["mean_ploidy_across_fixed_p"]],
     panel_b_dense_endpoint_manifest_tsv = file.path(
-      paths$figure6, "figure6d_dense_endpoint_manifest.tsv"
+      paths$figure6, "figure7d_dense_endpoint_manifest.tsv"
     ),
     panel_b_dense_endpoint_qc_tsv = file.path(
-      paths$figure6, "figure6d_dense_endpoint_qc.tsv"
+      paths$figure6, "figure7d_dense_endpoint_qc.tsv"
     ),
     panel_b_dense_model_validation_tsv =
       overlay_bundle$paths[["dense_model_validation"]],
@@ -4917,7 +5120,7 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     stringsAsFactors = FALSE
   )
   f6r_write_tsv(
-    output_manifest, file.path(paths$figure6, "figure6_output_manifest.tsv")
+    output_manifest, file.path(paths$figure6, "figure7_output_manifest.tsv")
   )
   if (!all(validation$passed)) {
     stop(
@@ -4928,7 +5131,7 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   invisible(list(output = c(png = output_png, pdf = output_pdf), published = published))
 }
 
-f6r_draw_supplement_6_1 <- function(
+f6r_draw_supplement_7_1 <- function(
     workspace_root = f6r_find_workspace_root()
 ) {
   f6r_require_packages(c(
@@ -5087,7 +5290,7 @@ f6r_draw_supplement_6_1 <- function(
   ))
 }
 
-f6r_draw_supplement_6_2 <- function(workspace_root = f6r_find_workspace_root()) {
+f6r_draw_supplement_7_2 <- function(workspace_root = f6r_find_workspace_root()) {
   paths <- f6r_paths(workspace_root)
   family_count <- f6r_family_count()
   drawn <- f6r_draw_supp6_2(paths)
@@ -5161,7 +5364,7 @@ f6r_draw_supplement_6_2 <- function(workspace_root = f6r_find_workspace_root()) 
   )
   validation$passed <- as.character(validation$observed) == validation$expected
   f6r_write_tsv(
-    validation, file.path(paths$supp6_2, "supp_figure6-2_validation.tsv")
+    validation, file.path(paths$supp6_2, "supp_figure7-2_validation.tsv")
   )
   output_files <- c(drawn$paths, published)
   output_manifest <- data.frame(
@@ -5173,7 +5376,7 @@ f6r_draw_supplement_6_2 <- function(workspace_root = f6r_find_workspace_root()) 
     stringsAsFactors = FALSE
   )
   f6r_write_tsv(
-    output_manifest, file.path(paths$supp6_2, "supp_figure6-2_output_manifest.tsv")
+    output_manifest, file.path(paths$supp6_2, "supp_figure7-2_output_manifest.tsv")
   )
   if (!all(validation$passed)) {
     stop(

@@ -11,7 +11,7 @@ source(file.path(script_dir, "util", "analysis", "figure6_finite_time_q10.R"))
 source(file.path(script_dir, "util", "analysis", "figure6_finite_time_plots.R"))
 
 if (sys.nframe() == 0L) {
-  f6ft_draw_supplement_6_6(
+  f6ft_draw_supplement_7_6(
     normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
   )
 }

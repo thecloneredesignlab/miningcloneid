@@ -119,21 +119,21 @@ container_command Rscript --vanilla \
 
 stage="HEADLESS_RENDER"
 write_status RUNNING 0 "${stage}"
-for script in draw_Supp_Figure6_17.R draw_Supp_Figure6_18.R; do
+for script in draw_Supp_Figure6_18.R draw_Supp_Figure6_19.R; do
   container_command Rscript --vanilla "${CODE_ROOT}/${script}"
 done
 
 stage="VALIDATE"
 write_status RUNNING 0 "${stage}"
 OUTPUTS=(
-  "${ITERATION_ROOT}/Figures/supp_fig6-17_population_net_live_growth_rate_signed_log_invivo_full_range.pdf"
-  "${ITERATION_ROOT}/Figures/supp_fig6-17_population_net_live_growth_rate_signed_log_invivo_full_range.png"
-  "${ITERATION_ROOT}/Figures/supp_fig6-18_population_net_live_growth_rate_signed_log_invitro_full_range.pdf"
-  "${ITERATION_ROOT}/Figures/supp_fig6-18_population_net_live_growth_rate_signed_log_invitro_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig6-18_population_net_live_growth_rate_signed_log_invivo_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig6-18_population_net_live_growth_rate_signed_log_invivo_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig6-19_population_net_live_growth_rate_signed_log_invitro_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig6-19_population_net_live_growth_rate_signed_log_invitro_full_range.png"
 )
 VALIDATIONS=(
-  "${ITERATION_ROOT}/data/Figures/Supp_Figure6_17/supp_fig6-17_population_net_live_growth_rate_signed_log_invivo_full_range_render_validation.tsv"
-  "${ITERATION_ROOT}/data/Figures/Supp_Figure6_18/supp_fig6-18_population_net_live_growth_rate_signed_log_invitro_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure6_18/supp_fig6-18_population_net_live_growth_rate_signed_log_invivo_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure6_19/supp_fig6-19_population_net_live_growth_rate_signed_log_invitro_full_range_render_validation.tsv"
 )
 for path in "${VALIDATIONS[@]}"; do
   [[ -s "${path}" ]] || { echo "Missing render validation: ${path}" >&2; exit 1; }
@@ -172,4 +172,4 @@ done
 
 stage="COMPLETE"
 write_status COMPLETE 0 COMPLETE
-printf 'Supplementary Figure 6-17/18 array resume complete: %s\n' "$(date -Iseconds)"
+printf 'Supplementary Figure 6-18/19 array resume complete: %s\n' "$(date -Iseconds)"

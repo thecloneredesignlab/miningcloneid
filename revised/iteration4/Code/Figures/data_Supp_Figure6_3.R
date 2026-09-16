@@ -30,7 +30,7 @@ data_Supp_Figure6_3 <- function(n_core = 8L, rebuild = FALSE) {
   f6x_summarize_joint_invitro(
     paths, objective_bundle, multiseed_cache
   )
-  f6x_supplement_6_3_context_data(workspace_root = workspace_root)
+  f6x_supplement_7_3_context_data(workspace_root = workspace_root)
 }
 
 if (sys.nframe() == 0L) {

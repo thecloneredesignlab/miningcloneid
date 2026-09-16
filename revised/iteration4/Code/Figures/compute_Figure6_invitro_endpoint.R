@@ -46,6 +46,7 @@ workspace_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TR
 paths <- f6r_paths(workspace_root)
 f6r_load_response_engine(paths)
 objective_bundle <- f6r_objective_selection(paths)
+model_source_fingerprint <- f6r_model_source_fingerprint(paths)
 
 if (identical(stage, "q20")) {
   manifest <- f6x_joint_context_endpoint_manifest(
@@ -57,10 +58,10 @@ if (identical(stage, "q20")) {
 } else {
   manifest <- f6x_joint_context_endpoint_manifest(
     paths, objective_bundle, cutoff = "q10", displayed_only = TRUE,
-    output_name = "figure6_invitro_dense_endpoint_manifest.tsv"
+    output_name = "figure7_invitro_dense_endpoint_manifest.tsv"
   )
   endpoints <- manifest$endpoints
-  cache_root <- file.path(paths$figure6, "figure6_invitro_dense_endpoint_cache")
+  cache_root <- file.path(paths$figure6, "figure7_invitro_dense_endpoint_cache")
 }
 
 contexts <- lapply(
@@ -100,10 +101,11 @@ for (position in seq_along(assigned)) {
       force_rebuild = rebuild,
       model_context = "in vitro",
       parameter_value_column = "vitro_natural",
-      simulation_mode = "invitro"
+      simulation_mode = "invitro",
+      model_source_fingerprint = model_source_fingerprint
     )
   } else {
-    f6r_figure6d_compute_endpoint_cache(
+    f6r_figure7d_compute_endpoint_cache(
       metadata = z,
       parameters = objective_bundle$parameters_invitro,
       context = contexts[[z$pair_id[[1L]]]],
@@ -111,7 +113,8 @@ for (position in seq_along(assigned)) {
       parameter_source = objective_bundle$paths[["parameters_invitro"]],
       force_rebuild = rebuild,
       model_context = "in vitro",
-      simulation_mode = "invitro"
+      simulation_mode = "invitro",
+      model_source_fingerprint = model_source_fingerprint
     )
   }
   if (!isTRUE(qc$operator_qc_pass[[1L]])) {

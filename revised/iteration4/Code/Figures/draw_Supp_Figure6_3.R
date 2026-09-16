@@ -10,7 +10,7 @@ source(file.path(script_dir, "util", "analysis", "figure6_context_extension.R"))
 
 draw_Supp_Figure6_3 <- function() {
   workspace_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
-  si6_draw_weak_gap(workspace_root = workspace_root)
+  si7_draw_weak_gap(workspace_root = workspace_root)
 }
 
 if (sys.nframe() == 0L) draw_Supp_Figure6_3()

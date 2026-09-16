@@ -51,7 +51,7 @@ base_root <- file.path(
   if (profile == "standard") {
     "multiseed_endpoint_cache_invitro"
   } else {
-    "figure6_invitro_dense_endpoint_cache"
+    "figure7_invitro_dense_endpoint_cache"
   }
 )
 cache_root <- if (profile == "standard") paths$joint_cache else paths$dense_cache

@@ -11,7 +11,7 @@
 
 options(stringsAsFactors = FALSE, warn = 1)
 
-f6p_profile <- function() "figure6_invitro_passage_q10_v1"
+f6p_profile <- function() "figure7_fixed_pmisseg_invitro_passage_q10_v1"
 
 f6p_joint_result_root <- function() {
   root <- trimws(Sys.getenv(
@@ -274,7 +274,7 @@ f6p_task_manifest <- function(endpoints, run_paths, smoke = FALSE, chunk_size = 
         pair_id = family_endpoints$pair_id[[1L]],
         pair_label = family,
         panel_letter = if (family == "C01") "E" else "F",
-        effective_p_misseg = p_value,
+        p_misseg = p_value,
         chunk_index = chunk_index,
         endpoint_indices = paste(selected$endpoint_index, collapse = ","),
         n_unique_endpoint = nrow(selected),
@@ -304,20 +304,27 @@ f6p_state_mean <- function(state, ploidy_grid) {
 
 f6p_lineage_trajectory <- function(
     step, ploidy_grid, ngrid, n_unit, initial_ploidy, lineage_schedule,
-    default_initial_cells
+    default_initial_cells, max_day = NULL
 ) {
-  max_day <- as.integer(max(lineage_schedule$experimental_day_end))
+  schedule_end <- as.integer(max(lineage_schedule$experimental_day_end))
+  if (is.null(max_day)) max_day <- schedule_end
+  max_day <- as.integer(max_day)
+  if (!is.finite(max_day) || max_day < 0L || max_day > schedule_end) {
+    stop("max_day must be between zero and the lineage schedule end.")
+  }
   values <- rep(NA_real_, max_day + 1L)
   state_fraction <- rep(0, length(ngrid))
   initial_index <- match(initial_ploidy * n_unit, ngrid)
   if (is.na(initial_index)) stop("Initial ploidy is outside the model grid.")
   state_fraction[[initial_index]] <- 1
-  selected_days <- integer(nrow(lineage_schedule))
+  selected_days <- integer()
   current_day <- 0L
 
   for (passage_index in seq_len(nrow(lineage_schedule))) {
+    if (current_day >= max_day) break
     segment <- lineage_schedule[passage_index, , drop = FALSE]
-    duration <- as.integer(round(segment$passage_duration[[1L]]))
+    recorded_duration <- as.integer(round(segment$passage_duration[[1L]]))
+    duration <- min(recorded_duration, max_day - current_day)
     initial_cells <- as.numeric(segment$initial_cells[[1L]])
     if (!is.finite(initial_cells) || initial_cells <= 0) initial_cells <- default_initial_cells
     state <- state_fraction * initial_cells
@@ -329,6 +336,10 @@ f6p_lineage_trajectory <- function(
       states[, day_index + 1L] <- state
     }
     live_cells <- colSums(states)
+    if (duration < recorded_duration) {
+      current_day <- current_day + duration
+      break
+    }
     target <- as.numeric(segment$target_live_cells[[1L]])
     candidates <- 2:ncol(states)
     selected_column <- if (is.finite(target) && target > 0) {
@@ -336,7 +347,7 @@ f6p_lineage_trajectory <- function(
     } else {
       ncol(states)
     }
-    selected_days[[passage_index]] <- selected_column - 1L
+    selected_days <- c(selected_days, selected_column - 1L)
     selected_state <- states[, selected_column]
     selected_total <- sum(selected_state)
     if (!is.finite(selected_total) || selected_total <= 0) stop("Passage selection returned an empty state.")
@@ -352,11 +363,19 @@ f6p_lineage_trajectory <- function(
 }
 
 f6p_operator_response <- function(
-    M, ngrid, n_unit, schedule_bundle, default_initial_cells
+    M, ngrid, n_unit, schedule_bundle, default_initial_cells,
+    day_values = NULL
 ) {
   step <- as.matrix(Matrix::expm(M))
   ploidy_grid <- as.numeric(ngrid) / as.numeric(n_unit)
-  days <- 0:schedule_bundle$max_experimental_day
+  days <- if (is.null(day_values)) {
+    0:schedule_bundle$max_experimental_day
+  } else {
+    as.integer(day_values)
+  }
+  if (!identical(days, 0:max(days))) {
+    stop("Passage-aware propagation requires a complete integer day grid from zero.")
+  }
   response <- matrix(
     NA_real_, nrow = length(f6ft_initial_ploidy()), ncol = length(days),
     dimnames = list(paste0(f6ft_initial_ploidy(), "N"), as.character(days))
@@ -384,7 +403,10 @@ f6p_operator_response <- function(
           n_unit = n_unit,
           initial_ploidy = f6ft_initial_ploidy()[[initial_index]],
           lineage_schedule = lineage_schedule,
-          default_initial_cells = default_initial_cells
+          default_initial_cells = default_initial_cells,
+          max_day = min(
+            max(days), as.integer(max(lineage_schedule$experimental_day_end))
+          )
         )
         lineage_values[lineage_index, seq_along(trajectory$values)] <- trajectory$values
         duration <- as.integer(round(lineage_schedule$passage_duration))
@@ -432,16 +454,27 @@ f6p_compute_task <- function(
       day = as.character(days), O2_pct = as.character(o2_values)
     )
   )
-  p_value <- as.numeric(task$effective_p_misseg[[1L]])
+  p_value <- as.numeric(task$p_misseg[[1L]])
   selection_total <- c(
     n_selection = 0, n_selected_before_duration = 0,
     minimum_selected_day = Inf, maximum_selected_day = -Inf
   )
   operator_count <- 0L
+  maximum_override_error <- 0
+  maximum_formula_error <- 0
   for (endpoint_index in seq_len(nrow(selected_endpoints))) {
     endpoint <- selected_endpoints[endpoint_index, , drop = FALSE]
     prepared <- f6ft_prepare_endpoint(endpoint, objective_bundle, contexts)
-    forced <- response_force_effective_p_misseg(prepared$run_params, p_value)
+    forced <- figure6_force_p_misseg(prepared$run_params, p_value)
+    formula_qc <- figure6_p_misseg_formula_qc(
+      prepared$run_params, p_value
+    )
+    maximum_override_error <- max(
+      maximum_override_error, abs(as.numeric(forced$p_misseg) - p_value)
+    )
+    maximum_formula_error <- max(
+      maximum_formula_error, formula_qc$maximum_direct_formula_error
+    )
     weight <- as.integer(endpoint$endpoint_multiplicity_q10[[1L]])
     for (o2_index in seq_along(o2_values)) {
       fixed <- fixo2_fixed_matrix(
@@ -475,7 +508,7 @@ f6p_compute_task <- function(
   )
   qc <- data.frame(
     task_id = task$task_id[[1L]], pair_label = task$pair_label[[1L]],
-    effective_p_misseg = p_value,
+    p_misseg = p_value,
     n_unique_endpoint = nrow(selected_endpoints),
     represented_optimizer_endpoint = sum(selected_endpoints$endpoint_multiplicity_q10),
     n_operator = operator_count,
@@ -485,9 +518,12 @@ f6p_compute_task <- function(
     minimum_selected_day = selection_total[["minimum_selected_day"]],
     maximum_selected_day = selection_total[["maximum_selected_day"]],
     maximum_day0_abs_error = max(abs(day0 - expected), na.rm = TRUE),
+    maximum_p_misseg_override_error = maximum_override_error,
+    maximum_direct_formula_error = maximum_formula_error,
     all_finite = all(is.finite(weighted_sum)),
     passed = all(is.finite(weighted_sum)) &&
-      max(abs(day0 - expected), na.rm = TRUE) <= 1e-10,
+      max(abs(day0 - expected), na.rm = TRUE) <= 1e-10 &&
+      maximum_override_error <= 1e-12 && maximum_formula_error <= 1e-12,
     cache_path = task$cache_path[[1L]], stringsAsFactors = FALSE
   )
   f6ft_atomic_save_rds(list(
@@ -512,12 +548,12 @@ f6p_aggregate <- function(
   panel_objects <- list()
   for (family in f6ft_family_levels()) {
     letter <- if (family == "C01") "E" else "F"
-    p_values <- sort(unique(tasks$effective_p_misseg[tasks$pair_label == family]))
+    p_values <- sort(unique(tasks$p_misseg[tasks$pair_label == family]))
     arrays <- vector("list", length(p_values))
     weights <- integer(length(p_values))
     for (p_index in seq_along(p_values)) {
       keep <- which(tasks$pair_label == family &
-        abs(tasks$effective_p_misseg - p_values[[p_index]]) < 1e-12)
+        abs(tasks$p_misseg - p_values[[p_index]]) < 1e-12)
       selected <- objects[keep]
       arrays[[p_index]] <- Reduce(`+`, lapply(selected, `[[`, "weighted_sum"))
       weights[[p_index]] <- sum(vapply(
@@ -540,7 +576,7 @@ f6p_aggregate <- function(
       initial_ploidy = f6ft_initial_ploidy(),
       day_values = 0:schedule_bundle$max_experimental_day,
       o2_values = f6ft_o2_values(smoke),
-      effective_p_misseg = p_values,
+      p_misseg = p_values,
       optimizer_endpoint_weight = weights,
       n_lineage_schedule = 6L,
       mean_ploidy = values
@@ -559,7 +595,7 @@ f6p_aggregate <- function(
       panel_letter = object$panel_letter,
       n_initial_ploidy = length(object$initial_ploidy),
       n_day = length(object$day_values), n_o2 = length(object$o2_values),
-      n_effective_p_misseg = length(object$effective_p_misseg),
+      n_p_misseg = length(object$p_misseg),
       n_lineage_schedule = object$n_lineage_schedule,
       minimum_mean_ploidy = min(object$mean_ploidy),
       maximum_mean_ploidy = max(object$mean_ploidy),
@@ -601,7 +637,7 @@ f6p_compare_continuous <- function(base_run_paths, panel_objects, run_paths) {
     if (anyNA(day_index) ||
         !identical(passage$initial_ploidy, continuous$initial_ploidy) ||
         !identical(passage$o2_values, continuous$o2_values) ||
-        !isTRUE(all.equal(passage$effective_p_misseg, continuous$effective_p_misseg))) {
+        !isTRUE(all.equal(passage$p_misseg, continuous$p_misseg))) {
       stop("Continuous and passage-aware panel grids are not comparable for ", letter)
     }
     reference <- continuous$mean_ploidy[, day_index, , , drop = FALSE]

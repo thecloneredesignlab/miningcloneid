@@ -369,7 +369,7 @@ f6x_response_column <- function(
   dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
   grDevices::png(
     png_path, width = 4.5, height = 10.4, units = "in", res = 300,
-    pointsize = 10, bg = "white"
+    pointsize = 10, bg = "white", type = "cairo-png"
   )
   draw(); grDevices::dev.off()
   grDevices::cairo_pdf(
@@ -377,7 +377,11 @@ f6x_response_column <- function(
     family = response_font_family, bg = "white"
   )
   draw(); grDevices::dev.off()
-  c(png = normalizePath(png_path), pdf = normalizePath(pdf_path))
+  list(
+    png = normalizePath(png_path),
+    pdf = normalizePath(pdf_path),
+    grob = gridGraphics::echoGrob(draw)
+  )
 }
 
 f6x_density_polygon <- function(values, class_index, side, context) {
@@ -395,10 +399,12 @@ f6x_density_polygon <- function(values, class_index, side, context) {
   )
 }
 
-f6x_draw_supplement_6_1 <- function(
+f6x_draw_supplement_7_1 <- function(
     workspace_root = f6r_find_workspace_root()
 ) {
-  f6r_require_packages(c("ggplot2", "patchwork", "magick", "scales"))
+  f6r_require_packages(c(
+    "ggplot2", "patchwork", "magick", "scales", "gridGraphics"
+  ))
   paths <- f6r_paths(workspace_root)
   f6r_load_response_engine(paths)
   panel_dir <- file.path(paths$figure6, "panels")
@@ -504,7 +510,11 @@ f6x_draw_supplement_6_1 <- function(
     ggplot2::scale_colour_manual(
       values = c(response_curve_class_colors, response_region_colors),
       breaks = response_curve_class_order,
-      labels = response_curve_class_labels, drop = FALSE
+      labels = paste0(
+        seq_along(response_curve_class_order), ". ",
+        unname(response_curve_class_labels[response_curve_class_order])
+      ),
+      drop = FALSE
     ) +
     ggplot2::scale_shape_manual(values = c("in vivo" = 16, "in vitro" = 17)) +
     ggplot2::coord_equal() +
@@ -589,14 +599,14 @@ f6x_draw_supplement_6_1 <- function(
     ggplot2::scale_colour_manual(values = c("in vivo" = "#0072B2", "in vitro" = "#CC79A7")) +
     ggplot2::scale_x_continuous(
       breaks = seq_along(response_curve_class_order),
-      labels = c("Complex\nnonmono.", "Inverted\nU", "Monotone\ninc.", "U-shaped",
-                 "Approx.\nflat", "Increase\nplateau", "Decrease\nplateau",
-                 "Monotone\ndec."), limits = c(0.5, 8.5)
+      labels = seq_along(response_curve_class_order),
+      limits = c(0.5, 8.5)
     ) +
     ggplot2::labs(
       title = "D. Full-MAP fit quality across response classes",
       subtitle = "Context-specific objective minus the minimum within that context",
-      x = NULL, y = expression(Delta*" full-MAP objective"), fill = "Context",
+      x = "O2-ploidy response class (numbered in panel C legend)",
+      y = expression(Delta*" full-MAP objective"), fill = "Context",
       colour = "Context"
     ) +
     ggplot2::theme_classic(base_size = 9, base_family = response_font_family) +
@@ -612,48 +622,23 @@ f6x_draw_supplement_6_1 <- function(
     p_d, file.path(panel_dir, "supp_fig6-1d_objective_split_violin"),
     width = 6.4, height = 5.2
   )
-  column_a <- magick::image_read(panel_a[["png"]])
-  column_b <- magick::image_read(panel_b[["png"]])
-  column_c <- magick::image_read(panel_c[["png"]])
-  column_d <- magick::image_read(panel_d[["png"]])
-  right_column <- magick::image_append(c(column_c, column_d), stack = TRUE)
-  target_height <- max(
-    magick::image_info(column_a)$height,
-    magick::image_info(column_b)$height,
-    magick::image_info(right_column)$height
-  )
-  pad_to_height <- function(image, height) {
-    info <- magick::image_info(image)
-    magick::image_extent(
-      image, paste0(info$width, "x", height),
-      gravity = "center", color = "white"
-    )
-  }
-  column_a <- pad_to_height(column_a, target_height)
-  column_b <- pad_to_height(column_b, target_height)
-  right_column <- pad_to_height(right_column, target_height)
-  assembled <- magick::image_append(
-    c(column_a, column_b, right_column), stack = FALSE
+  right_column <- patchwork::wrap_plots(p_c, p_d, ncol = 1L)
+  assembled <- patchwork::wrap_plots(
+    patchwork::wrap_elements(full = panel_a[["grob"]], clip = FALSE),
+    patchwork::wrap_elements(full = panel_b[["grob"]], clip = FALSE),
+    right_column,
+    nrow = 1L, widths = c(4.5, 4.5, 6.4)
   )
   rendered <- file.path(paths$figure6, "rendered")
   dir.create(rendered, recursive = TRUE, showWarnings = FALSE)
-  output_png <- file.path(rendered, "supp_fig6-1_response_class_diagnostics.png")
-  output_pdf <- file.path(rendered, "supp_fig6-1_response_class_diagnostics.pdf")
-  magick::image_write(assembled, output_png, format = "png", density = 300)
-  assembled_info <- magick::image_info(assembled)
-  grDevices::cairo_pdf(
-    output_pdf,
-    width = assembled_info$width[[1L]] / 300,
-    height = assembled_info$height[[1L]] / 300,
-    bg = "white"
+  output <- f6r_save_plot(
+    assembled,
+    file.path(rendered, "supp_fig6-1_response_class_diagnostics"),
+    width = 15.4, height = 10.4
   )
-  grid::grid.newpage()
-  grid::grid.raster(
-    as.raster(assembled), x = 0.5, y = 0.5,
-    width = grid::unit(1, "npc"), height = grid::unit(1, "npc"),
-    interpolate = FALSE
-  )
-  grDevices::dev.off()
+  output_png <- output[["png"]]
+  output_pdf <- output[["pdf"]]
+  assembled_info <- magick::image_info(magick::image_read(output_png))
   published <- c(
     figure_png = f6r_publish(output_png, file.path(paths$figures, basename(output_png))),
     figure_pdf = f6r_publish(output_pdf, file.path(paths$figures, basename(output_pdf))),
@@ -857,8 +842,9 @@ f6x_summarize_joint_invitro <- function(paths, objective_bundle, cache_bundle) {
     surface_rows[[pair]] <- data.frame(
       pair_id = pair, pair_label = metadata$pair_label[[1L]],
       model_context = "in vitro", O2_pct = reference_surface$O2_pct,
-      effective_p_misseg = reference_surface$effective_p_misseg,
+      p_misseg = reference_surface$p_misseg,
       n_seed = 50L, n_unique_parameter_endpoint = nrow(metadata),
+      dominant_mean_ploidy_mean = rowMeans(ploidy),
       dominant_mean_ploidy_median = matrixStats::rowMedians(ploidy),
       dominant_mean_ploidy_q10 = q[, 1L], dominant_mean_ploidy_q25 = q[, 2L],
       dominant_mean_ploidy_q75 = q[, 3L], dominant_mean_ploidy_q90 = q[, 4L],
@@ -867,23 +853,35 @@ f6x_summarize_joint_invitro <- function(paths, objective_bundle, cache_bundle) {
       spectral_gap_median = matrixStats::rowMedians(gap),
       proportion_spectral_gap_below_0p005 = rowMeans(gap < 0.005),
       dominant_growth_rate_median = matrixStats::rowMedians(growth),
-      max_abs_actual_minus_requested_p_misseg = max(vapply(
-        objects, function(x) x$qc$max_abs_actual_minus_requested_p_misseg[[1L]],
+      max_abs_forced_minus_requested_p_misseg = max(vapply(
+        objects, function(x) x$qc$max_abs_forced_minus_requested_p_misseg[[1L]],
         numeric(1L)
       )), cutoff = "q10", stringsAsFactors = FALSE
     )
     tr_ploidy <- do.call(cbind, lapply(objects, function(x) x$trajectory$dominant_mean_ploidy))[, expand, drop = FALSE]
     tr_p <- do.call(cbind, lapply(objects, function(x) x$trajectory$population_average_p_misseg))[, expand, drop = FALSE]
+    tr_fitted_p <- do.call(cbind, lapply(objects, function(x) x$trajectory$fitted_p_misseg))[, expand, drop = FALSE]
+    tr_fitted_base <- do.call(cbind, lapply(objects, function(x) x$trajectory$fitted_p_mis_base))[, expand, drop = FALSE]
+    tr_fitted_k <- do.call(cbind, lapply(objects, function(x) x$trajectory$fitted_k_o_mis))[, expand, drop = FALSE]
     tr_gap <- do.call(cbind, lapply(objects, function(x) x$trajectory$spectral_gap))[, expand, drop = FALSE]
     tq <- matrixStats::rowQuantiles(tr_ploidy, probs = c(0.10, 0.90))
     pq <- matrixStats::rowQuantiles(tr_p, probs = c(0.10, 0.90))
+    fpq <- matrixStats::rowQuantiles(tr_fitted_p, probs = c(0.10, 0.90))
     trajectory_rows[[pair]] <- data.frame(
       pair_id = pair, pair_label = metadata$pair_label[[1L]],
       model_context = "in vitro", O2_pct = reference_trajectory$O2_pct,
       n_seed = 50L,
+      fitted_p_misseg_mean = rowMeans(tr_fitted_p),
+      fitted_p_misseg_median = matrixStats::rowMedians(tr_fitted_p),
+      fitted_p_misseg_q10 = fpq[, 1L],
+      fitted_p_misseg_q90 = fpq[, 2L],
+      fitted_p_mis_base_median = matrixStats::rowMedians(tr_fitted_base),
+      fitted_k_o_mis_median = matrixStats::rowMedians(tr_fitted_k),
+      population_average_p_misseg_mean = rowMeans(tr_p),
       population_average_p_misseg_median = matrixStats::rowMedians(tr_p),
       population_average_p_misseg_q10 = pq[, 1L],
       population_average_p_misseg_q90 = pq[, 2L],
+      dominant_mean_ploidy_mean = rowMeans(tr_ploidy),
       dominant_mean_ploidy_median = matrixStats::rowMedians(tr_ploidy),
       dominant_mean_ploidy_q10 = tq[, 1L], dominant_mean_ploidy_q90 = tq[, 2L],
       spectral_gap_median = matrixStats::rowMedians(tr_gap),
@@ -928,9 +926,9 @@ f6x_summarize_joint_invitro <- function(paths, objective_bundle, cache_bundle) {
     both_o2_1 = c("Both ploidy regimes present at 1% O2", "surface_both_regimes_o2_1", "boolean"),
     both_o2_5 = c("Both ploidy regimes present at 5% O2", "surface_both_regimes_o2_5", "boolean"),
     trajectory_direction = c("Unmodified trajectory: O2 response direction", "trajectory_direction_o2_0_to_5", "direction"),
-    surface_direction_low_cin = c("Surface O2 response at low effective missegregation", "surface_direction_o2_0_to_5_cin_low", "direction"),
-    surface_direction_mid_cin = c("Surface O2 response at intermediate effective missegregation", "surface_direction_o2_0_to_5_cin_mid", "direction"),
-    surface_direction_high_cin = c("Surface O2 response at high effective missegregation", "surface_direction_o2_0_to_5_cin_high", "direction"),
+    surface_direction_low_cin = c("Surface O2 response at low p_misseg", "surface_direction_o2_0_to_5_cin_low", "direction"),
+    surface_direction_mid_cin = c("Surface O2 response at intermediate p_misseg", "surface_direction_o2_0_to_5_cin_mid", "direction"),
+    surface_direction_high_cin = c("Surface O2 response at high p_misseg", "surface_direction_o2_0_to_5_cin_high", "direction"),
     spectral_gap_majority_reliable = c("At least half of the prespecified diagnostic union has spectral gap >= 0.005", "surface_fraction_spectral_gap_ge_0p005", "boolean_numeric")
   )
   summarize <- function(z, cutoff, weighting) {
@@ -1013,10 +1011,10 @@ f6x_compute_dense_invitro <- function(
   f6r_load_response_engine(paths)
   manifest <- f6x_joint_context_endpoint_manifest(
     paths, objective_bundle, cutoff = "q10", displayed_only = TRUE,
-    output_name = "figure6_invitro_dense_endpoint_manifest.tsv"
+    output_name = "figure7_invitro_dense_endpoint_manifest.tsv"
   )
   endpoints <- manifest$endpoints
-  cache_root <- file.path(paths$figure6, "figure6_invitro_dense_endpoint_cache")
+  cache_root <- file.path(paths$figure6, "figure7_invitro_dense_endpoint_cache")
   cache_paths <- stats::setNames(
     file.path(
       cache_root, endpoints$pair_label,
@@ -1032,7 +1030,7 @@ f6x_compute_dense_invitro <- function(
     f6r_load_response_engine(paths)
     z <- endpoints[i, , drop = FALSE]
     tryCatch(
-      f6r_figure6d_compute_endpoint_cache(
+      f6r_figure7d_compute_endpoint_cache(
         metadata = z, parameters = objective_bundle$parameters_invitro,
         context = contexts[[z$pair_id[[1L]]]],
         cache_path = cache_paths[[z$parameter_endpoint_group[[1L]]]],
@@ -1056,11 +1054,11 @@ f6x_compute_dense_invitro <- function(
   )
   qc <- do.call(rbind, result)
   if (!all(qc$operator_qc_pass)) stop("Dense in-vitro endpoint QC failed.")
-  summary <- f6r_figure6d_summarize_dense_caches(paths, manifest, cache_paths)
+  summary <- f6r_figure7d_summarize_dense_caches(paths, manifest, cache_paths)
   summary$model_context <- "in vitro"
   outputs <- c(
-    summary = f6r_write_tsv(summary, file.path(paths$figure6, "figure6_invitro_fixed_p_curve_family.tsv")),
-    qc = f6r_write_tsv(qc, file.path(paths$figure6, "figure6_invitro_dense_endpoint_qc.tsv")),
+    summary = f6r_write_tsv(summary, file.path(paths$figure6, "figure7_invitro_fixed_p_curve_family.tsv")),
+    qc = f6r_write_tsv(qc, file.path(paths$figure6, "figure7_invitro_dense_endpoint_qc.tsv")),
     manifest = manifest$path
   )
   validation <- data.frame(
@@ -1078,12 +1076,12 @@ f6x_compute_dense_invitro <- function(
     all(qc$operator_qc_pass)
   )
   outputs <- c(outputs, validation = f6r_write_tsv(
-    validation, file.path(paths$figure6, "figure6_invitro_dense_validation.tsv")
+    validation, file.path(paths$figure6, "figure7_invitro_dense_validation.tsv")
   ))
   if (!all(validation$passed)) stop("Dense in-vitro validation failed.")
   inverse <- f6r_inverse_panel_data(
     paths, rebuild = rebuild, n_core = n_core,
-    dense_qc_path = outputs[["qc"]], output_prefix = "figure6_invitro",
+    dense_qc_path = outputs[["qc"]], output_prefix = "figure7_invitro",
     model_context = "in vitro"
   )
   invisible(list(
@@ -1122,8 +1120,8 @@ f6x_data <- function(
 # Supplementary Figure 6-3 needs only the rank-1 population distribution and
 # its local grid behavior. Reuse the exact q10 endpoint surfaces calculated for
 # the main Figure 6 rather than diagonalizing the operator a second time.
-f6x_si6_rank1_object <- function(object, parameter_endpoint_group) {
-  required <- c("O2_pct", "effective_p_misseg", "dominant_mean_ploidy")
+f6x_si7_rank1_object <- function(object, parameter_endpoint_group) {
+  required <- c("O2_pct", "p_misseg", "dominant_mean_ploidy")
   if (!all(required %in% names(object$surface))) {
     stop("Joint in-vitro endpoint cache lacks rank-1 surface fields.")
   }
@@ -1131,12 +1129,12 @@ f6x_si6_rank1_object <- function(object, parameter_endpoint_group) {
     metadata = list(
       parameter_endpoint_group = as.character(parameter_endpoint_group)
     ),
-    grid = object$surface[, c("O2_pct", "effective_p_misseg"), drop = FALSE],
+    grid = object$surface[, c("O2_pct", "p_misseg"), drop = FALSE],
     localization_l1 = matrix(object$surface$dominant_mean_ploidy, ncol = 1L)
   )
 }
 
-f6x_si6_pair_summary <- function(grid, model_context) {
+f6x_si7_pair_summary <- function(grid, model_context) {
   pair_rows <- lapply(split(grid, grid$display_label), function(z) {
     weak <- z[z$weak_gap_region, , drop = FALSE]
     data.frame(
@@ -1186,7 +1184,7 @@ f6x_si6_pair_summary <- function(grid, model_context) {
   out
 }
 
-f6x_si6_context_from_q20 <- function(
+f6x_si7_context_from_q20 <- function(
     manifest, cache_paths, surface, model_context
 ) {
   f6r_require_files(unname(cache_paths), paste0(
@@ -1204,30 +1202,30 @@ f6x_si6_context_from_q20 <- function(
     ]
     raw_objects <- raw[metadata$parameter_endpoint_group]
     objects <- Map(
-      f6x_si6_rank1_object, raw_objects, metadata$parameter_endpoint_group
+      f6x_si7_rank1_object, raw_objects, metadata$parameter_endpoint_group
     )
-    si6_summarize_weak_gap_pair(metadata, objects, surface)
+    si7_summarize_weak_gap_pair(metadata, objects, surface)
   })
   grid <- do.call(rbind, rows)
   rownames(grid) <- NULL
   grid$model_context <- model_context
   list(
     grid = grid,
-    pair_summary = f6x_si6_pair_summary(grid, model_context),
+    pair_summary = f6x_si7_pair_summary(grid, model_context),
     qc = qc
   )
 }
 
-f6x_supplement_6_3_context_data <- function(
+f6x_supplement_7_3_context_data <- function(
     workspace_root = f6r_find_workspace_root()
 ) {
   f6r_require_packages("matrixStats")
   paths <- f6r_paths(workspace_root)
-  si_paths <- si6_paths(workspace_root)
+  si_paths <- si7_paths(workspace_root)
   dir.create(si_paths$data, recursive = TRUE, showWarnings = FALSE)
   objective_bundle <- f6r_objective_selection(paths)
 
-  vivo_manifest <- f6r_figure6d_endpoint_manifest(paths, objective_bundle)
+  vivo_manifest <- f6r_figure7d_endpoint_manifest(paths, objective_bundle)
   vivo_cache_paths <- stats::setNames(
     file.path(
       paths$figure6, "multiseed_seed_cache",
@@ -1239,13 +1237,13 @@ f6x_supplement_6_3_context_data <- function(
   vivo_surface <- f6r_read_tsv(file.path(
     paths$figure6, "joint_multiseed_surface_summary.tsv"
   ))
-  vivo <- f6x_si6_context_from_q20(
+  vivo <- f6x_si7_context_from_q20(
     vivo_manifest, vivo_cache_paths, vivo_surface, "in vivo"
   )
 
   vitro_manifest <- f6x_joint_context_endpoint_manifest(
     paths, objective_bundle, cutoff = "q10", displayed_only = TRUE,
-    output_name = "supp_figure6-3_invitro_endpoint_manifest.tsv"
+    output_name = "supp_figure7-3_invitro_endpoint_manifest.tsv"
   )
   vitro_cache_paths <- stats::setNames(
     file.path(
@@ -1260,7 +1258,7 @@ f6x_supplement_6_3_context_data <- function(
   vitro_surface <- f6r_read_tsv(file.path(
     paths$figure6, "joint_multiseed_surface_summary_invitro.tsv"
   ))
-  vitro <- f6x_si6_context_from_q20(
+  vitro <- f6x_si7_context_from_q20(
     vitro_manifest, vitro_cache_paths, vitro_surface, "in vitro"
   )
 
@@ -1276,10 +1274,10 @@ f6x_supplement_6_3_context_data <- function(
     combined_pair$model_context, levels = c("in vivo", "in vitro")
   )
   grid_path <- f6r_write_tsv(combined_grid, file.path(
-    si_paths$data, "supp_figure6-3_weak_gap_regime_robustness.tsv"
+    si_paths$data, "supp_figure7-3_weak_gap_regime_robustness.tsv"
   ))
   pair_path <- f6r_write_tsv(combined_pair, file.path(
-    si_paths$data, "supp_figure6-3_weak_gap_pair_summary.tsv"
+    si_paths$data, "supp_figure7-3_weak_gap_pair_summary.tsv"
   ))
 
   endpoint_columns <- c(
@@ -1299,15 +1297,15 @@ f6x_supplement_6_3_context_data <- function(
     )
   )
   endpoint_manifest_path <- f6r_write_tsv(endpoint_manifest, file.path(
-    si_paths$data, "supp_figure6-3_endpoint_manifest.tsv"
+    si_paths$data, "supp_figure7-3_endpoint_manifest.tsv"
   ))
 
   key <- function(x) paste(
     x$model_context, x$pair_id, sprintf("%.12f", x$O2_pct),
-    sprintf("%.12g", x$effective_p_misseg), sep = "|"
+    sprintf("%.12g", x$p_misseg), sep = "|"
   )
   reference_columns <- c(
-    "pair_id", "O2_pct", "effective_p_misseg",
+    "pair_id", "O2_pct", "p_misseg",
     "dominant_mean_ploidy_median", "dominant_mean_ploidy_q10",
     "dominant_mean_ploidy_q90", "proportion_dominant_mean_ploidy_ge_2"
   )
@@ -1392,10 +1390,10 @@ f6x_supplement_6_3_context_data <- function(
     as.numeric(validation$observed[[14L]]) <= 1e-12
   )
   context_validation_path <- f6r_write_tsv(
-    validation, file.path(si_paths$data, "supp_figure6-3_context_validation.tsv")
+    validation, file.path(si_paths$data, "supp_figure7-3_context_validation.tsv")
   )
   data_validation_path <- f6r_write_tsv(
-    validation, file.path(si_paths$data, "supp_figure6-3_data_validation.tsv")
+    validation, file.path(si_paths$data, "supp_figure7-3_data_validation.tsv")
   )
   if (!all(validation$passed)) {
     stop(
@@ -1452,7 +1450,7 @@ f6x_refresh_output_manifest <- function(path) {
 }
 
 f6x_main_surface_plot <- function(paths) {
-  f6r_require_packages(c("ggplot2", "isoband", "scales"))
+  f6r_require_packages(c("ggplot2", "ggh4x", "isoband", "scales"))
   vivo <- f6r_read_tsv(file.path(
     paths$figure6, "joint_multiseed_surface_summary.tsv"
   ))
@@ -1476,10 +1474,25 @@ f6x_main_surface_plot <- function(paths) {
     f6x_add_display_fields(vivo_tr, display, "in vivo"),
     f6x_add_display_fields(vitro_tr, display, "in vitro")
   )
-  surface$log10_effective_p_misseg <- log10(surface$effective_p_misseg)
-  trajectory$log10_p_median <- log10(trajectory$population_average_p_misseg_median)
-  trajectory$log10_p_q10 <- log10(trajectory$population_average_p_misseg_q10)
-  trajectory$log10_p_q90 <- log10(trajectory$population_average_p_misseg_q90)
+  surface$log10_p_misseg <- log10(surface$p_misseg)
+  trajectory$log10_p_mean <- log10(trajectory$fitted_p_misseg_mean)
+  trajectory$log10_population_p_mis_mean <- log10(
+    trajectory$population_average_p_misseg_mean
+  )
+  trajectory$log10_p_q10 <- log10(trajectory$fitted_p_misseg_q10)
+  trajectory$log10_p_q90 <- log10(trajectory$fitted_p_misseg_q90)
+  overlay_breaks <- c(
+    "Fitted p_misseg mean",
+    "Population-averaged p_mis(N,O2) mean"
+  )
+  overlay_labels <- c(
+    "Fitted p_misseg mean",
+    "Population-averaged p_mis(N,O2) mean"
+  )
+  overlay_legend_title <- paste0(
+    "Overlays (white dotted boundary / hatching: ",
+    "weak spectral gap)"
+  )
   hatch_rows <- list()
   for (ctx in levels(surface$model_context)) for (label in levels(surface$display_label)) {
     z <- surface[surface$model_context == ctx & surface$display_label == label, ]
@@ -1490,7 +1503,7 @@ f6x_main_surface_plot <- function(paths) {
     hatch_rows[[length(hatch_rows) + 1L]] <- h
   }
   hatch <- if (length(hatch_rows)) do.call(rbind, hatch_rows) else data.frame(
-    O2_pct = numeric(), log10_effective_p_misseg = numeric(),
+    O2_pct = numeric(), log10_p_misseg = numeric(),
     hatch_group = integer(), model_context = character(),
     display_label = character(), stringsAsFactors = FALSE
   )
@@ -1501,50 +1514,104 @@ f6x_main_surface_plot <- function(paths) {
   low <- surface[
     surface$ploidy_regime_consensus < 0.80 &
       match(surface$O2_pct, sort(unique(surface$O2_pct))) %% 8L == 1L &
-      match(surface$effective_p_misseg, sort(unique(surface$effective_p_misseg))) %% 3L == 1L,
+      match(surface$p_misseg, sort(unique(surface$p_misseg))) %% 3L == 1L,
   ]
   fill_limits <- range(
-    c(surface$dominant_mean_ploidy_median, 1, 7), na.rm = TRUE
+    c(surface$dominant_mean_ploidy_mean, 1, 7), na.rm = TRUE
+  )
+  displayed_families <- c("C01", "C02")
+  if (!setequal(unique(as.character(surface$display_label)), displayed_families)) {
+    stop("Figure 6A one-row layout requires exactly C01 and C02.")
+  }
+  surface$display_label <- factor(
+    as.character(surface$display_label), levels = displayed_families
+  )
+  trajectory$display_label <- factor(
+    as.character(trajectory$display_label), levels = displayed_families
+  )
+  hatch$display_label <- factor(
+    as.character(hatch$display_label), levels = displayed_families
+  )
+  low$display_label <- factor(
+    as.character(low$display_label), levels = displayed_families
+  )
+  context_colours <- c("in vivo" = "#0072B2", "in vitro" = "#CC79A7")
+  family_colours <- c(C01 = "#C99700", C02 = "#6A3D9A")
+  strip_style <- ggh4x::strip_nested(
+    background_x = ggh4x::elem_list_rect(
+      fill = c(
+        unname(context_colours[c("in vivo", "in vitro")]),
+        unname(family_colours[rep(displayed_families, 2L)])
+      ),
+      colour = "#BEBEBE", linewidth = 0.25
+    ),
+    by_layer_x = FALSE
   )
   ggplot2::ggplot() +
     ggplot2::geom_tile(
       data = surface,
-      ggplot2::aes(O2_pct, log10_effective_p_misseg,
-                   fill = dominant_mean_ploidy_median)
+      ggplot2::aes(O2_pct, log10_p_misseg,
+                   fill = dominant_mean_ploidy_mean)
     ) +
     ggplot2::geom_path(
       data = hatch,
-      ggplot2::aes(O2_pct, log10_effective_p_misseg,
+      ggplot2::aes(O2_pct, log10_p_misseg,
                    group = interaction(model_context, display_label, hatch_group)),
-      colour = "#9B59B6", linewidth = 0.17, alpha = 0.70
+      colour = "white", linewidth = 0.17, alpha = 0.70,
+      show.legend = FALSE
     ) +
     ggplot2::geom_contour(
       data = surface,
-      ggplot2::aes(O2_pct, log10_effective_p_misseg,
+      ggplot2::aes(O2_pct, log10_p_misseg,
                    z = proportion_spectral_gap_below_0p005),
-      breaks = 0.5, colour = "#9B59B6", linetype = "dotted",
-      linewidth = 0.30
+      breaks = 0.5, colour = "white", linetype = "dotted", linewidth = 0.30,
+      show.legend = FALSE
     ) +
     ggplot2::geom_point(
-      data = low, ggplot2::aes(O2_pct, log10_effective_p_misseg),
+      data = low, ggplot2::aes(O2_pct, log10_p_misseg),
       shape = 4, size = 0.32, stroke = 0.22, colour = "white"
-    ) +
-    ggplot2::geom_ribbon(
-      data = trajectory,
-      ggplot2::aes(O2_pct, ymin = log10_p_q10, ymax = log10_p_q90),
-      inherit.aes = FALSE, fill = "#E0E0E0", alpha = 0.62
     ) +
     ggplot2::geom_path(
       data = trajectory,
-      ggplot2::aes(O2_pct, log10_p_median),
-      inherit.aes = FALSE, colour = "#111111", linewidth = 0.48
+      ggplot2::aes(
+        O2_pct, log10_p_mean,
+        colour = "Fitted p_misseg mean",
+        linetype = "Fitted p_misseg mean"
+      ),
+      inherit.aes = FALSE, linewidth = 0.48
     ) +
-    ggplot2::facet_grid(model_context ~ display_label, switch = "y") +
+    ggplot2::geom_path(
+      data = trajectory,
+      ggplot2::aes(
+        O2_pct, log10_population_p_mis_mean,
+        colour = "Population-averaged p_mis(N,O2) mean",
+        linetype = "Population-averaged p_mis(N,O2) mean"
+      ),
+      inherit.aes = FALSE, linewidth = 0.48
+    ) +
+    ggh4x::facet_nested(
+      cols = ggplot2::vars(model_context, display_label),
+      strip = strip_style
+    ) +
     ggplot2::scale_fill_gradientn(
       colours = c("#2166AC", "#FFFFBF", "#B2182B"),
       trans = "log10", limits = fill_limits,
       breaks = c(1, 1.5, 2, 3, 4, 6),
-      name = "Median dominant\nmean ploidy\n(log colors)"
+      name = "Mean steady-state\nploidy\n(log colors)"
+    ) +
+    ggplot2::scale_colour_manual(
+      name = overlay_legend_title,
+      breaks = overlay_breaks,
+      labels = overlay_labels,
+      values = stats::setNames(
+        c("#111111", "#111111"), overlay_breaks
+      )
+    ) +
+    ggplot2::scale_linetype_manual(
+      name = overlay_legend_title,
+      breaks = overlay_breaks,
+      labels = overlay_labels,
+      values = stats::setNames(c("solid", "dashed"), overlay_breaks)
     ) +
     ggplot2::scale_y_continuous(
       breaks = log10(c(0.005, 0.01, 0.05, 0.1, 0.5)),
@@ -1552,19 +1619,27 @@ f6x_main_surface_plot <- function(paths) {
     ) +
     ggplot2::coord_cartesian(ylim = log10(c(0.005, 0.5)), expand = FALSE) +
     ggplot2::labs(
-      title = "A. Oxygen-CIN-ploidy response surfaces",
-      subtitle = paste0(
-        "Tiles: seed-weighted q10 median; black line and gray band: fitted median and 10-90% trajectory; ",
-        "purple hatching: weak spectral gap"
+      title = "A. Oxygen-p_misseg-ploidy response surfaces",
+      subtitle = "Tiles show the seed-weighted q10 mean steady-state ploidy",
+      x = "Fixed oxygen (%)", y = expression(p[misseg])
+    ) +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(
+        order = 2L, nrow = 1L, byrow = TRUE, title.position = "left"
       ),
-      x = "Fixed oxygen (%)", y = expression("Effective "*p[miss]*" probability")
+      linetype = ggplot2::guide_legend(
+        order = 2L, nrow = 1L, byrow = TRUE, title.position = "left"
+      ),
+      fill = ggplot2::guide_colourbar(order = 1L)
     ) +
     ggplot2::theme_classic(base_size = 8.3, base_family = "Helvetica") +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", size = 10.5),
       plot.subtitle = ggplot2::element_text(size = 7.2, colour = "#555555"),
       strip.text = ggplot2::element_text(face = "bold", size = 8.5),
-      strip.placement = "outside", panel.spacing = grid::unit(2.2, "mm"),
+      strip.placement = "outside",
+      panel.spacing.x = grid::unit(c(2.2, 7.0, 2.2), "mm"),
+      panel.spacing.y = grid::unit(2.2, "mm"),
       aspect.ratio = 1,
       legend.position = "right", legend.title = ggplot2::element_text(size = 7.2),
       legend.text = ggplot2::element_text(size = 6.8)
@@ -1573,10 +1648,10 @@ f6x_main_surface_plot <- function(paths) {
 
 f6x_main_inverse_plot <- function(paths) {
   f6r_require_packages(c("ggplot2", "isoband", "scales"))
-  vivo <- f6r_read_tsv(file.path(paths$figure6, "figure6_inverse_response_summary.tsv"))
-  vitro <- f6r_read_tsv(file.path(paths$figure6, "figure6_invitro_inverse_response_summary.tsv"))
-  vivo_dense <- f6r_read_tsv(file.path(paths$figure6, "figure6d_fixed_p_curve_family.tsv"))
-  vitro_dense <- f6r_read_tsv(file.path(paths$figure6, "figure6_invitro_fixed_p_curve_family.tsv"))
+  vivo <- f6r_read_tsv(file.path(paths$figure6, "figure7_inverse_response_summary.tsv"))
+  vitro <- f6r_read_tsv(file.path(paths$figure6, "figure7_invitro_inverse_response_summary.tsv"))
+  vivo_dense <- f6r_read_tsv(file.path(paths$figure6, "figure7d_fixed_p_curve_family.tsv"))
+  vitro_dense <- f6r_read_tsv(file.path(paths$figure6, "figure7_invitro_fixed_p_curve_family.tsv"))
   display <- f6r_display_pair_manifest(c(vivo$pair_id, vitro$pair_id), "B")
   inverse <- f6x_rbind_fill(
     f6x_add_display_fields(vivo, display, "in vivo"),
@@ -1588,21 +1663,21 @@ f6x_main_inverse_plot <- function(paths) {
   )
   highlighted_values <- c(0.01, 0.10, 0.20, 0.30)
   highlighted <- dense[vapply(
-    dense$effective_p_misseg,
+    dense$p_misseg,
     function(x) any(abs(x - highlighted_values) < 1e-12), logical(1L)
   ), ]
   highlighted$reference_label <- factor(
-    sprintf("%.2f", highlighted$effective_p_misseg),
+    sprintf("%.2f", highlighted$p_misseg),
     levels = c("0.01", "0.10", "0.20", "0.30")
   )
   mean_curve <- stats::aggregate(
-    dominant_mean_ploidy_median ~ model_context + display_label + pair_id + O2_pct,
+    dominant_mean_ploidy_mean ~ model_context + display_label + pair_id + O2_pct,
     dense, mean
   )
   mean_curve$reference_label <- factor(
-    "Mean across 496 fixed p_miss,eff values",
+    "Mean across 496 fixed p_misseg values",
     levels = c("0.01", "0.10", "0.20", "0.30",
-               "Mean across 496 fixed p_miss,eff values")
+               "Mean across 496 fixed p_misseg values")
   )
   hatch_rows <- list()
   for (ctx in levels(inverse$model_context)) for (label in levels(inverse$display_label)) {
@@ -1624,7 +1699,7 @@ f6x_main_inverse_plot <- function(paths) {
   )
   reference_levels <- c(
     "0.01", "0.10", "0.20", "0.30",
-    "Mean across 496 fixed p_miss,eff values"
+    "Mean across 496 fixed p_misseg values"
   )
   ggplot2::ggplot() +
     ggplot2::geom_tile(
@@ -1648,13 +1723,13 @@ f6x_main_inverse_plot <- function(paths) {
     ) +
     ggplot2::geom_path(
       data = highlighted,
-      ggplot2::aes(O2_pct, dominant_mean_ploidy_median,
+      ggplot2::aes(O2_pct, dominant_mean_ploidy_mean,
                    group = reference_label, linetype = reference_label),
       colour = "#111111", linewidth = 0.50
     ) +
     ggplot2::geom_path(
       data = mean_curve,
-      ggplot2::aes(O2_pct, dominant_mean_ploidy_median,
+      ggplot2::aes(O2_pct, dominant_mean_ploidy_mean,
                    group = reference_label, linetype = reference_label),
       colour = "#D62728", linewidth = 0.68
     ) +
@@ -1662,22 +1737,22 @@ f6x_main_inverse_plot <- function(paths) {
     ggplot2::scale_fill_viridis_c(
       option = "D", trans = "log10", limits = c(0.005, 0.5),
       breaks = c(0.005, 0.01, 0.05, 0.10, 0.50), na.value = "#EFEFEF",
-      name = "Median required\np_miss,eff\n(log colors)"
+      name = "Mean required\np_misseg\n(log colors)"
     ) +
     ggplot2::scale_linetype_manual(
       values = c(
-        "0.01" = "solid", "0.10" = "F28282",
+        "0.01" = "solid", "0.10" = "dashed",
         "0.20" = "dotdash", "0.30" = "dotted",
-        "Mean across 496 fixed p_miss,eff values" = "solid"
+        "Mean across 496 fixed p_misseg values" = "solid"
       ), breaks = reference_levels,
       labels = c(
-        "p_miss,eff = 0.01", "p_miss,eff = 0.10",
-        "p_miss,eff = 0.20", "p_miss,eff = 0.30",
-        "Mean across 496 fixed p_miss,eff values"
+        "p_misseg = 0.01", "p_misseg = 0.10",
+        "p_misseg = 0.20", "p_misseg = 0.30",
+        "Mean across 496 fixed p_misseg values"
       ), name = "Reference curves"
     ) +
     ggplot2::labs(
-      title = "B. Effective missegregation required for target ploidy",
+      title = "B. p_misseg required for target ploidy",
       subtitle = "Gray: no stable unique inverse; purple hatching: multiple inverse solutions",
       x = "Fixed oxygen (%)", y = "Target dominant mean ploidy"
     ) +
@@ -1702,11 +1777,11 @@ f6x_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   p_a <- f6x_main_surface_plot(paths)
   p_b <- f6x_main_inverse_plot(paths)
   panel_a <- f6r_save_plot(
-    p_a, file.path(panel_dir, "figure6a_invivo_invitro_response_surfaces"),
+    p_a, file.path(panel_dir, "figure7a_invivo_invitro_response_surfaces"),
     width = 11.5, height = 9.25
   )
   panel_b <- f6r_save_plot(
-    p_b, file.path(panel_dir, "figure6b_invivo_invitro_inverse_response"),
+    p_b, file.path(panel_dir, "figure7b_invivo_invitro_inverse_response"),
     width = 11.5, height = 9.25
   )
   combined <- p_a / p_b + patchwork::plot_layout(heights = c(1, 1))
@@ -1733,16 +1808,18 @@ f6x_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
       f6r_md5(output[["png"]]) == f6r_md5(published[["manuscript_png"]]),
       f6r_md5(output[["pdf"]]) == f6r_md5(published[["manuscript_pdf"]])
     ),
-    expected = c(2, 2, 6, 3450, 5550, 1, 1, TRUE, TRUE),
+    expected = c(
+      2, 2, f6r_family_count(), 3450, 5550, 1, 1, TRUE, TRUE
+    ),
     stringsAsFactors = FALSE
   )
   validation$passed <- as.character(validation$observed) == as.character(validation$expected)
   validation_path <- f6r_write_tsv(
-    validation, file.path(paths$figure6, "figure6_context_validation.tsv")
+    validation, file.path(paths$figure6, "figure7_context_validation.tsv")
   )
   if (!all(validation$passed)) stop("Context-paired Figure 6 validation failed.")
   f6x_refresh_output_manifest(file.path(
-    paths$figure6, "figure6_output_manifest.tsv"
+    paths$figure6, "figure7_output_manifest.tsv"
   ))
   invisible(list(
     output = output, published = published, validation = validation,
@@ -1750,7 +1827,7 @@ f6x_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   ))
 }
 
-f6x_draw_supplement_6_2 <- function(
+f6x_draw_supplement_7_2 <- function(
     workspace_root = f6r_find_workspace_root()
 ) {
   f6r_require_packages(c("ggplot2", "patchwork", "scales", "magick"))
@@ -1947,7 +2024,7 @@ f6x_draw_supplement_6_2 <- function(
   f6r_write_tsv(validation, file.path(paths$supp6_2, "figure_validation.tsv"))
   if (!all(validation$passed)) stop("Supplementary Figure 6-2 validation failed.")
   f6x_refresh_output_manifest(file.path(
-    paths$supp6_2, "supp_figure6-2_output_manifest.tsv"
+    paths$supp6_2, "supp_figure7-2_output_manifest.tsv"
   ))
   invisible(list(output = output, published = published, validation = validation))
 }

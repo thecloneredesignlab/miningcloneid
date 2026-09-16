@@ -7,14 +7,14 @@
 options(stringsAsFactors = FALSE, warn = 1)
 
 s64_o2_values <- function() seq(0, 20, by = 0.1)
-s64_p_values <- function() f6r_figure6d_p_values()
+s64_p_values <- function() f6r_figure7d_p_values()
 s64_cluster_labels <- function() f6r_family_levels()
 s64_pair_labels <- s64_cluster_labels
-s64_profile <- function() "invitro_extended_o2_0to20_step0p1_v1"
+s64_profile <- function() "figure7_fixed_pmisseg_invitro_extended_o2_0to20_step0p1_v1"
 
 s64_endpoint_manifest <- function(paths) {
   manifest_path <- file.path(
-    paths$base$figure6, "figure6_invitro_dense_endpoint_manifest.tsv"
+    paths$base$figure6, "figure7_invitro_dense_endpoint_manifest.tsv"
   )
   endpoints <- f6r_read_tsv(manifest_path)
   endpoints <- endpoints[
@@ -107,7 +107,7 @@ s64_write_provenance <- function(paths) {
   )
   f6r_write_tsv(
     provenance,
-    file.path(paths$data, "supp_figure6-4_source_provenance.tsv")
+    file.path(paths$data, "supp_figure7-4_source_provenance.tsv")
   )
 }
 
@@ -367,11 +367,11 @@ s64_extended_endpoint_cache <- function(
   base_cache_md5 <- f6r_md5(base_cache_path)
   f6r_require_files(base_cache_path, "canonical 0--5 in-vitro endpoint cache")
   base <- readRDS(base_cache_path)
-  p_values <- sort(unique(base$surface$effective_p_misseg))
+  p_values <- sort(unique(base$surface$p_misseg))
   expected_p <- if (p_profile == "standard") 60L else 496L
   expected_rows <- length(o2_values) * expected_p
   if (length(p_values) != expected_p) {
-    stop("Unexpected ", p_profile, " p_miss,eff grid in ", base_cache_path)
+    stop("Unexpected ", p_profile, " p_misseg grid in ", base_cache_path)
   }
   if (file.exists(cache_path) && !isTRUE(rebuild)) {
     cached <- tryCatch(readRDS(cache_path), error = function(e) NULL)
@@ -406,8 +406,8 @@ s64_extended_endpoint_cache <- function(
   )
   base_surface <- base$surface[base_keep, , drop = FALSE]
   required_columns <- c(
-    "O2_pct", "effective_p_misseg", "status",
-    "actual_effective_p_misseg", "dominant_mean_ploidy",
+    "O2_pct", "p_misseg", "forced_p_misseg", "status",
+    "population_average_p_misseg", "dominant_mean_ploidy",
     "spectral_gap", "dominant_growth_rate"
   )
   if (!all(required_columns %in% names(base_surface)) ||
@@ -416,7 +416,7 @@ s64_extended_endpoint_cache <- function(
   }
   base_surface <- base_surface[, required_columns, drop = FALSE]
   extension_rows <- lapply(p_values, function(p_fixed) {
-    forced <- response_force_effective_p_misseg(
+    forced <- figure6_force_p_misseg(
       prepared$run_params, p_fixed
     )
     rows <- lapply(extended_o2, function(o2) {
@@ -426,9 +426,10 @@ s64_extended_endpoint_cache <- function(
       )
       data.frame(
         O2_pct = as.numeric(result$O2_pct[[1L]]),
-        effective_p_misseg = p_fixed,
+        p_misseg = p_fixed,
+        forced_p_misseg = as.numeric(forced$p_misseg),
         status = as.character(result$status[[1L]]),
-        actual_effective_p_misseg =
+        population_average_p_misseg =
           as.numeric(result$population_average_p_misseg[[1L]]),
         dominant_mean_ploidy =
           as.numeric(result$dominant_mean_ploidy[[1L]]),
@@ -443,14 +444,15 @@ s64_extended_endpoint_cache <- function(
   extension <- do.call(rbind, extension_rows)
   surface <- rbind(base_surface, extension)
   surface <- surface[order(
-    surface$effective_p_misseg, surface$O2_pct
+    surface$p_misseg, surface$O2_pct
   ), , drop = FALSE]
   surface$model_context <- "in vitro"
   trajectory <- NULL
   if (p_profile == "standard") {
     trajectory_columns <- c(
       "O2_pct", "status", "population_average_p_misseg",
-      "dominant_mean_ploidy", "spectral_gap", "dominant_growth_rate"
+      "dominant_mean_ploidy", "spectral_gap", "dominant_growth_rate",
+      "fitted_p_misseg", "fitted_p_mis_base", "fitted_k_o_mis"
     )
     if (is.null(base$trajectory) ||
         !all(trajectory_columns %in% names(base$trajectory))) {
@@ -475,6 +477,9 @@ s64_extended_endpoint_cache <- function(
         spectral_gap = as.numeric(result$spectral_gap[[1L]]),
         dominant_growth_rate =
           as.numeric(result$dominant_growth_rate[[1L]]),
+        fitted_p_misseg = as.numeric(prepared$run_params$p_misseg),
+        fitted_p_mis_base = as.numeric(prepared$run_params$p_mis_base),
+        fitted_k_o_mis = as.numeric(prepared$run_params$k_o_mis),
         stringsAsFactors = FALSE
       )
     }))
@@ -485,11 +490,10 @@ s64_extended_endpoint_cache <- function(
   oxygen_error <- max(abs(
     surface$O2_pct - rep(o2_values, times = expected_p)
   ))
-  p_error <- max(abs(
-    surface$actual_effective_p_misseg - surface$effective_p_misseg
-  ), na.rm = TRUE)
+  p_error <- max(abs(surface$forced_p_misseg - surface$p_misseg), na.rm = TRUE)
+  formula_qc <- figure6_p_misseg_formula_qc(prepared$run_params, p_values)
   finite <- all(is.finite(as.matrix(surface[, c(
-    "actual_effective_p_misseg", "dominant_mean_ploidy",
+    "population_average_p_misseg", "dominant_mean_ploidy",
     "spectral_gap", "dominant_growth_rate"
   )])))
   trajectory_valid <- p_profile != "standard" ||
@@ -499,7 +503,8 @@ s64_extended_endpoint_cache <- function(
          "spectral_gap", "dominant_growth_rate"
        )]))))
   valid <- nrow(surface) == expected_rows && all(surface$status == "ok") &&
-    finite && oxygen_error <= 1e-12 && p_error <= 1e-8 && trajectory_valid
+    finite && oxygen_error <= 1e-12 && p_error <= 1e-8 &&
+    isTRUE(formula_qc$passed) && trajectory_valid
   qc <- data.frame(
     display_label = metadata$display_label,
     pair_label = metadata$pair_label, pair_id = metadata$pair_id,
@@ -508,13 +513,14 @@ s64_extended_endpoint_cache <- function(
     representative_seed_number = seed_number,
     endpoint_multiplicity_q10 = metadata$endpoint_multiplicity_q10,
     p_profile = p_profile, n_fixed_p = expected_p,
+    maximum_direct_formula_error = formula_qc$maximum_direct_formula_error,
     n_o2_per_fixed_p = length(o2_values), n_surface = nrow(surface),
     minimum_o2 = min(surface$O2_pct), maximum_o2 = max(surface$O2_pct),
     oxygen_interval = unique(round(diff(sort(unique(surface$O2_pct))), 12))[[1L]],
     maximum_requested_o2_error = oxygen_error,
     all_status_ok = all(surface$status == "ok"),
     all_numeric_outputs_finite = finite,
-    max_abs_actual_minus_requested_p_misseg = p_error,
+    max_abs_forced_minus_requested_p_misseg = p_error,
     trajectory_qc_pass = trajectory_valid, operator_qc_pass = valid,
     cache_path = normalizePath(cache_path, mustWork = FALSE),
     stringsAsFactors = FALSE
@@ -532,7 +538,7 @@ s64_extended_endpoint_cache <- function(
         model_signature = model_signature,
         parameter_source_md5 = parameter_source_md5,
         base_cache_md5 = base_cache_md5,
-        oxygen_values = o2_values, effective_p_misseg_values = p_values,
+        oxygen_values = o2_values, p_misseg_values = p_values,
         interpretation = paste0(
           "O2 <= 5 copied from the canonical validated endpoint cache; ",
           "O2 > 5 calculated with o2_S0_upper_bound = 20."
@@ -588,6 +594,7 @@ s64_summarize_joint_trajectory <- function(manifest, cache_paths) {
       n_unique_parameter_endpoint = nrow(metadata), stringsAsFactors = FALSE
     )
     for (field in c(
+      "fitted_p_misseg", "fitted_p_mis_base", "fitted_k_o_mis",
       "population_average_p_misseg", "dominant_mean_ploidy",
       "spectral_gap", "dominant_growth_rate"
     )) {
@@ -634,7 +641,7 @@ s64_compute_joint_profile <- function(
     if (p_profile == "standard") {
       "multiseed_endpoint_cache_invitro"
     } else {
-      "figure6_invitro_dense_endpoint_cache"
+      "figure7_invitro_dense_endpoint_cache"
     }
   )
   cache_paths <- stats::setNames(
@@ -682,7 +689,7 @@ s64_compute_joint_profile <- function(
   )
   qc <- do.call(rbind, result)
   if (!all(qc$operator_qc_pass)) stop("Extended joint cache QC failed.")
-  summary <- f6r_figure6d_summarize_dense_caches(
+  summary <- f6r_figure7d_summarize_dense_caches(
     analysis_paths, manifest, cache_paths
   )
   summary$model_context <- "in vitro"
@@ -734,7 +741,7 @@ s64_profile_cache_complete <- function(paths, p_profile) {
     if (p_profile == "standard") {
       "multiseed_endpoint_cache_invitro"
     } else {
-      "figure6_invitro_dense_endpoint_cache"
+      "figure7_invitro_dense_endpoint_cache"
     }
   )
   all(vapply(seq_along(objects), function(index) {
@@ -767,6 +774,78 @@ s64_run_endpoint_workers <- function(
   f6r_require_files(worker, "Supplementary Figure 6-4 endpoint worker")
   endpoint_count <- nrow(s64_endpoint_manifest(paths))
   workers <- max(1L, min(as.integer(n_core), endpoint_count))
+  requested_plan <- tolower(trimws(Sys.getenv(
+    "FIGURE6_FUTURE_PLAN", unset = "multisession"
+  )))
+  if (identical(requested_plan, "multicore")) {
+    # On the Linux compute node, load the external model once and fork from
+    # that process.  Starting one independent R session per endpoint makes all
+    # workers contend for the external sourceCpp lock and can time out before
+    # numerical evaluation begins.
+    f6r_load_response_engine(paths$base)
+    bundle <- s64_objective_bundle_from_frozen(paths)
+    endpoints <- s64_endpoint_manifest(paths)
+    contexts <- lapply(
+      unique(endpoints$pair_id), f6r_pair_model_context,
+      selected = bundle$selected, paths = paths$base
+    )
+    names(contexts) <- unique(endpoints$pair_id)
+    base_root <- file.path(
+      paths$base$figure6,
+      if (p_profile == "standard") {
+        "multiseed_endpoint_cache_invitro"
+      } else {
+        "figure7_invitro_dense_endpoint_cache"
+      }
+    )
+    cache_root <- if (p_profile == "standard") {
+      paths$joint_cache
+    } else {
+      paths$dense_cache
+    }
+    model_signature <- s64_model_signature(paths)
+    parameter_source <- bundle$paths[["parameters_invitro"]]
+    compute_one <- function(index) {
+      z <- endpoints[index, , drop = FALSE]
+      base_cache_path <- file.path(
+        base_root, z$pair_label[[1L]],
+        paste0("endpoint_", z$parameter_endpoint_group[[1L]], ".rds")
+      )
+      cache_path <- file.path(
+        cache_root, z$pair_label[[1L]],
+        paste0("endpoint_", z$parameter_endpoint_group[[1L]], ".rds")
+      )
+      qc <- s64_extended_endpoint_cache(
+        metadata = z, parameters = bundle$parameters_invitro,
+        context = contexts[[z$pair_id[[1L]]]],
+        base_cache_path = base_cache_path, cache_path = cache_path,
+        parameter_source = parameter_source, p_profile = p_profile,
+        model_signature = model_signature, rebuild = rebuild
+      )
+      if (!isTRUE(qc$operator_qc_pass[[1L]])) {
+        stop("Endpoint QC failed for index ", index, ".")
+      }
+      message(
+        p_profile, " endpoint ", index, "/", endpoint_count,
+        " complete: ", z$display_label[[1L]], " ",
+        z$parameter_endpoint_group[[1L]]
+      )
+      qc
+    }
+    message(
+      "Launching ", workers, " fork workers for extended ",
+      p_profile, " endpoints."
+    )
+    results <- f6r_resilient_lapply(
+      seq_len(endpoint_count), compute_one, n_core = workers
+    )
+    if (any(vapply(
+      results, function(x) inherits(x, "try-error"), logical(1L)
+    )) || !s64_profile_cache_complete(paths, p_profile)) {
+      stop("Forked extended ", p_profile, " endpoint workers failed QC.")
+    }
+    return(invisible(TRUE))
+  }
   command <- paste(
     "seq 1", endpoint_count, "| xargs -P", workers, "-I{}",
     shQuote(file.path(R.home("bin"), "Rscript")), shQuote(worker),
@@ -841,10 +920,10 @@ s64_compute_weak_gap <- function(paths, standard) {
       standard$cache_paths[metadata$parameter_endpoint_group], readRDS
     )
     objects <- Map(
-      f6x_si6_rank1_object, raw, metadata$parameter_endpoint_group
+      f6x_si7_rank1_object, raw, metadata$parameter_endpoint_group
     )
-    si6_summarize_weak_gap_pair(
-      metadata, objects, figure6_surface = standard$summary
+    si7_summarize_weak_gap_pair(
+      metadata, objects, figure7_surface = standard$summary
     )
   })
   grid <- do.call(rbind, rows)
@@ -891,7 +970,7 @@ s64_overlap_metric <- function(new, old, keys, values, label) {
   )
 }
 
-s64_validate <- function(paths, separate, standard, dense, inverse, weak_gap) {
+s64_validate <- function(paths, separate, standard, weak_gap) {
   base <- paths$base$figure6
   original_separate <- f6r_read_tsv(file.path(
     base, "response_class_invitro_raw_curves.tsv"
@@ -911,25 +990,6 @@ s64_validate <- function(paths, separate, standard, dense, inverse, weak_gap) {
         function(x) any(abs(x - seq(0, 5, by = 0.1)) <= 1e-12), logical(1L)
       ), , drop = FALSE
   ]
-  original_dense <- f6r_read_tsv(file.path(
-    base, "figure6_invitro_fixed_p_curve_family.tsv"
-  ))
-  original_dense <- original_dense[
-    vapply(
-      original_dense$O2_pct,
-      function(x) any(abs(x - seq(0, 5, by = 0.1)) <= 1e-12), logical(1L)
-    ), , drop = FALSE
-  ]
-  original_inverse <- f6r_read_tsv(file.path(
-    base, "figure6_invitro_inverse_response_summary.tsv"
-  ))
-  original_inverse <- original_inverse[
-    vapply(
-      original_inverse$O2_pct,
-      function(x) any(abs(x - seq(0, 5, by = 0.1)) <= 1e-12), logical(1L)
-    ), , drop = FALSE
-  ]
-
   overlap <- rbind(
     s64_overlap_metric(
       separate$curves, original_separate,
@@ -939,22 +999,9 @@ s64_validate <- function(paths, separate, standard, dense, inverse, weak_gap) {
     ),
     s64_overlap_metric(
       standard$summary, original_standard,
-      c("pair_id", "O2_pct", "effective_p_misseg"),
+      c("pair_id", "O2_pct", "p_misseg"),
       c("dominant_mean_ploidy_median", "spectral_gap_median"),
       "joint 60-level response surface"
-    ),
-    s64_overlap_metric(
-      dense$summary, original_dense,
-      c("pair_id", "O2_pct", "effective_p_misseg"),
-      c("dominant_mean_ploidy_median", "spectral_gap_median"),
-      "joint 496-level dense surface"
-    ),
-    s64_overlap_metric(
-      inverse$summary, original_inverse,
-      c("pair_id", "O2_pct", "target_ploidy"),
-      c("fraction_any_solution", "fraction_unique_solution",
-        "fraction_multiple_solutions", "p_display"),
-      "inverse response"
     )
   )
   overlap_path <- f6r_write_tsv(
@@ -970,9 +1017,8 @@ s64_validate <- function(paths, separate, standard, dense, inverse, weak_gap) {
       "oxygen_grid_count", "oxygen_grid_range", "oxygen_grid_interval",
       "separate_seed_count", "separate_row_count", "separate_operator_qc",
       "standard_cluster_set", "standard_row_count", "standard_q10_seed_weights",
-      "standard_operator_qc", "dense_cluster_set", "dense_row_count",
-      "dense_q10_seed_weights", "dense_operator_qc", "inverse_row_count",
-      "weak_gap_cluster_set", "weak_gap_row_count", "overlap_reproduction"
+      "standard_operator_qc", "weak_gap_cluster_set", "weak_gap_row_count",
+      "overlap_reproduction"
     ),
     observed = c(
       length(grid), paste(range(grid), collapse = ","),
@@ -984,29 +1030,20 @@ s64_validate <- function(paths, separate, standard, dense, inverse, weak_gap) {
         standard$manifest$endpoints$endpoint_multiplicity_q10,
         standard$manifest$endpoints$display_label, sum
       ), collapse = ","),
-      all(standard$qc$operator_qc_pass), cluster_check(dense$summary),
-      nrow(dense$summary),
-      paste(tapply(
-        dense$manifest$endpoints$endpoint_multiplicity_q10,
-        dense$manifest$endpoints$display_label, sum
-      ), collapse = ","),
-      all(dense$qc$operator_qc_pass), nrow(inverse$summary),
-      cluster_check(weak_gap$grid), nrow(weak_gap$grid), all(overlap$passed)
+      all(standard$qc$operator_qc_pass), cluster_check(weak_gap$grid),
+      nrow(weak_gap$grid), all(overlap$passed)
     ),
     expected = c(
       201, "0,20", "0.1", 500, 500L * 201L, TRUE, TRUE,
       f6r_family_count() * 60L * 201L,
       paste(rep(50L, f6r_family_count()), collapse = ","), TRUE, TRUE,
-      f6r_family_count() * 496L * 201L,
-      paste(rep(50L, f6r_family_count()), collapse = ","), TRUE,
-      f6r_family_count() * 201L * 241L, TRUE,
       f6r_family_count() * 60L * 201L, TRUE
     ),
     stringsAsFactors = FALSE
   )
   checks$passed <- as.character(checks$observed) == as.character(checks$expected)
   validation_path <- f6r_write_tsv(
-    checks, file.path(paths$data, "supp_figure6-4_validation.tsv")
+    checks, file.path(paths$data, "supp_figure7-4_validation.tsv")
   )
   if (!all(checks$passed) || !all(overlap$passed)) {
     stop(
@@ -1029,7 +1066,7 @@ s64_write_data_manifest <- function(paths, named_paths) {
     stringsAsFactors = FALSE
   )
   f6r_write_tsv(
-    manifest, file.path(paths$data, "supp_figure6-4_data_manifest.tsv")
+    manifest, file.path(paths$data, "supp_figure7-4_data_manifest.tsv")
   )
 }
 
@@ -1037,6 +1074,9 @@ s64_data <- function(
     workspace_root = f6r_find_workspace_root(), n_core = 8L,
     rebuild = FALSE
 ) {
+  # RC1 manuscript scope: retain separate-fit response classes, the joint
+  # steady-state surface, and weak-gap diagnostics. Legacy dense-range and
+  # inverse-response helpers remain below for provenance but are not called.
   Sys.setenv(
     KMP_USE_SHM = "0", OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1",
     MKL_NUM_THREADS = "1", VECLIB_MAXIMUM_THREADS = "1"
@@ -1058,33 +1098,16 @@ s64_data <- function(
     paths, objective_bundle, p_profile = "standard",
     n_core = 1L, rebuild = FALSE
   )
-  message("Supplementary Figure 6-4: q10 496-level dense surfaces")
-  s64_run_endpoint_workers(
-    paths, "dense", n_core = n_core, rebuild = rebuild
-  )
-  dense <- s64_compute_joint_profile(
-    paths, objective_bundle, p_profile = "dense",
-    n_core = 1L, rebuild = FALSE
-  )
-  message("Supplementary Figure 6-4: inverse response")
-  inverse <- f6r_inverse_panel_data(
-    s64_inverse_paths(paths), rebuild = rebuild, n_core = n_core,
-    dense_qc_path = dense$paths[["qc"]],
-    output_prefix = "joint_invitro_extended_o2",
-    model_context = "in vitro"
-  )
   message("Supplementary Figure 6-4: weak-gap ensemble diagnostics")
   weak_gap <- s64_compute_weak_gap(paths, standard)
-  validation <- s64_validate(
-    paths, separate, standard, dense, inverse, weak_gap
-  )
+  validation <- s64_validate(paths, separate, standard, weak_gap)
   manifest_path <- s64_write_data_manifest(paths, c(
     provenance = provenance_path, separate$paths, standard$paths,
-    dense$paths, inverse$paths, weak_gap$paths, validation$paths
+    weak_gap$paths, validation$paths
   ))
   invisible(list(
-    paths = paths, separate = separate, standard = standard, dense = dense,
-    inverse = inverse, weak_gap = weak_gap, validation = validation,
+    paths = paths, separate = separate, standard = standard,
+    weak_gap = weak_gap, validation = validation,
     manifest = manifest_path
   ))
 }
@@ -1203,7 +1226,7 @@ s64_panel_a <- function(paths) {
 }
 
 s64_standard_hatch <- function(surface) {
-  surface$log10_effective_p_misseg <- log10(surface$effective_p_misseg)
+  surface$log10_p_misseg <- log10(surface$p_misseg)
   rows <- lapply(s64_cluster_labels(), function(label) {
     z <- surface[surface$display_label == label, , drop = FALSE]
     h <- f6r_weak_gap_hatch_data(z)
@@ -1213,7 +1236,7 @@ s64_standard_hatch <- function(surface) {
   })
   rows <- Filter(Negate(is.null), rows)
   out <- if (length(rows)) do.call(rbind, rows) else data.frame(
-    O2_pct = numeric(), log10_effective_p_misseg = numeric(),
+    O2_pct = numeric(), log10_p_misseg = numeric(),
     hatch_group = integer(), display_label = character(),
     stringsAsFactors = FALSE
   )
@@ -1234,14 +1257,12 @@ s64_panel_b <- function(paths) {
   trajectory$display_label <- factor(
     trajectory$display_label, levels = s64_cluster_labels()
   )
-  surface$log10_effective_p_misseg <- log10(surface$effective_p_misseg)
+  surface$log10_p_misseg <- log10(surface$p_misseg)
   surface <- s64_add_o2_index(surface)
   trajectory <- s64_add_o2_index(trajectory)
-  trajectory$log10_p_median <- log10(
-    trajectory$population_average_p_misseg_median
-  )
-  trajectory$log10_p_q10 <- log10(trajectory$population_average_p_misseg_q10)
-  trajectory$log10_p_q90 <- log10(trajectory$population_average_p_misseg_q90)
+  trajectory$log10_p_median <- log10(trajectory$fitted_p_misseg_median)
+  trajectory$log10_p_q10 <- log10(trajectory$fitted_p_misseg_q10)
+  trajectory$log10_p_q90 <- log10(trajectory$fitted_p_misseg_q90)
   hatch <- s64_standard_hatch(surface)
   hatch <- s64_add_o2_index(hatch)
   fill_limits <- range(c(surface$dominant_mean_ploidy_median, 1, 7), na.rm = TRUE)
@@ -1249,14 +1270,14 @@ s64_panel_b <- function(paths) {
     ggplot2::geom_raster(
       data = surface,
       ggplot2::aes(
-        O2_index, log10_effective_p_misseg,
+        O2_index, log10_p_misseg,
         fill = dominant_mean_ploidy_median
       )
     ) +
     ggplot2::geom_path(
       data = hatch,
       ggplot2::aes(
-        O2_index, log10_effective_p_misseg, group = hatch_group
+        O2_index, log10_p_misseg, group = hatch_group
       ),
       colour = "#9B59B6", linewidth = 0.16, alpha = 0.72
     ) +
@@ -1287,133 +1308,19 @@ s64_panel_b <- function(paths) {
     ggplot2::labs(
       title = "B. Oxygen-missegregation-ploidy response surface",
       subtitle = paste0(
-        "q10 ensemble; purple, weak-gap region; black and gray, fitted p_miss,eff median and 10-90%"
+        "q10 ensemble; purple, weak-gap region; black and gray, fitted p_misseg median and 10-90%"
       ),
-      x = "Fixed oxygen (%)", y = expression("Effective "*p[miss,eff])
+      x = "Fixed oxygen (%)", y = expression(p[misseg])
     ) +
-    s64_theme()
-}
-
-s64_inverse_hatch <- function(inverse) {
-  rows <- lapply(s64_cluster_labels(), function(label) {
-    z <- inverse[inverse$display_label == label, , drop = FALSE]
-    h <- f6r_inverse_multivalue_hatch_data(z)
-    if (!nrow(h)) return(NULL)
-    h$display_label <- label
-    h
-  })
-  rows <- Filter(Negate(is.null), rows)
-  out <- if (length(rows)) do.call(rbind, rows) else data.frame(
-    O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer(),
-    display_label = character(), stringsAsFactors = FALSE
-  )
-  out$display_label <- factor(out$display_label, levels = s64_cluster_labels())
-  out
-}
-
-s64_panel_c <- function(paths) {
-  inverse <- f6r_read_tsv(file.path(
-    paths$data, "joint_invitro_extended_o2_inverse_response_summary.tsv"
-  ))
-  dense <- f6r_read_tsv(file.path(
-    paths$data, "joint_invitro_dense_surface.tsv"
-  ))
-  inverse$display_label <- factor(
-    inverse$display_label, levels = s64_cluster_labels()
-  )
-  dense$display_label <- factor(dense$display_label, levels = s64_cluster_labels())
-  inverse <- s64_add_o2_index(inverse)
-  dense <- s64_add_o2_index(dense)
-  highlighted_values <- c(0.01, 0.10, 0.20, 0.30)
-  highlighted <- dense[vapply(
-    dense$effective_p_misseg,
-    function(x) any(abs(x - highlighted_values) <= 1e-12), logical(1L)
-  ), , drop = FALSE]
-  highlighted$reference_label <- factor(
-    sprintf("%.2f", highlighted$effective_p_misseg),
-    levels = c("0.01", "0.10", "0.20", "0.30")
-  )
-  mean_curve <- stats::aggregate(
-    dominant_mean_ploidy_median ~ display_label + pair_id + O2_pct,
-    dense, mean
-  )
-  mean_curve$reference_label <- factor(
-    "Mean across 496 fixed p_miss,eff values",
-    levels = c(
-      "0.01", "0.10", "0.20", "0.30",
-      "Mean across 496 fixed p_miss,eff values"
-    )
-  )
-  mean_curve <- s64_add_o2_index(mean_curve)
-  hatch <- s64_inverse_hatch(inverse)
-  hatch <- s64_add_o2_index(hatch)
-  reference_levels <- levels(mean_curve$reference_label)
-  ggplot2::ggplot() +
-    ggplot2::geom_tile(
-      data = inverse,
-      ggplot2::aes(O2_index, target_ploidy, fill = p_display)
-    ) +
-    ggplot2::geom_hline(
-      yintercept = c(2, 4), colour = "#666666", linewidth = 0.22,
-      linetype = "longdash"
-    ) +
-    ggplot2::geom_path(
-      data = hatch,
-      ggplot2::aes(O2_index, target_ploidy, group = hatch_group),
-      colour = "#7B3294", linewidth = 0.16, alpha = 0.72
-    ) +
-    ggplot2::geom_path(
-      data = highlighted,
-      ggplot2::aes(
-        O2_index, dominant_mean_ploidy_median,
-        group = reference_label, linetype = reference_label
-      ),
-      colour = "#111111", linewidth = 0.47
-    ) +
-    ggplot2::geom_path(
-      data = mean_curve,
-      ggplot2::aes(
-        O2_index, dominant_mean_ploidy_median,
-        group = reference_label, linetype = reference_label
-      ),
-      colour = "#D62728", linewidth = 0.62
-    ) +
-    s64_extended_marker(indexed = TRUE) +
-    ggplot2::facet_grid(. ~ display_label) +
-    ggplot2::scale_fill_viridis_c(
-      option = "D", trans = "log10", limits = c(0.005, 0.5),
-      breaks = c(0.005, 0.01, 0.05, 0.10, 0.50),
-      na.value = "#EFEFEF", name = "Median required\np_miss,eff\n(log colors)"
-    ) +
-    ggplot2::scale_linetype_manual(
-      values = c(
-        "0.01" = "solid", "0.10" = "F28282",
-        "0.20" = "dotdash", "0.30" = "dotted",
-        "Mean across 496 fixed p_miss,eff values" = "solid"
-      ),
-      breaks = reference_levels,
-      labels = c(
-        "p_miss,eff = 0.01", "p_miss,eff = 0.10",
-        "p_miss,eff = 0.20", "p_miss,eff = 0.30",
-        "Mean across 496 fixed p_miss,eff values"
-      ), name = "Reference curves"
-    ) +
-    ggplot2::coord_cartesian(ylim = c(1, 7), expand = FALSE) +
-    ggplot2::labs(
-      title = "C. Effective missegregation required for target ploidy",
-      subtitle = paste0(
-        "Gray, no stable unique inverse; purple, multiple inverse solutions"
-      ),
-      x = "Fixed oxygen (%)", y = "Target dominant mean ploidy"
-    ) +
-    s64_theme()
+    s64_theme() +
+    ggplot2::theme(aspect.ratio = 1)
 }
 
 s64_weak_gap_base_plot <- function(data, title) {
   data$display_label <- factor(data$display_label, levels = s64_cluster_labels())
-  data$log10_effective_p_misseg <- log10(data$effective_p_misseg)
+  data$log10_p_misseg <- log10(data$p_misseg)
   data <- s64_add_o2_index(data)
-  ggplot2::ggplot(data, ggplot2::aes(O2_index, log10_effective_p_misseg)) +
+  ggplot2::ggplot(data, ggplot2::aes(O2_index, log10_p_misseg)) +
     ggplot2::geom_raster(fill = "#F2F2F2") +
     s64_extended_marker(indexed = TRUE) +
     ggplot2::facet_grid(. ~ display_label) +
@@ -1424,15 +1331,16 @@ s64_weak_gap_base_plot <- function(data, title) {
     ggplot2::coord_cartesian(ylim = log10(c(0.005, 0.5)), expand = FALSE) +
     ggplot2::labs(
       title = title, x = "Fixed oxygen (%)",
-      y = expression("Effective "*p[miss,eff])
+      y = expression(p[misseg])
     ) +
-    s64_theme()
+    s64_theme() +
+    ggplot2::theme(aspect.ratio = 1)
 }
 
 s64_panel_d <- function(paths) {
   data <- f6r_read_tsv(file.path(paths$data, "weak_gap_regime_robustness.tsv"))
   weak <- data[data$weak_gap_region, , drop = FALSE]
-  weak$log10_effective_p_misseg <- log10(weak$effective_p_misseg)
+  weak$log10_p_misseg <- log10(weak$p_misseg)
   weak <- s64_add_o2_index(weak)
   boundary <- s64_standard_hatch(data)
   boundary <- s64_add_o2_index(boundary)
@@ -1441,17 +1349,17 @@ s64_panel_d <- function(paths) {
     levels = c("Stable low", "Stable intermediate", "Stable high", "Mixed")
   )
   s64_weak_gap_base_plot(
-    data, "D. Ploidy consensus within weak-gap regions"
+    data, "C. Ploidy consensus within weak-gap regions"
   ) +
     ggplot2::geom_tile(
       data = weak, ggplot2::aes(fill = regime_class),
       width = 1,
-      height = stats::median(diff(log10(sort(unique(data$effective_p_misseg)))))
+      height = stats::median(diff(log10(sort(unique(data$p_misseg)))))
     ) +
     ggplot2::geom_path(
       data = boundary,
       ggplot2::aes(
-        O2_index, log10_effective_p_misseg, group = hatch_group
+        O2_index, log10_p_misseg, group = hatch_group
       ),
       inherit.aes = FALSE, colour = "#9B59B6", linewidth = 0.18,
       alpha = 0.75
@@ -1473,22 +1381,22 @@ s64_panel_d <- function(paths) {
 s64_panel_e <- function(paths) {
   data <- f6r_read_tsv(file.path(paths$data, "weak_gap_regime_robustness.tsv"))
   weak <- data[data$weak_gap_region, , drop = FALSE]
-  weak$log10_effective_p_misseg <- log10(weak$effective_p_misseg)
+  weak$log10_p_misseg <- log10(weak$p_misseg)
   weak <- s64_add_o2_index(weak)
   boundary <- s64_standard_hatch(data)
   boundary <- s64_add_o2_index(boundary)
   s64_weak_gap_base_plot(
-    data, "E. Local rank-1 regime-switch sensitivity"
+    data, "D. Local rank-1 regime-switch sensitivity"
   ) +
     ggplot2::geom_tile(
       data = weak, ggplot2::aes(fill = local_regime_switch_proportion),
       width = 1,
-      height = stats::median(diff(log10(sort(unique(data$effective_p_misseg)))))
+      height = stats::median(diff(log10(sort(unique(data$p_misseg)))))
     ) +
     ggplot2::geom_path(
       data = boundary,
       ggplot2::aes(
-        O2_index, log10_effective_p_misseg, group = hatch_group
+        O2_index, log10_p_misseg, group = hatch_group
       ),
       inherit.aes = FALSE, colour = "#9B59B6", linewidth = 0.18,
       alpha = 0.75
@@ -1504,24 +1412,24 @@ s64_panel_e <- function(paths) {
 s64_panel_f <- function(paths) {
   data <- f6r_read_tsv(file.path(paths$data, "weak_gap_regime_robustness.tsv"))
   weak <- data[data$weak_gap_region, , drop = FALSE]
-  weak$log10_effective_p_misseg <- log10(weak$effective_p_misseg)
+  weak$log10_p_misseg <- log10(weak$p_misseg)
   weak <- s64_add_o2_index(weak)
   boundary <- s64_standard_hatch(data)
   boundary <- s64_add_o2_index(boundary)
   upper <- max(weak$dominant_ploidy_spread_q90_q10, na.rm = TRUE)
   s64_weak_gap_base_plot(
-    data, "F. Across-fit dominant-mean-ploidy spread"
+    data, "E. Across-fit dominant-mean-ploidy spread"
   ) +
     ggplot2::geom_tile(
       data = weak,
       ggplot2::aes(fill = dominant_ploidy_spread_q90_q10),
       width = 1,
-      height = stats::median(diff(log10(sort(unique(data$effective_p_misseg)))))
+      height = stats::median(diff(log10(sort(unique(data$p_misseg)))))
     ) +
     ggplot2::geom_path(
       data = boundary,
       ggplot2::aes(
-        O2_index, log10_effective_p_misseg, group = hatch_group
+        O2_index, log10_p_misseg, group = hatch_group
       ),
       inherit.aes = FALSE, colour = "#9B59B6", linewidth = 0.18,
       alpha = 0.75
@@ -1540,7 +1448,8 @@ s64_save_plot <- function(plot, png_path, pdf_path, width, height) {
   dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
   ggplot2::ggsave(
     png_path, plot = plot, width = width, height = height,
-    units = "in", dpi = 300, bg = "white", limitsize = FALSE
+    units = "in", dpi = 300, device = "png", type = "cairo",
+    bg = "white", limitsize = FALSE
   )
   ggplot2::ggsave(
     pdf_path, plot = plot, width = width, height = height,
@@ -1551,7 +1460,7 @@ s64_save_plot <- function(plot, png_path, pdf_path, width, height) {
 }
 
 s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
-  font_cache <- file.path(tempdir(), "supp-figure6-4-fontconfig-cache")
+  font_cache <- file.path(tempdir(), "supp-figure7-4-fontconfig-cache")
   dir.create(font_cache, recursive = TRUE, showWarnings = FALSE)
   Sys.setenv(XDG_CACHE_HOME = font_cache)
   f6r_require_packages(c(
@@ -1564,24 +1473,27 @@ s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
     "separate_invitro_curve_class_by_seed.tsv",
     "joint_invitro_standard_surface.tsv",
     "joint_invitro_standard_trajectory.tsv",
-    "joint_invitro_dense_surface.tsv",
-    "joint_invitro_extended_o2_inverse_response_summary.tsv",
     "weak_gap_regime_robustness.tsv",
-    "supp_figure6-4_validation.tsv"
+    "supp_figure7-4_validation.tsv"
   ))
   f6r_require_files(required, "validated Supplementary Figure 6-4 data")
   validation <- f6r_read_tsv(file.path(
-    paths$data, "supp_figure6-4_validation.tsv"
+    paths$data, "supp_figure7-4_validation.tsv"
   ))
   if (!all(validation$passed)) stop("Refusing to draw from non-passing data.")
   dir.create(paths$panels, recursive = TRUE, showWarnings = FALSE)
   plots <- list(
-    A = s64_panel_a(paths), B = s64_panel_b(paths), C = s64_panel_c(paths),
-    D = s64_panel_d(paths), E = s64_panel_e(paths), F = s64_panel_f(paths)
+    A = s64_panel_a(paths), B = s64_panel_b(paths),
+    C = s64_panel_d(paths), D = s64_panel_e(paths), E = s64_panel_f(paths)
   )
+  square_heatmap_facets <- all(vapply(
+    plots[c("B", "C", "D", "E")],
+    function(plot) isTRUE(all.equal(plot$theme$aspect.ratio, 1)),
+    logical(1L)
+  ))
   panel_sizes <- list(
-    A = c(5.3, 16.0), B = c(24.4, 3.0), C = c(24.4, 3.25),
-    D = c(24.4, 2.75), E = c(24.4, 2.75), F = c(24.4, 2.75)
+    A = c(5.3, 17.0), B = c(11.6, 4.25), C = c(11.6, 4.25),
+    D = c(11.6, 4.25), E = c(11.6, 4.25)
   )
   panel_outputs <- unlist(lapply(names(plots), function(label) {
     size <- panel_sizes[[label]]
@@ -1593,10 +1505,14 @@ s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
     )
     stats::setNames(out, paste0(label, "_", names(out)))
   }))
-  right <- plots$B / plots$C / plots$D / plots$E / plots$F +
-    patchwork::plot_layout(heights = c(1.05, 1.12, 0.96, 0.96, 0.96))
+  stale_panel_files <- file.path(
+    paths$panels, c("supp_fig6-4f.png", "supp_fig6-4f.pdf")
+  )
+  unlink(stale_panel_files[file.exists(stale_panel_files)])
+  right <- plots$B / plots$C / plots$D / plots$E +
+    patchwork::plot_layout(heights = rep(1, 4))
   assembled <- plots$A | right
-  assembled <- assembled + patchwork::plot_layout(widths = c(0.18, 0.82)) +
+  assembled <- assembled + patchwork::plot_layout(widths = c(0.31, 0.69)) +
     patchwork::plot_annotation(
       title = "Supplementary Figure 6-4. Extended-range in vitro oxygen-ploidy response",
       subtitle = paste0(
@@ -1606,7 +1522,7 @@ s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
   output_png <- file.path(paths$base$figures, paste0(paths$output_base, ".png"))
   output_pdf <- file.path(paths$base$figures, paste0(paths$output_base, ".pdf"))
   output <- s64_save_plot(
-    assembled, output_png, output_pdf, width = 30.0, height = 16.0
+    assembled, output_png, output_pdf, width = 17.0, height = 18.0
   )
   published <- c(
     manuscript_png = f6r_publish(
@@ -1624,21 +1540,21 @@ s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
     check = c(
       "png_width", "png_height", "pdf_nontrivial",
       "manuscript_png_identical", "manuscript_pdf_identical",
-      "panel_file_count"
+      "panel_file_count", "square_heatmap_facets"
     ),
     observed = c(
       info$width[[1L]], info$height[[1L]], file.info(output[["pdf"]])$size > 10000,
       f6r_md5(output[["png"]]) == f6r_md5(published[["manuscript_png"]]),
       f6r_md5(output[["pdf"]]) == f6r_md5(published[["manuscript_pdf"]]),
-      length(panel_outputs)
+      length(panel_outputs), square_heatmap_facets
     ),
-    expected = c(9000, 4800, TRUE, TRUE, TRUE, 12),
+    expected = c(5100, 5400, TRUE, TRUE, TRUE, 10, TRUE),
     stringsAsFactors = FALSE
   )
   draw_validation$passed <- as.character(draw_validation$observed) ==
     as.character(draw_validation$expected)
   draw_validation_path <- f6r_write_tsv(
-    draw_validation, file.path(paths$data, "supp_figure6-4_draw_validation.tsv")
+    draw_validation, file.path(paths$data, "supp_figure7-4_draw_validation.tsv")
   )
   if (!all(draw_validation$passed)) {
     stop("Supplementary Figure 6-4 rendering validation failed.")
@@ -1650,7 +1566,7 @@ s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
     stringsAsFactors = FALSE
   )
   output_manifest_path <- f6r_write_tsv(
-    output_manifest, file.path(paths$data, "supp_figure6-4_output_manifest.tsv")
+    output_manifest, file.path(paths$data, "supp_figure7-4_output_manifest.tsv")
   )
   invisible(list(
     output = output, published = published, panels = panel_outputs,

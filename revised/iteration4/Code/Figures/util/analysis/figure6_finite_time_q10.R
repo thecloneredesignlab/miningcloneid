@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Finite-time q10 endpoint analysis for Figure 6C-F and Supplementary
-# Figures 6-5 through 6-7.
+# Figures 6-5 through 7-7.
 #
 # Scientific boundary: this file contains only figure-workspace orchestration.
 # Model construction and fixed-O2 numerical helpers are loaded from the
@@ -9,7 +9,7 @@
 
 options(stringsAsFactors = FALSE, warn = 1)
 
-f6ft_profile <- function() "figure6_finite_time_q10_v1"
+f6ft_profile <- function() "figure7_fixed_pmisseg_finite_time_q10_v1"
 f6ft_family_levels <- function() c("C01", "C02")
 f6ft_context_levels <- function() c("in vivo", "in vitro")
 f6ft_initial_ploidy <- function() 2:6
@@ -387,7 +387,7 @@ f6ft_task_manifest <- function(
           pair_id = z$pair_id[[1L]],
           pair_label = z$pair_label[[1L]],
           panel_letter = z$panel_letter[[1L]],
-          effective_p_misseg = p_value,
+          p_misseg = p_value,
           chunk_index = chunk_index,
           endpoint_indices = paste(selected$endpoint_index, collapse = ","),
           n_unique_endpoint = nrow(selected),
@@ -425,14 +425,25 @@ f6ft_compute_task <- function(
       day = as.character(day_values), O2_pct = as.character(o2_values)
     )
   )
-  p_value <- as.numeric(task$effective_p_misseg[[1L]])
+  p_value <- as.numeric(task$p_misseg[[1L]])
   operator_count <- 0L
   maximum_nonfinite <- 0L
   maximum_initial_error <- 0
+  maximum_override_error <- 0
+  maximum_formula_error <- 0
   for (i in seq_len(nrow(endpoints))) {
     endpoint <- endpoints[i, , drop = FALSE]
     prepared <- f6ft_prepare_endpoint(endpoint, objective_bundle, contexts)
-    forced <- response_force_effective_p_misseg(prepared$run_params, p_value)
+    forced <- figure6_force_p_misseg(prepared$run_params, p_value)
+    formula_qc <- figure6_p_misseg_formula_qc(
+      prepared$run_params, p_value
+    )
+    maximum_override_error <- max(
+      maximum_override_error, abs(as.numeric(forced$p_misseg) - p_value)
+    )
+    maximum_formula_error <- max(
+      maximum_formula_error, formula_qc$maximum_direct_formula_error
+    )
     weight <- as.integer(endpoint$endpoint_multiplicity_q10[[1L]])
     for (o2_index in seq_along(o2_values)) {
       fm <- fixo2_fixed_matrix(
@@ -455,7 +466,7 @@ f6ft_compute_task <- function(
     task_id = task$task_id[[1L]],
     model_context = task$model_context[[1L]],
     pair_label = task$pair_label[[1L]],
-    effective_p_misseg = p_value,
+    p_misseg = p_value,
     n_unique_endpoint = nrow(endpoints),
     represented_optimizer_endpoint = sum(endpoints$endpoint_multiplicity_q10),
     n_operator = operator_count,
@@ -464,7 +475,10 @@ f6ft_compute_task <- function(
     n_initial_ploidy = length(f6ft_initial_ploidy()),
     maximum_nonfinite_per_operator = maximum_nonfinite,
     maximum_day0_abs_error = maximum_initial_error,
-    passed = maximum_nonfinite == 0L && maximum_initial_error <= 1e-10,
+    maximum_p_misseg_override_error = maximum_override_error,
+    maximum_direct_formula_error = maximum_formula_error,
+    passed = maximum_nonfinite == 0L && maximum_initial_error <= 1e-10 &&
+      maximum_override_error <= 1e-12 && maximum_formula_error <= 1e-12,
     cache_path = task$cache_path[[1L]],
     stringsAsFactors = FALSE
   )
@@ -530,8 +544,14 @@ f6ft_parallel_lapply <- function(X, FUN, n_core = 1L) {
   } else {
     future::plan(future::multisession, workers = n_core)
   }
+  scheduling <- suppressWarnings(as.numeric(Sys.getenv(
+    "FIGURE6_FINITE_TIME_FUTURE_SCHEDULING", "1"
+  )))
+  if (length(scheduling) != 1L || !is.finite(scheduling) || scheduling < 1) {
+    stop("FIGURE6_FINITE_TIME_FUTURE_SCHEDULING must be a number >= 1.")
+  }
   future.apply::future_lapply(
-    X, FUN, future.seed = TRUE, future.scheduling = 1
+    X, FUN, future.seed = TRUE, future.scheduling = scheduling
   )
 }
 
@@ -555,7 +575,7 @@ f6ft_aggregate_tasks <- function(
   panel_rows <- panel_rows[order(panel_rows$panel_letter), , drop = FALSE]
   for (panel_index in seq_len(nrow(panel_rows))) {
     panel <- panel_rows[panel_index, , drop = FALSE]
-    p_values <- sort(unique(tasks$effective_p_misseg[
+    p_values <- sort(unique(tasks$p_misseg[
       tasks$model_context == panel$model_context[[1L]] &
         tasks$pair_label == panel$pair_label[[1L]]
     ]))
@@ -565,7 +585,7 @@ f6ft_aggregate_tasks <- function(
       keep <- which(
         tasks$model_context == panel$model_context[[1L]] &
           tasks$pair_label == panel$pair_label[[1L]] &
-          abs(tasks$effective_p_misseg - p_values[[p_index]]) < 1e-12
+          abs(tasks$p_misseg - p_values[[p_index]]) < 1e-12
       )
       selected <- objects[keep]
       weighted_sum <- Reduce(`+`, lapply(selected, `[[`, "weighted_sum"))
@@ -595,7 +615,7 @@ f6ft_aggregate_tasks <- function(
       initial_ploidy = f6ft_initial_ploidy(),
       day_values = f6ft_day_values(smoke),
       o2_values = f6ft_o2_values(smoke),
-      effective_p_misseg = p_values,
+      p_misseg = p_values,
       optimizer_endpoint_weight = total_weights,
       mean_ploidy = values
     )
@@ -624,7 +644,13 @@ f6ft_aggregate_tasks <- function(
       n_initial_ploidy = length(object$initial_ploidy),
       n_day = length(object$day_values),
       n_o2 = length(object$o2_values),
-      n_effective_p_misseg = length(object$effective_p_misseg),
+      n_o2_0_to_0p5 = sum(
+        object$o2_values >= 0 & object$o2_values <= 0.5 + 1e-12
+      ),
+      oxygen_grid_exact = isTRUE(all.equal(
+        as.numeric(object$o2_values), as.numeric(f6ft_o2_values(smoke))
+      )),
+      n_p_misseg = length(object$p_misseg),
       minimum_mean_ploidy = min(values, na.rm = TRUE),
       maximum_mean_ploidy = max(values, na.rm = TRUE),
       maximum_day0_abs_error = max(abs(day0 - expected), na.rm = TRUE),
@@ -635,8 +661,11 @@ f6ft_aggregate_tasks <- function(
         max(values, na.rm = TRUE) <= 7 + 1e-8 &&
         max(abs(day0 - expected), na.rm = TRUE) <= 1e-10 &&
         length(object$initial_ploidy) == 5L &&
-        length(object$effective_p_misseg) == expected_n_p &&
+        length(object$p_misseg) == expected_n_p &&
         length(object$o2_values) == expected_n_o2 &&
+        isTRUE(all.equal(
+          as.numeric(object$o2_values), as.numeric(f6ft_o2_values(smoke))
+        )) &&
         length(object$day_values) == expected_n_day,
       stringsAsFactors = FALSE
     )
@@ -734,7 +763,7 @@ f6ft_compute_diagnostic_endpoint <- function(
   rows <- list()
   row_index <- 0L
   for (p_value in f6ft_p_values()) {
-    forced <- response_force_effective_p_misseg(prepared$run_params, p_value)
+    forced <- figure6_force_p_misseg(prepared$run_params, p_value)
     for (o2 in f6ft_diagnostic_o2()) {
       fm <- fixo2_fixed_matrix(
         model_env = globalenv(), cfg = prepared$config,
@@ -766,7 +795,7 @@ f6ft_compute_diagnostic_endpoint <- function(
             endpoint_group = endpoint$endpoint_group[[1L]],
             representative_seed_number = endpoint$representative_seed_number[[1L]],
             endpoint_multiplicity_q10 = endpoint$endpoint_multiplicity_q10[[1L]],
-            effective_p_misseg = p_value,
+            p_misseg = p_value,
             O2_pct = o2,
             initial_ploidy = f6ft_initial_ploidy()[[initial_index]],
             day = time_values[[time_index]],
@@ -885,7 +914,7 @@ f6ft_euler_step_sensitivity <- function(
     endpoint <- representatives[endpoint_index, , drop = FALSE]
     prepared <- f6ft_prepare_endpoint(endpoint, objective_bundle, contexts)
     for (p_value in c(0.01, 0.30)) {
-      forced <- response_force_effective_p_misseg(prepared$run_params, p_value)
+      forced <- figure6_force_p_misseg(prepared$run_params, p_value)
       for (o2 in c(0, 1, 5)) {
         fm <- fixo2_fixed_matrix(
           model_env = globalenv(), cfg = prepared$config,
@@ -918,7 +947,7 @@ f6ft_euler_step_sensitivity <- function(
               model_context = endpoint$model_context[[1L]],
               pair_label = endpoint$pair_label[[1L]],
               endpoint_group = endpoint$endpoint_group[[1L]],
-              effective_p_misseg = p_value,
+              p_misseg = p_value,
               O2_pct = o2,
               initial_ploidy = f6ft_initial_ploidy()[[initial_index]],
               day = time_values[[time_index]],
@@ -1021,7 +1050,7 @@ f6ft_compute_diagnostics <- function(
   diagnostics <- do.call(rbind, lapply(objects, `[[`, "diagnostics"))
   diagnostics <- diagnostics[order(
     diagnostics$panel_letter, diagnostics$endpoint_group,
-    diagnostics$effective_p_misseg, diagnostics$O2_pct,
+    diagnostics$p_misseg, diagnostics$O2_pct,
     diagnostics$initial_ploidy, diagnostics$day
   ), , drop = FALSE]
   raw_path <- f6ft_atomic_save_rds(
@@ -1062,7 +1091,7 @@ f6ft_chart_contract <- function(run_paths) {
       "Supplementary Figure 6-6", "Supplementary Figure 6-7"
     ),
     analytical_question = c(
-      "How do finite-time mean-ploidy trajectories vary with initial ploidy, fixed effective missegregation, oxygen, family, and model context?",
+      "How do finite-time mean-ploidy trajectories vary with initial ploidy, fixed p_misseg, oxygen, family, and model context?",
       "Do full-eigen and expm finite-time solutions agree with an independent Euler integration on the q10 endpoint ensemble?",
       "How closely do the full-eigen and expm finite-time analytical solutions agree?",
       "At what time scale does the expm finite-time composition approach the dominant-eigenvector attractor?"
@@ -1084,7 +1113,7 @@ f6ft_chart_contract <- function(run_paths) {
       "dominant-attractor ploidy on x and expm finite-time ploidy on y"
     ),
     caveat = c(
-      "Optimizer endpoints are numerical solutions rather than biological replicates; oxygen and effective missegregation are fixed within each trajectory",
+      "Optimizer endpoints are numerical solutions rather than biological replicates; oxygen and p_misseg are fixed within each trajectory",
       "Euler is a deterministic numerical-integration reference, not a stochastic biological simulation",
       "Near-degenerate or poorly conditioned eigenvectors can affect the full-eigen reconstruction",
       "Agreement at long time is conditional on a fixed environment and the fitted operator"
@@ -1092,7 +1121,7 @@ f6ft_chart_contract <- function(run_paths) {
     stringsAsFactors = FALSE
   )
   f6ft_atomic_write_tsv(
-    contract, file.path(run_paths$run_root, "figure6_finite_time_chart_contract.tsv")
+    contract, file.path(run_paths$run_root, "figure7_finite_time_chart_contract.tsv")
   )
 }
 

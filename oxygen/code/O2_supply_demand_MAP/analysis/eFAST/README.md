@@ -65,7 +65,7 @@ come from the validated SIF rather than an incompatible HPC home library.
 correlation source, full FAST samples and operator output tables under `runs/`,
 `indices.tsv` with S1/ST per replicate, `convergence.tsv` with replicate ranges
 and change from the highest resolution, parameter and mechanism summaries for
-0–1% and 3–5% oxygen, four index heatmaps, a directional
+0–1% and 3–5% oxygen (including separate replicate band summaries), four index heatmaps, a directional
 correlation panel, and `interpretation.md`. The sample metadata records seeds,
 distributions, input hashes, oxygen points, and SALib version.
 The top-level `environment.tsv` records the evaluator image and Git commit;

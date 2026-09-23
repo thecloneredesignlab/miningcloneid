@@ -219,6 +219,7 @@ def summarize(args):
               "S1", "ST", "output_variance"]
     write_table(root / "indices.tsv", fields, all_rows)
     summarize_convergence(root, all_rows)
+    summarize_band_replicates(root, all_rows)
     try:
         code_commit = subprocess.check_output(
             ["git", "-C", str(Path(__file__).resolve().parents[5]), "rev-parse", "HEAD"],
@@ -232,10 +233,41 @@ def summarize(args):
         {"field": "convergence_sha256", "value": sha256(root / "convergence.tsv")},
         {"field": "parameter_band_summary_sha256", "value": sha256(root / "parameter_band_summary.tsv")},
         {"field": "mechanism_band_summary_sha256", "value": sha256(root / "mechanism_band_summary.tsv")},
+        {"field": "mechanism_band_replicates_sha256",
+         "value": sha256(root / "mechanism_band_replicates.tsv")},
         {"field": "figure4_parameter_groups_sha256",
          "value": sha256(root / "figure4_parameter_groups_source.tsv")},
     ]
     write_table(root / "analysis_manifest.tsv", ["field", "value"], manifest)
+
+
+def summarize_band_replicates(root, rows):
+    highest_n = max(int(row["N"]) for row in rows)
+    bands = {
+        "low_0_to_1pct": lambda x: 0 <= x <= 1,
+        "high_3_to_5pct": lambda x: 3 <= x <= 5,
+    }
+    selected = [row for row in rows if int(row["N"]) == highest_n]
+    repeats = sorted(set(int(row["replicate"]) for row in selected))
+    summary = []
+    for output in OUTPUTS:
+        for replicate in repeats:
+            for band, predicate in bands.items():
+                for group in sorted(set(GROUP.values())):
+                    subset = [row for row in selected if row["output"] == output and
+                              int(row["replicate"]) == replicate and row["group"] == group and
+                              predicate(float(row["O2_pct"]))]
+                    summary.append({
+                        "N": highest_n, "output": output, "replicate": replicate,
+                        "oxygen_band": band, "group": group,
+                        "n_parameters": len(set(row["parameter"] for row in subset)),
+                        "n_oxygen": len(set(row["O2_pct"] for row in subset)),
+                        "S1_mean_per_parameter": "%.10g" % np.mean(
+                            [float(row["S1"]) for row in subset]),
+                        "ST_mean_per_parameter": "%.10g" % np.mean(
+                            [float(row["ST"]) for row in subset]),
+                    })
+    write_table(root / "mechanism_band_replicates.tsv", list(summary[0]), summary)
 
 
 def summarize_convergence(root, rows):

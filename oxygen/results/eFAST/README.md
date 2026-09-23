@@ -11,5 +11,6 @@ The accompanying Figure 4B correlation panel supplies direction. Numerical
 source tables are `indices.tsv` and `convergence.tsv`; design and raw operator
 evaluations are retained under `runs/`. `parameter_band_summary.tsv` and
 `mechanism_band_summary.tsv` aggregate the high-resolution indices over
-0–1% and 3–5% oxygen. `interpretation.md` summarizes the
+0–1% and 3–5% oxygen. `mechanism_band_replicates.tsv` gives the same
+group means for each phase repeat. `interpretation.md` summarizes the
 low- versus high-oxygen mechanism comparison after the full run.

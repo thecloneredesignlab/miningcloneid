@@ -170,6 +170,7 @@ def summarize(args):
     bounds = [[float(r["encoded_lower"]), float(r["encoded_upper"])] for r in range_rows]
     problem = {"num_vars": len(ACTIVE), "names": list(ACTIVE), "bounds": bounds}
     all_rows = []
+    gap_qc_rows = []
     for metadata_path in sorted((root / "runs").glob("*/metadata.json")):
         run_dir = metadata_path.parent
         metadata = json.loads(metadata_path.read_text())
@@ -180,6 +181,9 @@ def summarize(args):
         grid = metadata["oxygen_pct"]
         data = {o2: {name: np.full(n_samples, np.nan) for name in OUTPUTS} for o2 in grid}
         seen = {o2: np.zeros(n_samples, dtype=bool) for o2 in grid}
+        gap_stats = {band: {"n": 0, "lt_1e-6": 0, "lt_1e-4": 0,
+                            "lt_1e-3": 0, "minimum": float("inf")}
+                     for band in ("low_0_to_1pct", "middle_1_to_3pct", "high_3_to_5pct")}
         with gzip.open(outputs_path, "rt", newline="") as handle:
             reader = csv.DictReader(handle, delimiter="\t")
             for row in reader:
@@ -194,10 +198,31 @@ def summarize(args):
                 if row["status"] != "ok" or row["eigenvector_nonnegative"] != "TRUE":
                     raise ValueError("Nonvalid model evaluation at sample %d, O2 %s: %s" %
                                      (sample_id, o2, row["status"]))
+                gap = float(row["spectral_gap"])
+                if not math.isfinite(gap) or gap < 0:
+                    raise ValueError("Invalid spectral gap at sample %d, O2 %s" % (sample_id, o2))
+                band = "low_0_to_1pct" if o2 <= 1 else (
+                    "high_3_to_5pct" if o2 >= 3 else "middle_1_to_3pct")
+                stats = gap_stats[band]
+                stats["n"] += 1
+                stats["lt_1e-6"] += gap < 1e-6
+                stats["lt_1e-4"] += gap < 1e-4
+                stats["lt_1e-3"] += gap < 1e-3
+                stats["minimum"] = min(stats["minimum"], gap)
                 for name in OUTPUTS:
                     data[o2][name][index] = float(row[name])
         if any(not np.all(seen[o2]) for o2 in grid):
             raise ValueError("Incomplete FAST trajectories in " + str(outputs_path))
+        for band, stats in gap_stats.items():
+            if stats["n"]:
+                gap_qc_rows.append({
+                    "N": metadata["N"], "replicate": metadata["replicate"],
+                    "oxygen_band": band, "n_evaluations": stats["n"],
+                    "fraction_gap_lt_1e-6": "%.10g" % (stats["lt_1e-6"] / stats["n"]),
+                    "fraction_gap_lt_1e-4": "%.10g" % (stats["lt_1e-4"] / stats["n"]),
+                    "fraction_gap_lt_1e-3": "%.10g" % (stats["lt_1e-3"] / stats["n"]),
+                    "minimum_gap": "%.10g" % stats["minimum"],
+                })
         for o2 in grid:
             for name in OUTPUTS:
                 y = data[o2][name]
@@ -218,6 +243,7 @@ def summarize(args):
     fields = ["N", "replicate", "seed", "O2_pct", "output", "parameter", "group",
               "S1", "ST", "output_variance"]
     write_table(root / "indices.tsv", fields, all_rows)
+    write_table(root / "spectral_gap_qc.tsv", list(gap_qc_rows[0]), gap_qc_rows)
     summarize_convergence(root, all_rows)
     summarize_band_replicates(root, all_rows)
     try:
@@ -235,6 +261,7 @@ def summarize(args):
         {"field": "mechanism_band_summary_sha256", "value": sha256(root / "mechanism_band_summary.tsv")},
         {"field": "mechanism_band_replicates_sha256",
          "value": sha256(root / "mechanism_band_replicates.tsv")},
+        {"field": "spectral_gap_qc_sha256", "value": sha256(root / "spectral_gap_qc.tsv")},
         {"field": "figure4_parameter_groups_sha256",
          "value": sha256(root / "figure4_parameter_groups_source.tsv")},
     ]

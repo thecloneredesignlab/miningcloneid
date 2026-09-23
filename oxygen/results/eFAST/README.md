@@ -14,3 +14,4 @@ evaluations are retained under `runs/`. `parameter_band_summary.tsv` and
 0–1% and 3–5% oxygen. `mechanism_band_replicates.tsv` gives the same
 group means for each phase repeat. `interpretation.md` summarizes the
 low- versus high-oxygen mechanism comparison after the full run.
+`spectral_gap_qc.tsv` quantifies near-degenerate leading eigenvalues.

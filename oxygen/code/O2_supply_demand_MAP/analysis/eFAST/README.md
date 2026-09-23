@@ -68,6 +68,8 @@ and change from the highest resolution, parameter and mechanism summaries for
 0–1% and 3–5% oxygen (including separate replicate band summaries), four index heatmaps, a directional
 correlation panel, and `interpretation.md`. The sample metadata records seeds,
 distributions, input hashes, oxygen points, and SALib version.
+`spectral_gap_qc.tsv` records how often the two leading eigenvalues nearly
+coincide, which is relevant to stability of asymptotic ploidy.
 The top-level `environment.tsv` records the evaluator image and Git commit;
 `analysis_manifest.tsv` records the postprocessing commit and summary hashes.
 S1 and ST are variance contributions without a sign; the correlation panel retains

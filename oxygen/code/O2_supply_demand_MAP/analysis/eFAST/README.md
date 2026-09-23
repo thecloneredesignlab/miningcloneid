@@ -31,6 +31,8 @@ eigenvector determines dominant mean ploidy.
 - `O2_crit` and `n_O` control the shared oxygen-stress response used by growth,
   death, and missegregation functions. They are reported separately from the
   death-specific `mu_hp` and `gamma_mu` when comparing mechanisms.
+- Whole-genome doubling `p_wgd` is summarized separately from missegregation;
+  it is a genome-change process rather than a missegregation probability.
 - The 201 oxygen points use the same FAST parameter vectors within each
   resolution/replicate. FAST trajectory order is preserved, including if
   numerical evaluation fails: failures stop analysis rather than silently

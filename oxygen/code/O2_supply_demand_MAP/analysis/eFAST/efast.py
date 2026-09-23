@@ -28,7 +28,7 @@ STRUCTURAL = ("o2_S0", "kappa_O", "eta_o2", "k_clear")
 GROUP = {
     "lam_max": "growth", "alpha_o2": "growth", "gamma_growth": "growth",
     "p_mis_base": "missegregation", "p_misseg": "missegregation",
-    "k_o_mis": "missegregation", "p_wgd": "missegregation",
+    "k_o_mis": "missegregation", "p_wgd": "genome_doubling",
     "buffer_smax": "buffering", "buffer_beta": "buffering", "buffer_n_exp": "buffering",
     "mu_hp": "death", "gamma_mu": "death",
     "O2_crit": "shared_oxygen_stress", "n_O": "shared_oxygen_stress",

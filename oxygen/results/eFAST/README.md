@@ -5,7 +5,8 @@ using the independent in-vivo fitted parameter bounds. See the code README
 for input provenance, distributions, output definitions and run settings.
 
 The aligned four-panel figure and individual first-order and total-effect
-heatmaps are in `figures/`.
+heatmaps are in `figures/`, using the Figure 4 parameter order from
+`figure4_parameter_groups_source.tsv`.
 The accompanying Figure 4B correlation panel supplies direction. Numerical
 source tables are `indices.tsv` and `convergence.tsv`; design and raw operator
 evaluations are retained under `runs/`. `parameter_band_summary.tsv` and

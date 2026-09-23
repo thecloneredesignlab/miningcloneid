@@ -118,6 +118,12 @@ def prepare(args):
         shutil.copyfile(correlation_path, correlation_copy)
     elif sha256(correlation_copy) != sha256(correlation_path):
         raise ValueError("Figure 4B correlation source changed between designs")
+    group_path = Path(args.figure4_dir) / "parameter_function_groups.tsv"
+    group_copy = output_root / "figure4_parameter_groups_source.tsv"
+    if not group_copy.exists():
+        shutil.copyfile(group_path, group_copy)
+    elif sha256(group_copy) != sha256(group_path):
+        raise ValueError("Figure 4 parameter order/group source changed between designs")
     problem = {
         "num_vars": len(ACTIVE), "names": list(ACTIVE),
         "bounds": [[r["encoded_lower"], r["encoded_upper"]] for r in ranges],
@@ -147,6 +153,7 @@ def prepare(args):
             "fit_parameter_table_sha256": sha256(fit_table),
             "figure4_grid_sha256": sha256(grid_path),
             "figure4b_spearman_sha256": sha256(correlation_copy),
+            "figure4_parameter_groups_sha256": sha256(group_copy),
             "oxygen_pct": oxygen,
             "sampling": "independent uniform over fitted transformed bounds; log-uniform where log10",
             "samples_sha256": sha256(sample_path),
@@ -225,6 +232,8 @@ def summarize(args):
         {"field": "convergence_sha256", "value": sha256(root / "convergence.tsv")},
         {"field": "parameter_band_summary_sha256", "value": sha256(root / "parameter_band_summary.tsv")},
         {"field": "mechanism_band_summary_sha256", "value": sha256(root / "mechanism_band_summary.tsv")},
+        {"field": "figure4_parameter_groups_sha256",
+         "value": sha256(root / "figure4_parameter_groups_source.tsv")},
     ]
     write_table(root / "analysis_manifest.tsv", ["field", "value"], manifest)
 
@@ -318,7 +327,13 @@ def plot(args):
         raise ValueError("Publication heatmaps require the full Figure 4 oxygen grid")
     fig_dir = root / "figures"
     fig_dir.mkdir(exist_ok=True)
-    parameters = list(ACTIVE) + list(STRUCTURAL)
+    group_rows = sorted(read_table(root / "figure4_parameter_groups_source.tsv"),
+                        key=lambda row: int(row["parameter_order"]))
+    parameters = [row["parameter"] for row in group_rows]
+    if len(parameters) != len(ACTIVE) + len(STRUCTURAL) or set(parameters) != set(ACTIVE + STRUCTURAL):
+        raise ValueError("Figure 4 parameter order does not match fixed-O2 heatmap rows")
+    group_boundaries = [i for i in range(1, len(parameters))
+                        if group_rows[i]["parameter_group"] != group_rows[i - 1]["parameter_group"]]
     for output in OUTPUTS:
         for index in ("S1", "ST"):
             lookup = {(row["parameter"], float(row["O2_pct"])): float(row[index + "_mean"])
@@ -339,10 +354,12 @@ def plot(args):
             ax.set_title("%s | %s | eFAST N=%d, mean across replicates" %
                          ("Dominant mean ploidy" if output == OUTPUTS[0] else "Asymptotic net live growth (day$^{-1}$)",
                           "First order S1" if index == "S1" else "Total effect ST", max_n))
-            ax.axhline(len(ACTIVE), color="white", linewidth=1)
-            for row_index in range(len(ACTIVE), len(parameters)):
-                ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
-                        va="center", fontsize=8, color="#555555")
+            for boundary in group_boundaries:
+                ax.axhline(boundary, color="white", linewidth=1)
+            for row_index, parameter in enumerate(parameters):
+                if parameter in STRUCTURAL:
+                    ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
+                            va="center", fontsize=8, color="#555555")
             fig.colorbar(im, ax=ax, label=index + " variance fraction")
             stem = "%s_%s" % (output, index)
             fig.savefig(fig_dir / (stem + ".png"), dpi=250)
@@ -357,24 +374,27 @@ def plot(args):
             lookup = {(row["parameter"], float(row["O2_pct"])): float(row[index + "_mean"])
                       for row in rows if row["output"] == output}
             grid = np.full((len(parameters), len(o2_values)), np.nan)
-            for pi, parameter in enumerate(ACTIVE):
-                for oi, o2 in enumerate(o2_values):
-                    grid[pi, oi] = lookup[(parameter, o2)]
+            for pi, parameter in enumerate(parameters):
+                if parameter in ACTIVE:
+                    for oi, o2 in enumerate(o2_values):
+                        grid[pi, oi] = lookup[(parameter, o2)]
             cmap = plt.colormaps["viridis"].copy()
             cmap.set_bad("#dddddd")
             im = ax.imshow(grid, aspect="auto", origin="upper",
                            extent=[0, 5, len(parameters), 0], vmin=0, vmax=1,
                            cmap=cmap, interpolation="nearest")
-            ax.axhline(len(ACTIVE), color="white", linewidth=1)
+            for boundary in group_boundaries:
+                ax.axhline(boundary, color="white", linewidth=1)
             ax.set_yticks(np.arange(len(parameters)) + .5, parameters)
             ax.tick_params(axis="y", labelleft=(j == 0))
             ax.set_xticks(np.arange(0, 5.1, .5))
             ax.set_title(("Ploidy" if i == 0 else "Net live growth") + " | " + index)
             if i == 1:
                 ax.set_xlabel("Fixed oxygen (%)")
-            for row_index in range(len(ACTIVE), len(parameters)):
-                ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
-                        va="center", fontsize=7, color="#555555")
+            for row_index, parameter in enumerate(parameters):
+                if parameter in STRUCTURAL:
+                    ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
+                            va="center", fontsize=7, color="#555555")
     fig.colorbar(im, ax=axes.ravel().tolist(), label="eFAST variance fraction", shrink=.86)
     fig.suptitle("Independent in-vivo eFAST | N=%d | mean across phase replicates" % max_n)
     fig.savefig(fig_dir / "efast_four_panel.png", dpi=250)

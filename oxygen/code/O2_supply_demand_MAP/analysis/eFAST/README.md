@@ -17,7 +17,8 @@ eigenvector determines dominant mean ploidy.
 - Figure 4 data: `fixed_o2_dominant_ploidy_201grid.tsv` verifies the 201-point
   oxygen grid from 0 to 5% in 0.025% increments and the seed25 reference;
   `continuous_ploidy_spearman_by_o2.tsv` supplies the existing directional
-  correlation panel, copied to the result folder with a recorded SHA-256.
+  correlation panel; `parameter_function_groups.tsv` supplies Figure 4 row
+  order. Both are copied to the result folder with recorded SHA-256 values.
 - Fourteen parameters present in the fixed-oxygen operator are sampled
   independently. Transformed `log10_*` bounds are sampled uniformly in log10
   space (log-uniform on natural scale); identity bounds are sampled uniformly.

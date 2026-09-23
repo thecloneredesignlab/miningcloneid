@@ -103,10 +103,12 @@ if (totals[["rows"]] != nrow(samples) * length(oxygen) || totals[["failures"]] !
   stop("Incomplete/nonvalid model evaluation: rows=", totals[["rows"]],
        ", failures=", totals[["failures"]])
 }
-if (!file.copy(part_paths[[1L]], opt$out, overwrite = TRUE)) stop("Cannot create output")
-if (length(part_paths) > 1L && !all(file.append(opt$out, part_paths[-1L]))) {
+combined_path <- paste0(opt$out, ".incomplete")
+if (!file.copy(part_paths[[1L]], combined_path, overwrite = TRUE)) stop("Cannot create output")
+if (length(part_paths) > 1L && !all(file.append(combined_path, part_paths[-1L]))) {
   stop("Cannot concatenate worker outputs")
 }
+if (!file.rename(combined_path, opt$out)) stop("Cannot finalize output")
 unlink(part_paths)
 message("Evaluated ", totals[["rows"]], " fixed-O2 operators in ",
         round(as.numeric(difftime(Sys.time(), start, units = "secs")), 1), " seconds")

@@ -47,7 +47,8 @@ def write_table(path, fields, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "wt", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", extrasaction="ignore")
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t",
+                                lineterminator="\n", extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 

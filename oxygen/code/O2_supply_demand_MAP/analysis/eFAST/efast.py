@@ -29,7 +29,8 @@ GROUP = {
     "p_mis_base": "missegregation", "p_misseg": "missegregation",
     "k_o_mis": "missegregation", "p_wgd": "missegregation",
     "buffer_smax": "buffering", "buffer_beta": "buffering", "buffer_n_exp": "buffering",
-    "mu_hp": "death", "gamma_mu": "death", "O2_crit": "death", "n_O": "death",
+    "mu_hp": "death", "gamma_mu": "death",
+    "O2_crit": "shared_oxygen_stress", "n_O": "shared_oxygen_stress",
 }
 OUTPUTS = ("dominant_mean_ploidy", "dominant_growth_rate")
 
@@ -233,6 +234,57 @@ def summarize_convergence(root, rows):
         row["S1_delta_vs_max_N"] = ("%.10g" % abs(float(row["S1_mean"]) - float(high["S1_mean"]))) if high else ""
         row["ST_delta_vs_max_N"] = ("%.10g" % abs(float(row["ST_mean"]) - float(high["ST_mean"]))) if high else ""
     write_table(root / "convergence.tsv", list(conv[0]), conv)
+    summarize_mechanism_bands(root, conv)
+
+
+def summarize_mechanism_bands(root, rows):
+    highest_n = max(int(row["N"]) for row in rows)
+    top = [row for row in rows if int(row["N"]) == highest_n]
+    low_n = [row for row in rows if int(row["N"]) < highest_n]
+    low_lookup = {(row["output"], row["parameter"], row["O2_pct"]): row for row in low_n}
+    bands = {
+        "low_0_to_1pct": lambda x: 0 <= x <= 1,
+        "high_3_to_5pct": lambda x: 3 <= x <= 5,
+    }
+    param_rows = []
+    for output in OUTPUTS:
+        for band, predicate in bands.items():
+            for parameter in ACTIVE:
+                relevant = [row for row in top if row["output"] == output and
+                            row["parameter"] == parameter and predicate(float(row["O2_pct"]))]
+                if not relevant:
+                    raise ValueError("Empty oxygen band for " + parameter)
+                low_deltas = [abs(float(row["ST_mean"]) -
+                                  float(low_lookup[(output, parameter, row["O2_pct"])]["ST_mean"]))
+                              for row in relevant if (output, parameter, row["O2_pct"]) in low_lookup]
+                param_rows.append({
+                    "output": output, "oxygen_band": band, "parameter": parameter,
+                    "group": GROUP[parameter], "N": highest_n, "n_oxygen": len(relevant),
+                    "S1_mean": "%.10g" % np.mean([float(row["S1_mean"]) for row in relevant]),
+                    "ST_mean": "%.10g" % np.mean([float(row["ST_mean"]) for row in relevant]),
+                    "ST_replicate_range_p90": "%.10g" % np.percentile(
+                        [float(row["ST_range"]) for row in relevant], 90),
+                    "ST_resolution_delta_p90": "%.10g" % np.percentile(low_deltas, 90)
+                    if low_deltas else "",
+                })
+    write_table(root / "parameter_band_summary.tsv", list(param_rows[0]), param_rows)
+    group_rows = []
+    for output in OUTPUTS:
+        for band in bands:
+            for group in sorted(set(GROUP.values())):
+                subset = [row for row in param_rows if row["output"] == output and
+                          row["oxygen_band"] == band and row["group"] == group]
+                group_rows.append({
+                    "output": output, "oxygen_band": band, "group": group,
+                    "n_parameters": len(subset),
+                    "S1_mean_per_parameter": "%.10g" % np.mean(
+                        [float(row["S1_mean"]) for row in subset]),
+                    "ST_mean_per_parameter": "%.10g" % np.mean(
+                        [float(row["ST_mean"]) for row in subset]),
+                    "ST_max_parameter": max(subset, key=lambda row: float(row["ST_mean"]))["parameter"],
+                    "ST_max_parameter_mean": "%.10g" % max(float(row["ST_mean"]) for row in subset),
+                })
+    write_table(root / "mechanism_band_summary.tsv", list(group_rows[0]), group_rows)
 
 
 def plot(args):
@@ -272,6 +324,9 @@ def plot(args):
                          ("Dominant mean ploidy" if output == OUTPUTS[0] else "Asymptotic net live growth (day$^{-1}$)",
                           "First order S1" if index == "S1" else "Total effect ST", max_n))
             ax.axhline(len(ACTIVE), color="white", linewidth=1)
+            for row_index in range(len(ACTIVE), len(parameters)):
+                ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
+                        va="center", fontsize=8, color="#555555")
             fig.colorbar(im, ax=ax, label=index + " variance fraction")
             stem = "%s_%s" % (output, index)
             fig.savefig(fig_dir / (stem + ".png"), dpi=250)

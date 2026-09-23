@@ -27,6 +27,9 @@ eigenvector determines dominant mean ploidy.
   direct effects are structurally absent when oxygen is externally fixed;
   their sensitivity indices are undefined for this 14-factor design. The
   heatmaps display these as grey `N/A` rows to retain Figure 4B alignment.
+- `O2_crit` and `n_O` control the shared oxygen-stress response used by growth,
+  death, and missegregation functions. They are reported separately from the
+  death-specific `mu_hp` and `gamma_mu` when comparing mechanisms.
 - The 201 oxygen points use the same FAST parameter vectors within each
   resolution/replicate. FAST trajectory order is preserved, including if
   numerical evaluation fails: failures stop analysis rather than silently
@@ -56,7 +59,8 @@ come from the validated SIF rather than an incompatible HPC home library.
 `oxygen/results/eFAST/` contains `parameter_ranges.tsv`, the copied Figure 4B
 correlation source, full FAST samples and operator output tables under `runs/`,
 `indices.tsv` with S1/ST per replicate, `convergence.tsv` with replicate ranges
-and change from the highest resolution, four index heatmaps, a directional
+and change from the highest resolution, parameter and mechanism summaries for
+0–1% and 3–5% oxygen, four index heatmaps, a directional
 correlation panel, and `interpretation.md`. The sample metadata records seeds,
 distributions, input hashes, oxygen points, and SALib version. S1 and ST are
 variance contributions without a sign; the correlation panel retains

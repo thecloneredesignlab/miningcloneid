@@ -7,5 +7,7 @@ for input provenance, distributions, output definitions and run settings.
 The four requested first-order and total-effect heatmaps are in `figures/`.
 The accompanying Figure 4B correlation panel supplies direction. Numerical
 source tables are `indices.tsv` and `convergence.tsv`; design and raw operator
-evaluations are retained under `runs/`. `interpretation.md` summarizes the
+evaluations are retained under `runs/`. `parameter_band_summary.tsv` and
+`mechanism_band_summary.tsv` aggregate the high-resolution indices over
+0–1% and 3–5% oxygen. `interpretation.md` summarizes the
 low- versus high-oxygen mechanism comparison after the full run.

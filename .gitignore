@@ -10,6 +10,8 @@
 !/oxygen/results/eFAST/figure4b_spearman_source.tsv
 !/oxygen/results/eFAST/indices.tsv
 !/oxygen/results/eFAST/convergence.tsv
+!/oxygen/results/eFAST/parameter_band_summary.tsv
+!/oxygen/results/eFAST/mechanism_band_summary.tsv
 !/oxygen/results/eFAST/interpretation.md
 !/oxygen/results/eFAST/figures/
 !/oxygen/results/eFAST/figures/*.png

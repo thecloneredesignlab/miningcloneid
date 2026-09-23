@@ -48,6 +48,8 @@ resolution, all 201 oxygen values. Each design contains `14*N` model vectors.
 the named node and does not submit a Slurm job. The full run is restartable:
 an existing nonempty `outputs.tsv.gz` is retained. For a fresh rerun of one
 design, remove only that design's output first.
+The runner clears inherited R settings so that `Matrix` and other packages
+come from the validated SIF rather than an incompatible HPC home library.
 
 ## Outputs
 

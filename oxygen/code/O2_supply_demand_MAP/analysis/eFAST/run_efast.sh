@@ -38,7 +38,11 @@ fi
   printf 'run_started\t%s\n' "$(date -Is)"
 } > "$out_dir/environment.tsv"
 
-container() { apptainer exec "$sif" "$@"; }
+container() {
+  apptainer exec --cleanenv "$sif" env \
+    R_HOME= R_ENVIRON_USER=/dev/null \
+    R_LIBS_USER=/opt/R/4.4.2/lib64/R/library "$@"
+}
 if [[ "$mode" == pilot ]]; then
   resolutions=(129)
   replicates=1
@@ -59,7 +63,7 @@ for n in "${resolutions[@]}"; do
   for ((rep=1; rep<=replicates; rep++)); do
     run_dir="$out_dir/runs/N${n}_R${rep}"
     if [[ ! -s "$run_dir/outputs.tsv.gz" ]]; then
-      container Rscript "$code_dir/evaluate_fixed_o2.R" \
+      container Rscript --vanilla "$code_dir/evaluate_fixed_o2.R" \
         --samples="$run_dir/samples.tsv.gz" --metadata="$run_dir/metadata.json" \
         --fit_root="$fit_root" --figure4_dir="$figure4_dir" \
         --out="$run_dir/outputs.tsv.gz" --workers="$workers" --validate=TRUE

@@ -43,11 +43,15 @@ On `hpctpa3pc0028`, with the SALib 1.5.2 SIF and direct shell access:
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/run_efast.sh pilot
 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/run_efast.sh full
+EFAST_WORKERS=16 EFAST_N=513 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/run_efast.sh extend
 ```
 
 The pilot uses N=129, M=4, one phase seed, four Figure 4 oxygen values. The
 full analysis uses N=129 and 257, M=4, two independent phase seeds at each
 resolution, all 201 oxygen values. Each design contains `14*N` model vectors.
+The `extend` mode adds two repeated full-grid designs at `EFAST_N` (513 by
+default) while retaining the earlier designs. This was used after the N=257
+total-effect indices showed substantial repeat variability.
 `EFAST_WORKERS` controls local fork workers (default 4). The runner enforces
 the named node and does not submit a Slurm job. The full run is restartable:
 an existing nonempty `outputs.tsv.gz` is retained. For a fresh rerun of one

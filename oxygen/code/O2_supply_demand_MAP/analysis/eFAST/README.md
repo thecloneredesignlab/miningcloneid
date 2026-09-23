@@ -62,8 +62,10 @@ correlation source, full FAST samples and operator output tables under `runs/`,
 and change from the highest resolution, parameter and mechanism summaries for
 0–1% and 3–5% oxygen, four index heatmaps, a directional
 correlation panel, and `interpretation.md`. The sample metadata records seeds,
-distributions, input hashes, oxygen points, and SALib version. S1 and ST are
-variance contributions without a sign; the correlation panel retains
+distributions, input hashes, oxygen points, and SALib version.
+The top-level `environment.tsv` records the evaluator image and Git commit;
+`analysis_manifest.tsv` records the postprocessing commit and summary hashes.
+S1 and ST are variance contributions without a sign; the correlation panel retains
 direction. S1/ST are conditional on these chosen input ranges/distributions,
 not a posterior uncertainty decomposition. Summing ST across parameters
 double counts shared interactions.

@@ -9,6 +9,7 @@ from importlib.metadata import version
 import json
 import math
 import shutil
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -211,6 +212,21 @@ def summarize(args):
               "S1", "ST", "output_variance"]
     write_table(root / "indices.tsv", fields, all_rows)
     summarize_convergence(root, all_rows)
+    try:
+        code_commit = subprocess.check_output(
+            ["git", "-C", str(Path(__file__).resolve().parents[5]), "rev-parse", "HEAD"],
+            text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        code_commit = "unavailable"
+    manifest = [
+        {"field": "summary_code_commit", "value": code_commit},
+        {"field": "salib_version", "value": salib_version},
+        {"field": "indices_sha256", "value": sha256(root / "indices.tsv")},
+        {"field": "convergence_sha256", "value": sha256(root / "convergence.tsv")},
+        {"field": "parameter_band_summary_sha256", "value": sha256(root / "parameter_band_summary.tsv")},
+        {"field": "mechanism_band_summary_sha256", "value": sha256(root / "mechanism_band_summary.tsv")},
+    ]
+    write_table(root / "analysis_manifest.tsv", ["field", "value"], manifest)
 
 
 def summarize_convergence(root, rows):
@@ -332,6 +348,38 @@ def plot(args):
             fig.savefig(fig_dir / (stem + ".png"), dpi=250)
             fig.savefig(fig_dir / (stem + ".pdf"))
             plt.close(fig)
+
+    fig, axes = plt.subplots(2, 2, figsize=(19, 12), sharex=True, sharey=True,
+                             constrained_layout=True)
+    for i, output in enumerate(OUTPUTS):
+        for j, index in enumerate(("S1", "ST")):
+            ax = axes[i, j]
+            lookup = {(row["parameter"], float(row["O2_pct"])): float(row[index + "_mean"])
+                      for row in rows if row["output"] == output}
+            grid = np.full((len(parameters), len(o2_values)), np.nan)
+            for pi, parameter in enumerate(ACTIVE):
+                for oi, o2 in enumerate(o2_values):
+                    grid[pi, oi] = lookup[(parameter, o2)]
+            cmap = plt.colormaps["viridis"].copy()
+            cmap.set_bad("#dddddd")
+            im = ax.imshow(grid, aspect="auto", origin="upper",
+                           extent=[0, 5, len(parameters), 0], vmin=0, vmax=1,
+                           cmap=cmap, interpolation="nearest")
+            ax.axhline(len(ACTIVE), color="white", linewidth=1)
+            ax.set_yticks(np.arange(len(parameters)) + .5, parameters)
+            ax.tick_params(axis="y", labelleft=(j == 0))
+            ax.set_xticks(np.arange(0, 5.1, .5))
+            ax.set_title(("Ploidy" if i == 0 else "Net live growth") + " | " + index)
+            if i == 1:
+                ax.set_xlabel("Fixed oxygen (%)")
+            for row_index in range(len(ACTIVE), len(parameters)):
+                ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
+                        va="center", fontsize=7, color="#555555")
+    fig.colorbar(im, ax=axes.ravel().tolist(), label="eFAST variance fraction", shrink=.86)
+    fig.suptitle("Independent in-vivo eFAST | N=%d | mean across phase replicates" % max_n)
+    fig.savefig(fig_dir / "efast_four_panel.png", dpi=250)
+    fig.savefig(fig_dir / "efast_four_panel.pdf")
+    plt.close(fig)
 
     # Existing Figure 4B correlations retain the sign that FAST indices omit.
     correlation = read_table(root / "figure4b_spearman_source.tsv")

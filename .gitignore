@@ -6,6 +6,7 @@
 /oxygen/results/eFAST/*
 !/oxygen/results/eFAST/README.md
 !/oxygen/results/eFAST/environment.tsv
+!/oxygen/results/eFAST/analysis_manifest.tsv
 !/oxygen/results/eFAST/parameter_ranges.tsv
 !/oxygen/results/eFAST/figure4b_spearman_source.tsv
 !/oxygen/results/eFAST/indices.tsv

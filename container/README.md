@@ -231,9 +231,42 @@ by the original O2 base SIF, then adds the local frozen RED runtime layer:
 
 ```bash
 docker buildx build --platform linux/amd64 --load \
-  -t o2_supply_demand_map:r442-hpc-exact \
+  -t zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-20260923 \
   -f container/Dockerfile.hpc-exact container
 ```
+
+The HPC-exact recipe also installs SALib 1.5.2 (eFAST) into its existing
+CPython 3.9 interpreter. Its full Python dependency closure, including the
+unchanged NumPy/SciPy/Matplotlib versions from the base image, is pinned in
+`container/locks/requirements-efast-py39.lock.txt`. The Dockerfile runs a
+package consistency check and the Ishigami eFAST sampling/analysis smoke test
+during the build. Publish the distinct tag and inspect its remote manifest:
+
+```bash
+docker push zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-20260923
+docker buildx imagetools inspect \
+  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-20260923
+```
+
+On RED, `container/hpc_exact/build_efast_sif_from_docker.sh` builds a new SIF
+from the verified Docker Hub `sha256:` digest. It verifies SALib and the
+HPC-exact R runtime before moving the `.new` candidate to the final filename.
+The original `o2_supply_demand_map_r442_hpc_exact.sif` is left in place.
+For the 2026-09-23 image, the published OCI index digest is
+`sha256:ce75ecf14277fd9685af1f8d3b5ee6883e5df83f5103979b1dad8226b8dd5d49`.
+On RED, after making the script available, submit it with:
+
+```bash
+sbatch --qos=xxlarge \
+  container/hpc_exact/build_efast_sif_from_docker.sh \
+  zafiro/o2_supply_demand_map@sha256:ce75ecf14277fd9685af1f8d3b5ee6883e5df83f5103979b1dad8226b8dd5d49 \
+  /share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif
+```
+
+The 2026-09-23 RED build completed as Slurm job `20537466` with exit `0:0`.
+The published SIF SHA-256 is
+`0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad`.
+Its build receipt is `container/manifests/efast-image-verification.tsv`.
 
 To test a freshly rebuilt base instead, first build `container/Dockerfile` as
 documented above and pass its tag through `--build-arg BASE_IMAGE=...`.

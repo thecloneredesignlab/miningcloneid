@@ -26,6 +26,17 @@ RUN --mount=type=bind,source=data/hpc_exact_runtime.tar.gz,target=/tmp/hpc_exact
         a2eb3b3a0d8ec0f8bfe938e84b2b8808 /opt/o2-host-r-library/4.4/tidyr/libs/tidyr.so \
         | md5sum --check --strict
 
+# Add eFAST to the image's existing CPython 3.9 installation.  The full
+# dependency closure is pinned so the base scientific stack is not upgraded.
+COPY locks/requirements-efast-py39.lock.txt /opt/soft-coupling-environment/locks/requirements-efast-py39.lock.txt
+COPY scripts/verify_efast_environment.py /opt/soft-coupling-environment/scripts/verify_efast_environment.py
+RUN python3.9 -m pip install --no-cache-dir --require-hashes \
+        -r /opt/soft-coupling-environment/locks/requirements-efast-py39.lock.txt \
+    && python3.9 -m pip check \
+    && python3.9 /opt/soft-coupling-environment/scripts/verify_python_environment.py \
+        /opt/soft-coupling-environment/locks/requirements-efast-py39.lock.txt \
+    && python3.9 /opt/soft-coupling-environment/scripts/verify_efast_environment.py
+
 ENV OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \

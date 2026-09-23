@@ -1,0 +1,21 @@
+field	value
+image_tag	zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-20260923
+image_oci_index_sha256	ce75ecf14277fd9685af1f8d3b5ee6883e5df83f5103979b1dad8226b8dd5d49
+image_amd64_manifest_sha256	398693d76760c8d7df08db8426ce22e5d67e538bae5c9d25138353a3f541ea92
+platform	linux/amd64
+python_version	3.9.25
+salib_version	1.5.2
+dependency_lock	container/locks/requirements-efast-py39.lock.txt
+locked_python_distributions	20
+docker_pip_check	PASS
+docker_efast_ishigami	PASS
+sif_build_job	20537466
+sif_build_state	COMPLETED
+sif_build_exit_code	0:0
+sif_path	/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif
+sif_sha256	0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad
+sif_locked_python_distributions	20/20 PASS
+sif_pip_check	PASS
+sif_efast_ishigami	PASS
+sif_hpc_exact_r_runtime	PASS
+original_sif_sha256	dfbd7ebe1209814ca25358e56ae4d5553c6dc19852f5567ce369ab23bebe3372

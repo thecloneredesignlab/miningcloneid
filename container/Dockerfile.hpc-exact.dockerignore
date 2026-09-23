@@ -7,3 +7,7 @@
 !Dockerfile.hpc-exact.dockerignore
 !data/
 !data/hpc_exact_runtime.tar.gz
+!locks/
+!locks/requirements-efast-py39.lock.txt
+!scripts/
+!scripts/verify_efast_environment.py

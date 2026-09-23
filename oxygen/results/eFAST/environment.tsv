@@ -1,0 +1,9 @@
+field	value
+git_commit	d19d68444502603e3f5d9d48998c007d11c27c07
+host	hpctpa3pc0028
+sif	/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif
+sif_sha256	0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad
+fit_root	/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253
+figure4_dir	/share/lab_crd/taoli/Project/HypoxiaLTEEFigures/revised/iteration4/data/Figures/Figure4
+workers	8
+run_started	2026-09-23T14:29:32-04:00

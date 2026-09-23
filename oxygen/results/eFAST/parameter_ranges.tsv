@@ -1,0 +1,15 @@
+parameter	transform	sampling_distribution	encoded_lower	encoded_upper	natural_lower	natural_upper	group	fit_table_name
+lam_max	log10	log_uniform	-2.30102999566398	-0.522878745280338	0.005000000000000015	0.2999999999999997	growth	log10_lam_max
+p_mis_base	log10	log_uniform	-6.0	-1.0	1e-06	0.1	missegregation	log10_p_mis_base
+p_misseg	log10	log_uniform	-2.30102999566398	-0.301029995663981	0.005000000000000015	0.5000000000000002	missegregation	log10_p_misseg
+k_o_mis	log10	log_uniform	-3.0	-1.69897000433602	0.001	0.01999999999999994	missegregation	log10_k_o_mis
+buffer_smax	identity	uniform	0.0	1.0	0.0	1.0	buffering	buffer_smax
+buffer_beta	log10	log_uniform	-2.0	1.0	0.01	10.0	buffering	log10_buffer_beta
+buffer_n_exp	log10	log_uniform	-1.0	1.0	0.1	10.0	buffering	log10_buffer_n_exp
+p_wgd	log10	log_uniform	-5.0	-3.0	1e-05	0.001	genome_doubling	log10_p_wgd
+alpha_o2	log10	log_uniform	-0.301029995663981	0.602059991327962	0.5000000000000002	3.999999999999996	growth	log10_alpha_o2
+gamma_growth	identity	uniform	1.5	4.5	1.5	4.5	growth	gamma_growth
+mu_hp	log10	log_uniform	-2.30102999566398	-0.522878745280338	0.005000000000000015	0.2999999999999997	death	log10_mu_hp
+gamma_mu	identity	uniform	1.2	3.5	1.2	3.5	death	gamma_mu
+O2_crit	log10	log_uniform	-1.0	0.397940008672038	0.1	2.500000000000002	shared_oxygen_stress	log10_O2_crit
+n_O	identity	uniform	0.5	5.0	0.5	5.0	shared_oxygen_stress	n_O

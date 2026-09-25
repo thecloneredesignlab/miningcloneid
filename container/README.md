@@ -298,6 +298,13 @@ sbatch --qos=xxlarge \
   /share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_julia11012_structid0533_20260925.sif
 ```
 
+The published SIF was built from the `linux/amd64` manifest digest
+`sha256:596f7349c24d23a2f6bb03a7b32e4f2f792d410369e969e1662533776b1338f6`.
+Its SHA-256 is
+`c7e4182106fd6eadeff49b4efc4ea0b4ed1d2a2bfa8116cd746c656c1db3da60`;
+the complete build receipt is
+`container/manifests/structural-identifiability-image-verification.tsv`.
+
 To test a freshly rebuilt base instead, first build `container/Dockerfile` as
 documented above and pass its tag through `--build-arg BASE_IMAGE=...`.
 

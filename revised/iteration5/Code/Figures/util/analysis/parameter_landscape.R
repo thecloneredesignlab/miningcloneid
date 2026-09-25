@@ -3,8 +3,9 @@
 # Render Figure 4B and Supplementary Figure 4-1 from the continuous fixed-O2 analysis.
 # The 500 fitted rows are optimizer-derived endpoints, not posterior samples or
 # biological replicates. Figure 4B groups parameters by the O2 concentration
-# at their maximum absolute Spearman association (Low, Medium, then High O2),
-# then orders each group by decreasing maximum absolute correlation.
+# at their maximum absolute Spearman association (High, Medium, then Low O2).
+# Within each O2 group, positive peaks precede negative peaks, and each sign
+# subgroup is ordered by decreasing maximum absolute correlation.
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -86,7 +87,7 @@ if (!identical(sort(ranking$display_order), seq_len(18L)) ||
     !identical(sort(ranking$importance_rank), seq_len(18L))) {
   stop("Parameter display and importance ranks must each be 1 through 18.")
 }
-peak_o2_group_levels <- c("Low O2", "Medium O2", "High O2")
+peak_o2_group_levels <- c("High O2", "Medium O2", "Low O2")
 peak_o2_group_palette <- c(
   "Low O2" = "#2166AC",
   "Medium O2" = "#E6A400",
@@ -105,9 +106,14 @@ expected_peak_o2_group <- fcase(
 if (anyNA(expected_peak_o2_group) ||
     !identical(ranking_order_check$peak_o2_group, expected_peak_o2_group) ||
     any(diff(ranking_order_check$peak_o2_group_order) < 0) ||
+    any(ranking_order_check[, diff(peak_direction_order) < 0,
+      by = peak_o2_group_order]$V1) ||
     any(ranking_order_check[, diff(max_abs_rho) > 1e-12,
-      by = peak_o2_group_order]$V1)) {
-  stop("Figure 4B rows are not grouped by peak O2 and sorted within group.")
+      by = .(peak_o2_group_order, peak_direction_order)]$V1)) {
+  stop(paste0(
+    "Figure 4B rows are not ordered by High-to-Low peak O2, then ",
+    "positive-to-negative peak rho, then descending max-|rho|."
+  ))
 }
 
 tsne_metric <- function(key_name) {
@@ -232,6 +238,11 @@ peak_o2_group_separator_y <- if (length(nonempty_peak_o2_group_counts) > 1L) {
 } else {
   numeric()
 }
+peak_sign_transition_after <- which(
+  diff(ranking_order_check$peak_o2_group_order) == 0 &
+    diff(ranking_order_check$peak_direction_order) != 0
+)
+peak_sign_separator_y <- 18.5 - peak_sign_transition_after
 
 peak_o2_strip_layers <- lapply(seq_len(nrow(parameter_axis)), function(i) {
   annotate(
@@ -259,6 +270,10 @@ p_heat <- ggplot(
   geom_hline(
     yintercept = peak_o2_group_separator_y,
     linewidth = 0.80, color = "#555B61"
+  ) +
+  geom_hline(
+    yintercept = peak_sign_separator_y,
+    linewidth = 0.48, color = "#7A8086", linetype = "22"
   ) +
   scale_x_continuous(
     name = expression(paste("Fixed ", O[2], " concentration (%)")),
@@ -312,12 +327,16 @@ p_effect <- ggplot(
     yintercept = peak_o2_group_separator_y,
     linewidth = 0.80, color = "#555B61"
   ) +
+  geom_hline(
+    yintercept = peak_sign_separator_y,
+    linewidth = 0.48, color = "#7A8086", linetype = "22"
+  ) +
   geom_segment(
     aes(x = 0, xend = max_abs_rho, yend = parameter_y),
     linewidth = 0.58, color = "#B5B8BC"
   ) +
   geom_point(
-    aes(fill = rho_at_max_abs), shape = 21,
+    aes(fill = peak_direction), shape = 21,
     size = 2.7, stroke = 0.45, color = "#202020"
   ) +
   geom_text(
@@ -325,9 +344,12 @@ p_effect <- ggplot(
     hjust = 0,
     size = 12.2 / ggplot2::.pt, fontface = "bold", color = "#202428"
   ) +
-  scale_fill_gradient2(
-    low = "#2166AC", mid = "#F7F7F7", high = "#B2182B",
-    midpoint = 0, limits = c(-1, 1), oob = squish, guide = "none"
+  scale_fill_manual(
+    values = c(
+      "Positive peak rho" = "#B2182B",
+      "Negative peak rho" = "#2166AC"
+    ),
+    guide = "none"
   ) +
   scale_x_continuous(
     name = expression(paste("Max |", rho, "|")),
@@ -395,6 +417,10 @@ p_prior <- ggplot() +
   geom_hline(
     yintercept = peak_o2_group_separator_y,
     linewidth = 0.80, color = "#555B61"
+  ) +
+  geom_hline(
+    yintercept = peak_sign_separator_y,
+    linewidth = 0.48, color = "#7A8086", linetype = "22"
   ) +
   geom_ribbon(
     data = endpoint_density,
@@ -769,8 +795,8 @@ ggsave(paste0(main_base, ".svg"), combined, width = main_width, height = main_he
        units = "in", device = svglite::svglite, bg = "white")
 
 lite_base <- file.path(figure_dir, "Figure4B_lite")
-lite_width <- main_width * 21 / 27
-lite_height <- main_height
+lite_width <- 12
+lite_height <- 9
 ggsave(paste0(lite_base, ".png"), combined_lite, width = lite_width, height = lite_height,
        units = "in", dpi = main_raster_dpi, bg = "white")
 ggsave(paste0(lite_base, ".pdf"), combined_lite, width = lite_width, height = lite_height,
@@ -1080,7 +1106,7 @@ supp_violin <- ggplot(
   labs(
     title = "All 18 fitted-parameter endpoint distributions across exploratory in vivo t-SNE clusters",
     subtitle = paste0(
-      "Parameters follow the Figure 4B Low-, Medium-, then High-O2 peak grouping, with descending max-|rho| within each group. ",
+      "Parameters follow the Figure 4B High-, Medium-, then Low-O2 peak grouping; positive precedes negative peak rho within each group, with descending max-|rho| within each sign subgroup. ",
       "All 18 parameters were inputs to the in-vivo-only t-SNE."
     ),
     x = "Exploratory t-SNE cluster",
@@ -1122,9 +1148,10 @@ validation <- data.table(
     "n_parameters", "n_fixed_o2_values", "n_fitted_endpoints",
     "association_metric", "continuous_ploidy_outcome",
     "binary_ploidy_class_used", "parameter_sort_primary",
-    "parameter_sort_secondary", "parameter_sort_tie_break",
-    "low_o2_peak_parameter_count", "medium_o2_peak_parameter_count",
-    "high_o2_peak_parameter_count", "row_annotation_field",
+    "parameter_sort_secondary", "parameter_sort_tertiary",
+    "parameter_sort_tie_break", "high_o2_peak_parameter_count",
+    "medium_o2_peak_parameter_count", "low_o2_peak_parameter_count",
+    "row_annotation_field",
     "effect_position_field",
     "effect_fill_field", "all_parameters_in_main_distribution_plot",
     "all_parameters_in_si_distribution_plot", "main_distribution_grouping",
@@ -1143,19 +1170,21 @@ validation <- data.table(
     "main_output_width_in", "main_output_height_in",
     "figure4b_lite_endpoint_distribution_rendered",
     "figure4b_lite_output_width_in", "figure4b_lite_output_height_in",
+    "figure4b_lite_output_aspect_ratio",
     "figure4c_output_width_in", "figure4c_output_height_in",
     "figure4d_output_width_in", "figure4d_output_height_in"
   ),
   value = c(
     18, 201, 500, "Spearman rho", "TRUE", "FALSE",
-    "peak O2 group: Low [0,1.5), Medium [1.5,3.5), High [3.5,5]",
-    "descending maximum absolute Spearman rho within peak O2 group",
+    "peak O2 group: High [3.5,5], Medium [1.5,3.5), Low [0,1.5)",
+    "peak rho sign within peak O2 group: positive first, negative second",
+    "descending maximum absolute Spearman rho within peak O2/sign subgroup",
     "configured parameter order",
-    unname(peak_o2_group_counts[["Low O2"]]),
-    unname(peak_o2_group_counts[["Medium O2"]]),
     unname(peak_o2_group_counts[["High O2"]]),
+    unname(peak_o2_group_counts[["Medium O2"]]),
+    unname(peak_o2_group_counts[["Low O2"]]),
     "peak_o2_group",
-    "max_abs_rho", "rho_at_max_abs",
+    "max_abs_rho", "peak_direction",
     "TRUE", "TRUE", "all 500 endpoints pooled", 500,
     "blue half-violin density of 500 optimizer endpoints plus green seed25 point",
     "gray configured lower-to-upper range plus black initial-value point",
@@ -1174,6 +1203,7 @@ validation <- data.table(
     figure4d_strongest$selection_rule[[1L]],
     figure4d_strongest$parameter[[1L]], "TRUE",
     main_width, main_height, "FALSE", lite_width, lite_height,
+    lite_width / lite_height,
     tsne_width, tsne_height,
     figure4d_width, figure4d_height
   )

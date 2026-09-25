@@ -117,7 +117,7 @@ echo "container=${SIF_IMAGE}"
 CURRENT_STAGE="PARSE_R_SOURCES"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript -e \
-  "parse(file='${ASSOCIATION_SCRIPT}'); parse(file='${LANDSCAPE_SCRIPT}'); cat('parse_ok\\n')"
+  "invisible(parse(file='${ASSOCIATION_SCRIPT}')); invisible(parse(file='${LANDSCAPE_SCRIPT}')); cat('parse_ok\\n')"
 
 CURRENT_STAGE="DERIVE_PEAK_O2_RANKING"
 status RUNNING "${CURRENT_STAGE}"
@@ -135,7 +135,7 @@ suppressPackageStartupMessages(library(data.table))
 data_dir <- Sys.getenv("ANALYSIS_DATA_DIR")
 ranking <- fread(file.path(data_dir, "continuous_ploidy_parameter_ranking.tsv"))
 ranking <- ranking[order(display_order)]
-expected_levels <- c("Low O2", "Medium O2", "High O2")
+expected_levels <- c("High O2", "Medium O2", "Low O2")
 expected_group <- fcase(
   ranking$O2_at_max_abs >= 0 & ranking$O2_at_max_abs < 1.5, "Low O2",
   ranking$O2_at_max_abs >= 1.5 & ranking$O2_at_max_abs < 3.5, "Medium O2",
@@ -152,17 +152,25 @@ stopifnot(
 counts <- ranking[, .N, by = peak_o2_group]
 stopifnot(identical(
   counts[match(expected_levels, peak_o2_group), N],
-  c(9L, 6L, 3L)
+  c(3L, 6L, 9L)
 ))
-within_group_fail <- ranking[, any(diff(max_abs_rho) > 1e-12),
-                             by = peak_o2_group_order]$V1
-stopifnot(!any(within_group_fail))
+sign_order_fail <- ranking[, any(diff(peak_direction_order) < 0),
+                           by = peak_o2_group_order]$V1
+within_sign_fail <- ranking[, any(diff(max_abs_rho) > 1e-12),
+                            by = .(peak_o2_group_order, peak_direction_order)]$V1
+stopifnot(!any(sign_order_fail), !any(within_sign_fail))
 validation <- fread(file.path(data_dir, "parameter_landscape_layout_validation.tsv"))
 stopifnot(
   validation[metric == "row_annotation_field", value] == "peak_o2_group",
+  validation[metric == "effect_fill_field", value] == "peak_direction",
   validation[
     metric == "figure4b_lite_endpoint_distribution_rendered", value
-  ] == "FALSE"
+  ] == "FALSE",
+  as.numeric(validation[metric == "figure4b_lite_output_width_in", value]) == 12,
+  as.numeric(validation[metric == "figure4b_lite_output_height_in", value]) == 9,
+  abs(as.numeric(validation[
+    metric == "figure4b_lite_output_aspect_ratio", value
+  ]) - 4 / 3) < 1e-12
 )
 cat("ranking_and_lite_validation_ok\n")
 '

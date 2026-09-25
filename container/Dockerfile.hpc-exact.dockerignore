@@ -9,5 +9,9 @@
 !data/hpc_exact_runtime.tar.gz
 !locks/
 !locks/requirements-efast-py39.lock.txt
+!julia/
+!julia/Project.toml
+!julia/Manifest.toml
 !scripts/
 !scripts/verify_efast_environment.py
+!scripts/verify_structural_identifiability.jl

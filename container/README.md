@@ -268,6 +268,36 @@ The published SIF SHA-256 is
 `0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad`.
 Its build receipt is `container/manifests/efast-image-verification.tsv`.
 
+The structural-identifiability extension retains the same R 4.4.2 and SALib
+1.5.2 runtimes and adds the official Julia 1.10.12 LTS `linux/amd64` runtime
+plus `StructuralIdentifiability.jl` 0.5.33. The Julia environment is resolved
+from the committed `container/julia/Project.toml` and `Manifest.toml`, then
+precompiled under `/opt/julia-depot`. Runtime package access is offline by
+default; invoke it with `julia --project=/opt/structural-identifiability`.
+Build and publish the distinct image with:
+
+```bash
+docker buildx build --platform linux/amd64 --load \
+  -t zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925 \
+  -f container/Dockerfile.hpc-exact container
+docker push \
+  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925
+docker buildx imagetools inspect \
+  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925
+```
+
+On RED, `container/hpc_exact/build_structid_sif_from_docker.sh` imports only an
+immutable Docker Hub digest. Before publishing the candidate SIF it runs the
+Julia individual/combination-identifiability smoke test offline and repeats the
+SALib, Python-lock, and HPC-exact R checks. A typical invocation is:
+
+```bash
+sbatch --qos=xxlarge \
+  container/hpc_exact/build_structid_sif_from_docker.sh \
+  zafiro/o2_supply_demand_map@sha256:VERIFIED_DIGEST \
+  /share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_julia11012_structid0533_20260925.sif
+```
+
 To test a freshly rebuilt base instead, first build `container/Dockerfile` as
 documented above and pass its tag through `--build-arg BASE_IMAGE=...`.
 

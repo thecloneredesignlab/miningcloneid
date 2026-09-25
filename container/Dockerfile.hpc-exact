@@ -1,11 +1,30 @@
 # syntax=docker/dockerfile:1.7
 
+ARG JULIA_IMAGE=docker.io/library/julia:1.10.12-bookworm@sha256:24693b4b87f695a9efd0b6fe152912d9e0faa5c87c631b5c3299b3e7b7416204
+ARG BASE_IMAGE=zafiro/o2_supply_demand_map@sha256:6c75181a01a41436251eb63250efb80864b7dee38196bda2729446fe86423327
+ARG TARGETPLATFORM=linux/amd64
+FROM --platform=${TARGETPLATFORM} ${JULIA_IMAGE} AS julia-structid
+
+ENV JULIA_DEPOT_PATH=/opt/julia-depot \
+    JULIA_PROJECT=/opt/structural-identifiability
+
+COPY julia/Project.toml julia/Manifest.toml /opt/structural-identifiability/
+COPY scripts/verify_structural_identifiability.jl /opt/soft-coupling-environment/scripts/verify_structural_identifiability.jl
+
+# Resolve the committed Julia 1.10.12 manifest without relying on the Julia
+# package server, precompile the complete environment, and prove that it can
+# run the structural-identifiability path with package access disabled.
+RUN JULIA_PKG_SERVER="" julia --startup-file=no --project="${JULIA_PROJECT}" \
+        -e 'using Pkg; Pkg.Registry.add(Pkg.RegistrySpec(url = "https://github.com/JuliaRegistries/General.git")); Pkg.instantiate(); Pkg.precompile()' \
+    && rm -rf "${JULIA_DEPOT_PATH}/registries" "${JULIA_DEPOT_PATH}/logs" \
+    && JULIA_PKG_OFFLINE=true julia --startup-file=no --project="${JULIA_PROJECT}" \
+        /opt/soft-coupling-environment/scripts/verify_structural_identifiability.jl
+
 # This immutable linux/amd64 manifest is the Docker source used by the original
 # O2 base SIF. Override BASE_IMAGE only when deliberately testing a rebuilt
 # local base. The exact RED runtime archive is kept out of Git and mounted from
 # the Docker build context only for the extraction layer.
-ARG BASE_IMAGE=zafiro/o2_supply_demand_map@sha256:6c75181a01a41436251eb63250efb80864b7dee38196bda2729446fe86423327
-FROM ${BASE_IMAGE}
+FROM --platform=${TARGETPLATFORM} ${BASE_IMAGE}
 
 ARG SOURCE_SIF_SHA256=09926a6c2d01d4ba197567c5c41964e6a1f08128000ada93bfabddd98249b74e
 ARG HPC_EXACT_RUNTIME_SHA256=97dad4fc074fe3835d14675a88a9696a4c3045a12c9383240df229517b592e57
@@ -37,6 +56,20 @@ RUN python3.9 -m pip install --no-cache-dir --require-hashes \
         /opt/soft-coupling-environment/locks/requirements-efast-py39.lock.txt \
     && python3.9 /opt/soft-coupling-environment/scripts/verify_efast_environment.py
 
+# Add the pinned Julia runtime and its fully instantiated package depot without
+# changing the existing R or Python installations.
+COPY --from=julia-structid /usr/local/julia /usr/local/julia
+COPY --from=julia-structid /opt/julia-depot /opt/julia-depot
+COPY --from=julia-structid /opt/structural-identifiability /opt/structural-identifiability
+COPY --from=julia-structid /opt/soft-coupling-environment/scripts/verify_structural_identifiability.jl \
+    /opt/soft-coupling-environment/scripts/verify_structural_identifiability.jl
+
+RUN JULIA_DEPOT_PATH=/opt/julia-depot \
+    JULIA_PROJECT=/opt/structural-identifiability \
+    JULIA_PKG_OFFLINE=true \
+    /usr/local/julia/bin/julia --startup-file=no \
+        /opt/soft-coupling-environment/scripts/verify_structural_identifiability.jl
+
 ENV OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
@@ -47,12 +80,19 @@ ENV OMP_NUM_THREADS=1 \
     MININGCLONEID_RCPP_REBUILD=TRUE \
     R_PROFILE_USER=/dev/null \
     R_HOME=/app/eb/software/R/4.4.2-gfbf-2024a/lib64/R \
-    R_LIBS_USER=/opt/o2-host-r-library/4.4
+    R_LIBS_USER=/opt/o2-host-r-library/4.4 \
+    JULIA_DEPOT_PATH=/opt/julia-depot \
+    JULIA_PROJECT=/opt/structural-identifiability \
+    JULIA_PKG_OFFLINE=true \
+    JULIA_NUM_THREADS=1 \
+    PATH=/usr/local/julia/bin:${PATH}
 
 LABEL org.opencontainers.image.title="O2 supply-demand RED HPC-exact R 4.4.2 runtime" \
       org.opencontainers.image.source-sif-sha256="${SOURCE_SIF_SHA256}" \
       org.opencontainers.image.runtime-archive-sha256="${HPC_EXACT_RUNTIME_SHA256}" \
-      org.opencontainers.image.hpc-reference="RED R/4.4.2-gfbf-2024a"
+      org.opencontainers.image.hpc-reference="RED R/4.4.2-gfbf-2024a" \
+      org.opencontainers.image.julia-version="1.10.12" \
+      org.opencontainers.image.structural-identifiability-version="0.5.33"
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/o2-hpc-exact-rscript"]

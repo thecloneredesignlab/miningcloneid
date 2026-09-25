@@ -25,6 +25,12 @@ The accepted host reference is the in-vitro seed10 run produced with:
 4. `run_seed10_standalone_validation.sh` runs the new image with
    `--cleanenv --containall`, binds only the project and an isolated C++ cache,
    regenerates the HTML report, and repeats the exact comparison.
+5. `build_efast_sif_from_docker.sh` imports and validates the SALib 1.5.2 image
+   from an immutable Docker Hub digest.
+6. `build_structid_sif_from_docker.sh` imports the Julia extension, runs the
+   `StructuralIdentifiability.jl` 0.5.33 ODE smoke test with package access
+   disabled, and repeats the SALib and R parity checks before publishing the
+   new SIF.
 
 `o2_hpc_exact_rscript` is the standalone image entrypoint. It restores the
 captured RED `PATH` and `LD_LIBRARY_PATH`, selects the internal R package

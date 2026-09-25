@@ -4,8 +4,8 @@
 # The 500 fitted rows are optimizer-derived endpoints, not posterior samples or
 # biological replicates. Figure 4B groups parameters by the O2 concentration
 # at their maximum absolute Spearman association (High, Medium, then Low O2).
-# Within each O2 group, positive peaks precede negative peaks, and each sign
-# subgroup is ordered by decreasing maximum absolute correlation.
+# Within each O2 group, parameters are ordered by decreasing maximum absolute
+# correlation, irrespective of the sign at the peak.
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -110,13 +110,11 @@ expected_peak_o2_group <- fcase(
 if (anyNA(expected_peak_o2_group) ||
     !identical(ranking_order_check$peak_o2_group, expected_peak_o2_group) ||
     any(diff(ranking_order_check$peak_o2_group_order) < 0) ||
-    any(ranking_order_check[, diff(peak_direction_order) < 0,
-      by = peak_o2_group_order]$V1) ||
     any(ranking_order_check[, diff(max_abs_rho) > 1e-12,
-      by = .(peak_o2_group_order, peak_direction_order)]$V1)) {
+      by = peak_o2_group_order]$V1)) {
   stop(paste0(
     "Figure 4B rows are not ordered by High-to-Low peak O2, then ",
-    "positive-to-negative peak rho, then descending max-|rho|."
+    "descending max-|rho| within each peak-O2 group."
   ))
 }
 
@@ -242,11 +240,6 @@ peak_o2_group_separator_y <- if (length(nonempty_peak_o2_group_counts) > 1L) {
 } else {
   numeric()
 }
-peak_sign_transition_after <- which(
-  diff(ranking_order_check$peak_o2_group_order) == 0 &
-    diff(ranking_order_check$peak_direction_order) != 0
-)
-peak_sign_separator_y <- 18.5 - peak_sign_transition_after
 
 peak_o2_strip_layers <- lapply(seq_len(nrow(parameter_axis)), function(i) {
   annotate(
@@ -274,10 +267,6 @@ p_heat <- ggplot(
   geom_hline(
     yintercept = peak_o2_group_separator_y,
     linewidth = 0.80, color = "#555B61"
-  ) +
-  geom_hline(
-    yintercept = peak_sign_separator_y,
-    linewidth = 0.48, color = "#7A8086", linetype = "22"
   ) +
   scale_x_continuous(
     name = expression(paste("Fixed ", O[2], " concentration (%)")),
@@ -330,10 +319,6 @@ p_effect <- ggplot(
   geom_hline(
     yintercept = peak_o2_group_separator_y,
     linewidth = 0.80, color = "#555B61"
-  ) +
-  geom_hline(
-    yintercept = peak_sign_separator_y,
-    linewidth = 0.48, color = "#7A8086", linetype = "22"
   ) +
   geom_segment(
     aes(x = 0, xend = max_abs_rho, yend = parameter_y),
@@ -418,10 +403,6 @@ p_prior <- ggplot() +
   geom_hline(
     yintercept = peak_o2_group_separator_y,
     linewidth = 0.80, color = "#555B61"
-  ) +
-  geom_hline(
-    yintercept = peak_sign_separator_y,
-    linewidth = 0.48, color = "#7A8086", linetype = "22"
   ) +
   geom_ribbon(
     data = endpoint_density,
@@ -1179,9 +1160,9 @@ validation <- data.table(
   value = c(
     18, 201, 500, "Spearman rho", "TRUE", "FALSE",
     "peak O2 group: High [3.5,5], Medium [1.5,3.5), Low [0,1.5)",
-    "peak rho sign within peak O2 group: positive first, negative second",
-    "descending maximum absolute Spearman rho within peak O2/sign subgroup",
-    "configured parameter order",
+    "descending maximum absolute Spearman rho within peak O2 group",
+    "configured parameter order for exact max-|rho| ties",
+    "none",
     unname(peak_o2_group_counts[["High O2"]]),
     unname(peak_o2_group_counts[["Medium O2"]]),
     unname(peak_o2_group_counts[["Low O2"]]),

@@ -208,7 +208,7 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     stop("The max-|rho| parameter ranking is incomplete or internally inconsistent.")
   }
   if (any(abs(ranking$rho_at_max_abs) <= 1e-12)) {
-    stop("A zero peak rho cannot be assigned to a positive/negative subgroup.")
+    stop("A zero peak rho cannot be assigned to a positive/negative point color.")
   }
   setorder(ranking, -max_abs_rho, parameter_order)
   ranking[, importance_rank := seq_len(.N)]
@@ -218,7 +218,6 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       "Positive peak rho",
       "Negative peak rho"
     ),
-    peak_direction_order = fifelse(rho_at_max_abs > 0, 1L, 2L),
     peak_o2_group = fcase(
       O2_at_max_abs >= 0 & O2_at_max_abs < 1.5, "Low O2",
       O2_at_max_abs >= 1.5 & O2_at_max_abs < 3.5, "Medium O2",
@@ -232,23 +231,18 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
   ranking[, peak_o2_group_order := match(
     peak_o2_group, c("High O2", "Medium O2", "Low O2")
   )]
-  setorder(ranking, peak_direction_order, -max_abs_rho, parameter_order)
-  ranking[, within_direction_rank := seq_len(.N), by = peak_direction_order]
   setorder(
     ranking,
-    peak_o2_group_order, peak_direction_order, -max_abs_rho, parameter_order
+    peak_o2_group_order, -max_abs_rho, parameter_order
   )
   ranking[, within_peak_o2_group_rank := seq_len(.N), by = peak_o2_group_order]
-  ranking[, within_peak_o2_sign_rank := seq_len(.N),
-          by = .(peak_o2_group_order, peak_direction_order)]
   ranking[, display_order := seq_len(.N)]
   association <- merge(
     association,
     ranking[, .(
       parameter, display_order, importance_rank,
-      peak_direction, peak_direction_order, within_direction_rank,
+      peak_direction,
       peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
-      within_peak_o2_sign_rank,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -328,9 +322,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     parameter_prior,
     ranking[, .(
       parameter, display_order, importance_rank,
-      peak_direction, peak_direction_order, within_direction_rank,
+      peak_direction,
       peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
-      within_peak_o2_sign_rank,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -366,9 +359,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     bound_meta,
     ranking[, .(
       parameter, display_order, importance_rank,
-      peak_direction, peak_direction_order, within_direction_rank,
+      peak_direction,
       peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
-      within_peak_o2_sign_rank,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -498,7 +490,7 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     parameter, parameter_group, parameter_plot_label,
     parameter_display_label, display_order, importance_rank,
     peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
-    peak_direction, peak_direction_order, within_peak_o2_sign_rank,
+    peak_direction,
     max_abs_rho, rho_at_max_abs, O2_at_max_abs
   )]
   setorder(pooled_summary, display_order)
@@ -628,9 +620,9 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       500, 201, 18, nrow(association), "Spearman rho",
       "TRUE", "FALSE",
       "peak O2 group: High [3.5,5], Medium [1.5,3.5), Low [0,1.5)",
-      "peak rho sign within peak O2 group: positive first, negative second",
-      "descending maximum absolute Spearman rho within peak O2/sign subgroup",
-      "configured parameter order", sum(ranking$peak_o2_group == "High O2"),
+      "descending maximum absolute Spearman rho within peak O2 group",
+      "configured parameter order for exact max-|rho| ties",
+      "none", sum(ranking$peak_o2_group == "High O2"),
       sum(ranking$peak_o2_group == "Medium O2"),
       sum(ranking$peak_o2_group == "Low O2"),
       "max_abs_rho", "rho_at_max_abs", best_seed,

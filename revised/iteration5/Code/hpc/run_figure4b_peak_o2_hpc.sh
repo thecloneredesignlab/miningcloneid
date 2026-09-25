@@ -154,13 +154,22 @@ stopifnot(identical(
   counts[match(expected_levels, peak_o2_group), N],
   c(3L, 6L, 9L)
 ))
-sign_order_fail <- ranking[, any(diff(peak_direction_order) < 0),
-                           by = peak_o2_group_order]$V1
-within_sign_fail <- ranking[, any(diff(max_abs_rho) > 1e-12),
-                            by = .(peak_o2_group_order, peak_direction_order)]$V1
-stopifnot(!any(sign_order_fail), !any(within_sign_fail))
+within_group_fail <- ranking[, any(diff(max_abs_rho) > 1e-12),
+                             by = peak_o2_group_order]$V1
+expected_parameter_order <- ranking[
+  order(peak_o2_group_order, -max_abs_rho, parameter_order),
+  parameter
+]
+stopifnot(
+  !any(within_group_fail),
+  identical(ranking$parameter, expected_parameter_order)
+)
 validation <- fread(file.path(data_dir, "parameter_landscape_layout_validation.tsv"))
 stopifnot(
+  validation[metric == "parameter_sort_secondary", value] ==
+    "descending maximum absolute Spearman rho within peak O2 group",
+  validation[metric == "parameter_sort_tertiary", value] ==
+    "configured parameter order for exact max-|rho| ties",
   validation[metric == "row_annotation_field", value] == "peak_o2_group",
   validation[metric == "effect_fill_field", value] == "peak_direction",
   validation[metric == "effect_positive_fill", value] == "#EF8A62",

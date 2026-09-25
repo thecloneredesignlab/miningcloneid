@@ -124,7 +124,7 @@ status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${ASSOCIATION_SCRIPT}" \
   "--data-dir=${DATA_DIR}"
 
-CURRENT_STAGE="RENDER_FIGURE4B_AND_LITE"
+CURRENT_STAGE="RENDER_FIGURE4B_LINEAR_AND_LOGX"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${LANDSCAPE_SCRIPT}"
 
@@ -174,6 +174,11 @@ stopifnot(
   validation[metric == "effect_fill_field", value] == "peak_direction",
   validation[metric == "effect_positive_fill", value] == "#EF8A62",
   validation[metric == "effect_negative_fill", value] == "#67A9CF",
+  validation[metric == "figure4b_logx_rendered", value] == "TRUE",
+  validation[metric == "figure4b_logx_axis_field", value] == "O2_pct",
+  validation[metric == "figure4b_logx_transform", value] == "pseudo-log10",
+  as.numeric(validation[metric == "figure4b_logx_sigma", value]) == 0.025,
+  validation[metric == "figure4b_logx_zero_retained", value] == "TRUE",
   validation[
     metric == "figure4b_lite_endpoint_distribution_rendered", value
   ] == "FALSE",
@@ -181,9 +186,22 @@ stopifnot(
   as.numeric(validation[metric == "figure4b_lite_output_height_in", value]) == 9,
   abs(as.numeric(validation[
     metric == "figure4b_lite_output_aspect_ratio", value
+  ]) - 4 / 3) < 1e-12,
+  validation[metric == "figure4b_lite_logx_rendered", value] == "TRUE",
+  validation[
+    metric == "figure4b_lite_logx_endpoint_distribution_rendered", value
+  ] == "FALSE",
+  as.numeric(validation[
+    metric == "figure4b_lite_logx_output_width_in", value
+  ]) == 12,
+  as.numeric(validation[
+    metric == "figure4b_lite_logx_output_height_in", value
+  ]) == 9,
+  abs(as.numeric(validation[
+    metric == "figure4b_lite_logx_output_aspect_ratio", value
   ]) - 4 / 3) < 1e-12
 )
-cat("ranking_and_lite_validation_ok\n")
+cat("ranking_linear_logx_and_lite_validation_ok\n")
 '
 
 outputs=(
@@ -193,12 +211,24 @@ outputs=(
   "${PANEL_DIR}/Figure4B_lite.png"
   "${PANEL_DIR}/Figure4B_lite.pdf"
   "${PANEL_DIR}/Figure4B_lite.svg"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.png"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.pdf"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.svg"
+  "${PANEL_DIR}/Figure4B_lite_logx.png"
+  "${PANEL_DIR}/Figure4B_lite_logx.pdf"
+  "${PANEL_DIR}/Figure4B_lite_logx.svg"
   "${DELIVERABLE_DIR}/Figure4B.png"
   "${DELIVERABLE_DIR}/Figure4B.pdf"
   "${DELIVERABLE_DIR}/Figure4B.svg"
   "${DELIVERABLE_DIR}/Figure4B_lite.png"
   "${DELIVERABLE_DIR}/Figure4B_lite.pdf"
   "${DELIVERABLE_DIR}/Figure4B_lite.svg"
+  "${DELIVERABLE_DIR}/Figure4B_logx.png"
+  "${DELIVERABLE_DIR}/Figure4B_logx.pdf"
+  "${DELIVERABLE_DIR}/Figure4B_logx.svg"
+  "${DELIVERABLE_DIR}/Figure4B_lite_logx.png"
+  "${DELIVERABLE_DIR}/Figure4B_lite_logx.pdf"
+  "${DELIVERABLE_DIR}/Figure4B_lite_logx.svg"
 )
 for path in "${outputs[@]}"; do
   [[ -s "${path}" ]] || {
@@ -217,4 +247,4 @@ status COMPLETE "${CURRENT_STAGE}"
 trap - ERR
 echo "status_path=${STATUS_PATH}"
 echo "checksum_path=${CHECKSUM_PATH}"
-echo "Figure 4B peak-O2 regrouping and lite render complete."
+echo "Figure 4B linear and pseudo-log-x renders complete."

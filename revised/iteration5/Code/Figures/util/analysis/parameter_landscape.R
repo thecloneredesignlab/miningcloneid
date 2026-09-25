@@ -241,66 +241,96 @@ peak_o2_group_separator_y <- if (length(nonempty_peak_o2_group_counts) > 1L) {
   numeric()
 }
 
-peak_o2_strip_layers <- lapply(seq_len(nrow(parameter_axis)), function(i) {
-  annotate(
-    "rect",
-    xmin = -0.22, xmax = -0.155,
-    ymin = parameter_axis$parameter_y[[i]] - 0.44,
-    ymax = parameter_axis$parameter_y[[i]] + 0.44,
-    fill = unname(peak_o2_group_palette[[
-      parameter_axis$peak_o2_group[[i]]
-    ]]),
-    color = NA
-  )
-})
+make_peak_o2_strip_layers <- function(xmin, xmax) {
+  lapply(seq_len(nrow(parameter_axis)), function(i) {
+    annotate(
+      "rect",
+      xmin = xmin, xmax = xmax,
+      ymin = parameter_axis$parameter_y[[i]] - 0.44,
+      ymax = parameter_axis$parameter_y[[i]] + 0.44,
+      fill = unname(peak_o2_group_palette[[
+        parameter_axis$peak_o2_group[[i]]
+      ]]),
+      color = NA
+    )
+  })
+}
 
-p_heat <- ggplot(
-  association_plot,
-  aes(x = O2_pct, y = parameter_y, fill = spearman_rho)
-) +
-  geom_tile(width = 0.025, height = 0.88) +
-  peak_o2_strip_layers +
-  geom_hline(
-    yintercept = row_separator_y,
-    linewidth = 0.24, color = "#D0D3D6"
+make_heat_plot <- function(x_scale, strip_xmin, strip_xmax) {
+  ggplot(
+    association_plot,
+    aes(x = O2_pct, y = parameter_y, fill = spearman_rho)
   ) +
-  geom_hline(
-    yintercept = peak_o2_group_separator_y,
-    linewidth = 0.80, color = "#555B61"
-  ) +
+    geom_tile(width = 0.025, height = 0.88) +
+    make_peak_o2_strip_layers(strip_xmin, strip_xmax) +
+    geom_hline(
+      yintercept = row_separator_y,
+      linewidth = 0.24, color = "#D0D3D6"
+    ) +
+    geom_hline(
+      yintercept = peak_o2_group_separator_y,
+      linewidth = 0.80, color = "#555B61"
+    ) +
+    x_scale +
+    scale_y_continuous(
+      name = NULL,
+      breaks = parameter_axis$parameter_y,
+      labels = parameter_axis$parameter_axis_label,
+      limits = c(0.5, 18.5), expand = c(0, 0)
+    ) +
+    scale_fill_gradient2(
+      low = "#2166AC", mid = "#F7F7F7", high = "#B2182B",
+      midpoint = 0, limits = c(-1, 1), oob = squish,
+      na.value = "#D9D9D9", guide = "none"
+    ) +
+    labs(title = "Parameter-ploidy association") +
+    coord_cartesian(clip = "off") +
+    theme_bw(base_size = 12, base_family = "Arial") +
+    theme(
+      text = element_text(face = "bold", color = "#111111"),
+      plot.title = element_text(face = "bold", size = 16, margin = margin(b = 1)),
+      plot.subtitle = element_text(face = "bold", size = 12, color = "#34393E", margin = margin(b = 5)),
+      axis.title.x = element_text(size = 15.5, margin = margin(t = 6)),
+      axis.text.x = element_text(size = 13, color = "#202020"),
+      axis.text.y = ggtext::element_markdown(
+        size = 11.5, color = "#202020", lineheight = 0.92,
+        margin = margin(r = 3)
+      ),
+      axis.ticks.y = element_blank(),
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "#707070", linewidth = 0.35),
+      plot.margin = margin(4, 10, 4, 16)
+    )
+}
+
+p_heat <- make_heat_plot(
   scale_x_continuous(
     name = expression(paste("Fixed ", O[2], " concentration (%)")),
     limits = c(-0.25, 5.0125), breaks = 0:5, expand = c(0, 0)
-  ) +
-  scale_y_continuous(
-    name = NULL,
-    breaks = parameter_axis$parameter_y,
-    labels = parameter_axis$parameter_axis_label,
-    limits = c(0.5, 18.5), expand = c(0, 0)
-  ) +
-  scale_fill_gradient2(
-    low = "#2166AC", mid = "#F7F7F7", high = "#B2182B",
-    midpoint = 0, limits = c(-1, 1), oob = squish,
-    na.value = "#D9D9D9", guide = "none"
-  ) +
-  labs(title = "Parameter-ploidy association") +
-  coord_cartesian(clip = "off") +
-  theme_bw(base_size = 12, base_family = "Arial") +
-  theme(
-    text = element_text(face = "bold", color = "#111111"),
-    plot.title = element_text(face = "bold", size = 16, margin = margin(b = 1)),
-    plot.subtitle = element_text(face = "bold", size = 12, color = "#34393E", margin = margin(b = 5)),
-    axis.title.x = element_text(size = 15.5, margin = margin(t = 6)),
-    axis.text.x = element_text(size = 13, color = "#202020"),
-    axis.text.y = ggtext::element_markdown(
-      size = 11.5, color = "#202020", lineheight = 0.92,
-      margin = margin(r = 3)
+  ),
+  strip_xmin = -0.22,
+  strip_xmax = -0.155
+)
+
+o2_pseudo_log_sigma <- 0.025
+p_heat_logx <- make_heat_plot(
+  scale_x_continuous(
+    name = expression(atop(
+      paste("Fixed ", O[2], " concentration (%)"),
+      "(pseudo-log10 scale)"
+    )),
+    trans = scales::pseudo_log_trans(
+      sigma = o2_pseudo_log_sigma,
+      base = 10
     ),
-    axis.ticks.y = element_blank(),
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "#707070", linewidth = 0.35),
-    plot.margin = margin(4, 10, 4, 16)
-  )
+    limits = c(-0.015, 5.0125),
+    breaks = c(0, 0.025, 0.1, 0.5, 1, 5),
+    labels = c("0", "0.025", "0.1", "0.5", "1", "5"),
+    expand = c(0, 0)
+  ),
+  strip_xmin = -0.0125,
+  strip_xmax = -0.006
+)
 
 effect_label_offset <- 0.075
 ranking_plot[, effect_label_x := max_abs_rho + effect_label_offset]
@@ -755,6 +785,8 @@ combined_core <- p_heat + p_effect + p_prior + p_sidebar +
   plot_layout(design = combined_design, widths = rep(1, 27))
 
 combined <- combined_core
+combined_logx <- p_heat_logx + p_effect + p_prior + p_sidebar +
+  plot_layout(design = combined_design, widths = rep(1, 27))
 
 lite_design <- c(
   area(t = 1, l = 1, b = 1, r = 11),
@@ -762,6 +794,8 @@ lite_design <- c(
   area(t = 1, l = 16, b = 1, r = 21)
 )
 combined_lite <- p_heat + p_effect + p_sidebar_lite +
+  plot_layout(design = lite_design, widths = rep(1, 21))
+combined_lite_logx <- p_heat_logx + p_effect + p_sidebar_lite +
   plot_layout(design = lite_design, widths = rep(1, 21))
 
 main_base <- file.path(figure_dir, "parameter_continuous_ploidy_landscape")
@@ -776,6 +810,20 @@ ggsave(paste0(main_base, ".pdf"), combined, width = main_width, height = main_he
 ggsave(paste0(main_base, ".svg"), combined, width = main_width, height = main_height,
        units = "in", device = svglite::svglite, bg = "white")
 
+main_logx_base <- file.path(
+  figure_dir,
+  "parameter_continuous_ploidy_landscape_logx"
+)
+ggsave(paste0(main_logx_base, ".png"), combined_logx,
+       width = main_width, height = main_height,
+       units = "in", dpi = main_raster_dpi, bg = "white")
+ggsave(paste0(main_logx_base, ".pdf"), combined_logx,
+       width = main_width, height = main_height,
+       units = "in", device = cairo_pdf, bg = "white")
+ggsave(paste0(main_logx_base, ".svg"), combined_logx,
+       width = main_width, height = main_height,
+       units = "in", device = svglite::svglite, bg = "white")
+
 lite_base <- file.path(figure_dir, "Figure4B_lite")
 lite_width <- 12
 lite_height <- 9
@@ -786,10 +834,23 @@ ggsave(paste0(lite_base, ".pdf"), combined_lite, width = lite_width, height = li
 ggsave(paste0(lite_base, ".svg"), combined_lite, width = lite_width, height = lite_height,
        units = "in", device = svglite::svglite, bg = "white")
 
+lite_logx_base <- file.path(figure_dir, "Figure4B_lite_logx")
+ggsave(paste0(lite_logx_base, ".png"), combined_lite_logx,
+       width = lite_width, height = lite_height,
+       units = "in", dpi = main_raster_dpi, bg = "white")
+ggsave(paste0(lite_logx_base, ".pdf"), combined_lite_logx,
+       width = lite_width, height = lite_height,
+       units = "in", device = cairo_pdf, bg = "white")
+ggsave(paste0(lite_logx_base, ".svg"), combined_lite_logx,
+       width = lite_width, height = lite_height,
+       units = "in", device = svglite::svglite, bg = "white")
+
 for (extension in c("png", "pdf", "svg")) {
   source_paths <- c(
     Figure4B = paste0(main_base, ".", extension),
-    Figure4B_lite = paste0(lite_base, ".", extension)
+    Figure4B_lite = paste0(lite_base, ".", extension),
+    Figure4B_logx = paste0(main_logx_base, ".", extension),
+    Figure4B_lite_logx = paste0(lite_logx_base, ".", extension)
   )
   destination_paths <- file.path(
     deliverable_dir,
@@ -1151,9 +1212,18 @@ validation <- data.table(
     "figure4d_selected_n", "figure4d_selection_rule",
     "figure4d_selected_parameter", "figure4d_rendered",
     "main_output_width_in", "main_output_height_in",
+    "figure4b_logx_rendered", "figure4b_logx_axis_field",
+    "figure4b_logx_transform", "figure4b_logx_sigma",
+    "figure4b_logx_zero_retained", "figure4b_logx_output_width_in",
+    "figure4b_logx_output_height_in",
     "figure4b_lite_endpoint_distribution_rendered",
     "figure4b_lite_output_width_in", "figure4b_lite_output_height_in",
     "figure4b_lite_output_aspect_ratio",
+    "figure4b_lite_logx_rendered",
+    "figure4b_lite_logx_endpoint_distribution_rendered",
+    "figure4b_lite_logx_output_width_in",
+    "figure4b_lite_logx_output_height_in",
+    "figure4b_lite_logx_output_aspect_ratio",
     "figure4c_output_width_in", "figure4c_output_height_in",
     "figure4d_output_width_in", "figure4d_output_height_in"
   ),
@@ -1187,7 +1257,12 @@ validation <- data.table(
     sum(cluster_parameter_tests$significant_bh_0p05), 1,
     figure4d_strongest$selection_rule[[1L]],
     figure4d_strongest$parameter[[1L]], "TRUE",
-    main_width, main_height, "FALSE", lite_width, lite_height,
+    main_width, main_height,
+    "TRUE", "O2_pct", "pseudo-log10", o2_pseudo_log_sigma,
+    "TRUE", main_width, main_height,
+    "FALSE", lite_width, lite_height,
+    lite_width / lite_height,
+    "TRUE", "FALSE", lite_width, lite_height,
     lite_width / lite_height,
     tsne_width, tsne_height,
     figure4d_width, figure4d_height
@@ -1211,6 +1286,8 @@ fwrite(provenance, file.path(data_dir, "parameter_landscape_source_provenance.ts
 message("Completed continuous Figure 4 parameter landscape workflow.")
 message("  Figure 4B: ", paste0(main_base, ".png"))
 message("  Figure 4B lite: ", paste0(lite_base, ".png"))
+message("  Figure 4B log-x: ", paste0(main_logx_base, ".png"))
+message("  Figure 4B lite log-x: ", paste0(lite_logx_base, ".png"))
 message("  Figure 4C: ", paste0(tsne_base, ".png"))
 message("  Figure 4D: ", paste0(figure4d_base, ".png"))
 message("  Supplementary Figure 4-1: ", paste0(supp_base, ".png"))

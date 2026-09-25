@@ -278,12 +278,12 @@ Build and publish the distinct image with:
 
 ```bash
 docker buildx build --platform linux/amd64 --load \
-  -t zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925 \
+  -t zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925-r2 \
   -f container/Dockerfile.hpc-exact container
 docker push \
-  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925
+  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925-r2
 docker buildx imagetools inspect \
-  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925
+  zafiro/o2_supply_demand_map:r442-hpc-exact-salib152-julia11012-structid0533-20260925-r2
 ```
 
 On RED, `container/hpc_exact/build_structid_sif_from_docker.sh` imports only an

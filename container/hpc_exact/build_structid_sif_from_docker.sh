@@ -40,7 +40,14 @@ fi
 
 mkdir -p "$LOG_DIR"
 LOCAL_TMP=$(mktemp -d "/tmp/o2-structid-sif-${SLURM_JOB_ID:-manual}.XXXXXX")
-trap 'rm -rf "$LOCAL_TMP"' EXIT
+PUBLISHED=0
+cleanup() {
+  rm -rf "$LOCAL_TMP"
+  if [[ "$PUBLISHED" -ne 1 && -e "$OUTPUT_TMP" ]]; then
+    rm -f "$OUTPUT_TMP"
+  fi
+}
+trap cleanup EXIT
 export APPTAINER_TMPDIR="${LOCAL_TMP}/tmp"
 export APPTAINER_CACHEDIR="${LOCAL_TMP}/cache"
 mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
@@ -83,6 +90,7 @@ cat("HPC-exact R runtime verification: PASS\n")
 apptainer inspect "$OUTPUT_TMP" > "${LOG_PREFIX}.inspect.txt"
 sha256sum "$OUTPUT_TMP" > "${LOG_PREFIX}.candidate.sha256"
 mv "$OUTPUT_TMP" "$OUTPUT_SIF"
+PUBLISHED=1
 sha256sum "$OUTPUT_SIF" > "${LOG_PREFIX}.sha256"
 echo "SIF_BUILD=PASS"
 echo "output_sif=$OUTPUT_SIF"

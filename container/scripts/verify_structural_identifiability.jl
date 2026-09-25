@@ -1,16 +1,12 @@
 #!/usr/bin/env julia
 
-using Pkg
 using StructuralIdentifiability
 
 VERSION == v"1.10.12" || error("Unexpected Julia version: $(VERSION)")
 
-package = only(
-    entry for entry in values(Pkg.dependencies())
-    if entry.name == "StructuralIdentifiability"
-)
-package.version == v"0.5.33" ||
-    error("Unexpected StructuralIdentifiability version: $(package.version)")
+package_version = Base.pkgversion(StructuralIdentifiability)
+package_version == v"0.5.33" ||
+    error("Unexpected StructuralIdentifiability version: $(package_version)")
 
 # Published package example with known individual and combination results.
 model = @ODEmodel(
@@ -40,4 +36,4 @@ end
 
 println("Julia structural-identifiability verification: PASS")
 println("julia_version=$(VERSION)")
-println("StructuralIdentifiability_version=$(package.version)")
+println("StructuralIdentifiability_version=$(package_version)")

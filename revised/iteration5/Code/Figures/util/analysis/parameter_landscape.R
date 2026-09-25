@@ -93,6 +93,10 @@ peak_o2_group_palette <- c(
   "Medium O2" = "#E6A400",
   "High O2" = "#B2182B"
 )
+peak_direction_palette <- c(
+  "Positive peak rho" = "#EF8A62",
+  "Negative peak rho" = "#67A9CF"
+)
 ranking_order_check <- ranking[order(display_order)]
 expected_peak_o2_group <- fcase(
   ranking_order_check$O2_at_max_abs >= 0 &
@@ -345,10 +349,7 @@ p_effect <- ggplot(
     size = 12.2 / ggplot2::.pt, fontface = "bold", color = "#202428"
   ) +
   scale_fill_manual(
-    values = c(
-      "Positive peak rho" = "#B2182B",
-      "Negative peak rho" = "#2166AC"
-    ),
+    values = peak_direction_palette,
     guide = "none"
   ) +
   scale_x_continuous(
@@ -1153,7 +1154,8 @@ validation <- data.table(
     "medium_o2_peak_parameter_count", "low_o2_peak_parameter_count",
     "row_annotation_field",
     "effect_position_field",
-    "effect_fill_field", "all_parameters_in_main_distribution_plot",
+    "effect_fill_field", "effect_positive_fill", "effect_negative_fill",
+    "all_parameters_in_main_distribution_plot",
     "all_parameters_in_si_distribution_plot", "main_distribution_grouping",
     "pooled_endpoints_per_parameter", "distribution_upper_glyph",
     "distribution_lower_glyph", "distribution_point",
@@ -1185,6 +1187,8 @@ validation <- data.table(
     unname(peak_o2_group_counts[["Low O2"]]),
     "peak_o2_group",
     "max_abs_rho", "peak_direction",
+    unname(peak_direction_palette[["Positive peak rho"]]),
+    unname(peak_direction_palette[["Negative peak rho"]]),
     "TRUE", "TRUE", "all 500 endpoints pooled", 500,
     "blue half-violin density of 500 optimizer endpoints plus green seed25 point",
     "gray configured lower-to-upper range plus black initial-value point",

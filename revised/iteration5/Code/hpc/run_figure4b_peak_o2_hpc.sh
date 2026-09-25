@@ -163,6 +163,8 @@ validation <- fread(file.path(data_dir, "parameter_landscape_layout_validation.t
 stopifnot(
   validation[metric == "row_annotation_field", value] == "peak_o2_group",
   validation[metric == "effect_fill_field", value] == "peak_direction",
+  validation[metric == "effect_positive_fill", value] == "#EF8A62",
+  validation[metric == "effect_negative_fill", value] == "#67A9CF",
   validation[
     metric == "figure4b_lite_endpoint_distribution_rendered", value
   ] == "FALSE",

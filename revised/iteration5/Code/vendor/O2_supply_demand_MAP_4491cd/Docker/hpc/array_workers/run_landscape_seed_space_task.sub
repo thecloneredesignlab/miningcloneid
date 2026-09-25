@@ -1,0 +1,70 @@
+#!/bin/bash
+# Run one seed-space reconstruction task for landscape_subcluster multi-warmup.
+
+#SBATCH --job-name=o2mw_seedspace
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=2G
+#SBATCH --qos=small
+#SBATCH --time=1:00:00
+#SBATCH --array=1-1
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/log/o2mw_seedspace_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/log/o2mw_seedspace_%A_%a.err
+
+set -euo pipefail
+
+O2SD_DOCKER_HPC_ROOT="${O2SD_DOCKER_HPC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+# shellcheck source=../util/o2_supply_demand_map_apptainer_runtime.sh
+source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
+
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
+
+PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
+R_MODULE="${R_MODULE:-R/4.4}"
+TASKS_TSV="${TASKS_TSV:-}"
+TASK_LOOKUP_COLUMN="${TASK_LOOKUP_COLUMN:-task_id}"
+SEED_SPACE_SCRIPT="${SEED_SPACE_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_pairs_from_landscape_subclusters.R}"
+SKIP_EXISTING="${SKIP_EXISTING:-TRUE}"
+
+if [[ -z "${TASKS_TSV}" ]]; then
+  echo "TASKS_TSV is required." >&2
+  exit 2
+fi
+
+TASK_ID="${SLURM_ARRAY_TASK_ID:-1}"
+PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
+TASKS_TSV="$(cd "$(dirname "${TASKS_TSV}")" && pwd)/$(basename "${TASKS_TSV}")"
+
+if [[ ! -f "${TASKS_TSV}" ]]; then
+  echo "Missing task table: ${TASKS_TSV}" >&2
+  exit 1
+fi
+if [[ ! -f "${SEED_SPACE_SCRIPT}" ]]; then
+  echo "Missing seed-space script: ${SEED_SPACE_SCRIPT}" >&2
+  exit 1
+fi
+
+load_r_module
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "Container-backed Rscript not found; SIF: ${O2SD_CONTAINER_IMAGE}." >&2
+  exit 1
+fi
+
+echo "Starting landscape seed-space task"
+echo "  slurm_array_job_id: ${SLURM_ARRAY_JOB_ID:-NA}"
+echo "  task_id: ${TASK_ID}"
+echo "  tasks_tsv: ${TASKS_TSV}"
+echo "  seed_space_script: ${SEED_SPACE_SCRIPT}"
+
+Rscript "${SEED_SPACE_SCRIPT}" \
+  "--stage=run_seed_space_task" \
+  "--tasks_tsv=${TASKS_TSV}" \
+  "--task_id=${TASK_ID}" \
+  "--task_lookup_column=${TASK_LOOKUP_COLUMN}" \
+  "--skip_existing=${SKIP_EXISTING}"

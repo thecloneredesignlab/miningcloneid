@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+: "${RUN_ID:?RUN_ID is required}"
+: "${CAMPAIGN_ROOT:?CAMPAIGN_ROOT is required}"
+: "${ARRAY_MODE:?ARRAY_MODE is required}"
+
+ITERATION_ROOT="/share/lab_crd/taoli/Project/HypoxiaLTEEFigures/revised/iteration4"
+CODE_ROOT="${ITERATION_ROOT}/Code/Figures"
+SIF_IMAGE="/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif"
+MODEL_CODE_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
+RESULTS_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results"
+INVIVO_RESULT_ROOT="${RESULTS_ROOT}/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
+INVITRO_RESULT_ROOT="${RESULTS_ROOT}/fit_invitro_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
+JOINT_RESULT_ROOT="${RESULTS_ROOT}/fit_joint_unified_global_invitro_500seed_all_xxlarge_r442_exact_20260828_145253"
+SOURCE_FIXED_ROOT="${ITERATION_ROOT}/data/Figures/Figure7/fixed_pmisseg_v1"
+SOURCE_POINTER="${SOURCE_FIXED_ROOT}/finite_time_full_q10_current.tsv"
+FIGURE6_DATA_ROOT="${ITERATION_ROOT}/data/Figures/Figure6/fixed_pmisseg_v1"
+RUN_ROOT="${FIGURE6_DATA_ROOT}/net_growth_full_range_q10_runs/${RUN_ID}"
+MANIFEST="${RUN_ROOT}/net_growth_task_manifest.tsv"
+
+RED_EASYBUILD_ROOT="/app/eb"
+CONTAINER_LD_LIBRARY_PATH="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64:${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib:${RED_EASYBUILD_ROOT}/software/GCCcore/13.3.0/lib64:${RED_EASYBUILD_ROOT}/software/binutils/2.42-GCCcore-13.3.0/lib:/opt/rh/gcc-toolset-13/root/usr/lib64"
+
+for path in "${SIF_IMAGE}" "${SOURCE_POINTER}" "${MANIFEST}" \
+  "${CODE_ROOT}/run_Supp_Figure6_17_18_Array_Task.R"; do
+  [[ -r "${path}" ]] || { echo "Missing required input: ${path}" >&2; exit 2; }
+done
+
+if command -v apptainer >/dev/null 2>&1; then
+  CONTAINER_RUNTIME="$(command -v apptainer)"
+elif command -v singularity >/dev/null 2>&1; then
+  CONTAINER_RUNTIME="$(command -v singularity)"
+else
+  echo "No apptainer/singularity runtime found." >&2
+  exit 2
+fi
+
+SOURCE_RELATIVE_RUN="$(awk -F '\t' 'NR==2 {print $2}' "${SOURCE_POINTER}")"
+SOURCE_RUN_ROOT="${SOURCE_FIXED_ROOT}/${SOURCE_RELATIVE_RUN}"
+TEMPLATE_ROOT="${CAMPAIGN_ROOT}/rcpp_cache_template"
+TASK_TMP_DIR="$(mktemp -d "/tmp/supp6-array.${SLURM_JOB_ID:-manual}.${SLURM_ARRAY_TASK_ID:-0}.XXXXXX")"
+TASK_LOCK=""
+cleanup() {
+  exit_code="$?"
+  set +e
+  trap - EXIT TERM INT
+  if [[ -n "${TASK_LOCK}" ]]; then rmdir "${TASK_LOCK}" 2>/dev/null || true; fi
+  rm -rf -- "${TASK_TMP_DIR}"
+  exit "${exit_code}"
+}
+trap cleanup EXIT TERM INT
+
+mkdir -p "${TASK_TMP_DIR}/home" "${TASK_TMP_DIR}/cache" \
+  "${TASK_TMP_DIR}/model_rcpp_cache" "${TASK_TMP_DIR}/full_range_cache" \
+  "${TASK_TMP_DIR}/net_growth_cache"
+printf '%s\n' 'options(bitmapType = "cairo", device = "png", warn = 1)' \
+  > "${TASK_TMP_DIR}/Rprofile"
+
+if [[ "${ARRAY_MODE}" == "prewarm" ]]; then
+  mkdir -p "${TEMPLATE_ROOT}/model" "${TEMPLATE_ROOT}/full_range" \
+    "${TEMPLATE_ROOT}/net_growth"
+  for pair in \
+    "${FIGURE6_DATA_ROOT}/.rcpp_cache_full_range:${TEMPLATE_ROOT}/full_range" \
+    "${FIGURE6_DATA_ROOT}/.rcpp_cache_net_growth:${TEMPLATE_ROOT}/net_growth"; do
+    source_dir="${pair%%:*}"
+    target_dir="${pair#*:}"
+    if [[ -d "${source_dir}" ]]; then cp -a "${source_dir}/." "${target_dir}/"; fi
+  done
+  MODEL_CACHE="${TEMPLATE_ROOT}/model"
+  FULL_RANGE_CACHE="${TEMPLATE_ROOT}/full_range"
+  NET_GROWTH_CACHE="${TEMPLATE_ROOT}/net_growth"
+elif [[ "${ARRAY_MODE}" == "task" ]]; then
+  : "${TASK_FILE:?TASK_FILE is required for task mode}"
+  : "${SLURM_ARRAY_TASK_ID:?SLURM_ARRAY_TASK_ID is required for task mode}"
+  for name in model full_range net_growth; do
+    [[ -d "${TEMPLATE_ROOT}/${name}" ]] || {
+      echo "Missing prewarmed cache template: ${TEMPLATE_ROOT}/${name}" >&2
+      exit 2
+    }
+  done
+  cp -a "${TEMPLATE_ROOT}/model/." "${TASK_TMP_DIR}/model_rcpp_cache/"
+  cp -a "${TEMPLATE_ROOT}/full_range/." "${TASK_TMP_DIR}/full_range_cache/"
+  cp -a "${TEMPLATE_ROOT}/net_growth/." "${TASK_TMP_DIR}/net_growth_cache/"
+  MODEL_CACHE="${TASK_TMP_DIR}/model_rcpp_cache"
+  FULL_RANGE_CACHE="${TASK_TMP_DIR}/full_range_cache"
+  NET_GROWTH_CACHE="${TASK_TMP_DIR}/net_growth_cache"
+  TASK_ID="$(awk -F '\t' -v target="${SLURM_ARRAY_TASK_ID}" \
+    'NR>1 && $1==target {print $2}' "${TASK_FILE}")"
+  [[ "${TASK_ID}" =~ ^NG[0-9]{4}$ ]] || {
+    echo "Cannot resolve task id for array index ${SLURM_ARRAY_TASK_ID}." >&2
+    exit 2
+  }
+  mkdir -p "${RUN_ROOT}/task_locks"
+  TASK_LOCK="${RUN_ROOT}/task_locks/${TASK_ID}.lock"
+  mkdir "${TASK_LOCK}" 2>/dev/null || {
+    echo "Task lock already exists: ${TASK_LOCK}" >&2
+    exit 2
+  }
+else
+  echo "ARRAY_MODE must be prewarm or task." >&2
+  exit 2
+fi
+
+CONTAINER_ARGS=(
+  exec --cleanenv --containall --pwd "${ITERATION_ROOT}"
+  --home "${TASK_TMP_DIR}/home"
+  --env "TMPDIR=/tmp" --env "TMP=/tmp" --env "TEMP=/tmp"
+  --env "XDG_CACHE_HOME=${TASK_TMP_DIR}/cache"
+  --env "FONTCONFIG_PATH=/etc/fonts"
+  --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
+  --env "R_MAKEVARS_USER=${ITERATION_ROOT}/Code/hpc/figure6_compiler_makevars"
+  --env "R_HOME=/opt/R/4.4.2/lib64/R"
+  --env "LD_LIBRARY_PATH=${CONTAINER_LD_LIBRARY_PATH}"
+  --env "DISPLAY=" --env "QT_QPA_PLATFORM=offscreen" --env "MPLBACKEND=Agg"
+  --env "FIGURE_WORKSPACE_ROOT=${ITERATION_ROOT}"
+  --env "FIGURE_MODEL_CODE_ROOT=${MODEL_CODE_ROOT}"
+  --env "FIGURE_INVIVO_RESULT_ROOT=${INVIVO_RESULT_ROOT}"
+  --env "FIGURE_INVITRO_RESULT_ROOT=${INVITRO_RESULT_ROOT}"
+  --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
+  --env "FIGURE6_FULL_RANGE_SOURCE_RUN_ROOT=${SOURCE_RUN_ROOT}"
+  --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
+  --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"
+  --env "RCPP_PARALLEL_NUM_THREADS=1" --env "KMP_USE_SHM=0"
+  --env "KMP_INIT_AT_FORK=FALSE"
+  --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
+  --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
+  --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
+  --bind "${MODEL_CACHE}:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"
+  --bind "${FULL_RANGE_CACHE}:${FIGURE6_DATA_ROOT}/.rcpp_cache_full_range:rw"
+  --bind "${NET_GROWTH_CACHE}:${FIGURE6_DATA_ROOT}/.rcpp_cache_net_growth:rw"
+  --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
+  --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
+  --bind "${TASK_TMP_DIR}:/tmp:rw"
+  --bind "${TASK_TMP_DIR}:/var/tmp:rw"
+)
+
+command=(
+  Rscript --vanilla "${CODE_ROOT}/run_Supp_Figure6_17_18_Array_Task.R"
+  "--mode=${ARRAY_MODE}" "--workspace-root=${ITERATION_ROOT}" "--run-id=${RUN_ID}"
+)
+if [[ "${ARRAY_MODE}" == "task" ]]; then
+  command+=(
+    "--task-file=${TASK_FILE}" "--array-index=${SLURM_ARRAY_TASK_ID}"
+    "--audit-dir=${CAMPAIGN_ROOT}"
+  )
+fi
+"${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "${command[@]}"

@@ -1,0 +1,34 @@
+#!/usr/bin/env Rscript
+
+script_dir <- local({
+  arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(arg)) dirname(normalizePath(sub("^--file=", "", arg[[1L]]))) else
+    normalizePath(file.path(getwd(), "Code", "Figures"), mustWork = TRUE)
+})
+source(file.path(script_dir, "util", "analysis", "figure6_robustness.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_context_extension.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_finite_time_q10.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_invitro_passage_q10.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_full_range_q10.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_finite_time_plots.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_net_growth_q10.R"))
+source(file.path(
+  script_dir, "util", "analysis", "figure6_net_growth_full_range_q10.R"
+))
+source(file.path(
+  script_dir, "util", "analysis", "figure6_supplementary_b_layout.R"
+))
+source(file.path(
+  script_dir, "util", "analysis", "figure6_net_growth_full_range_layout.R"
+))
+
+draw_Supp_Figure6_18 <- function() {
+  workspace_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
+  f6ngfr_draw(
+    workspace_root = workspace_root, context = "in vivo",
+    supplement = "Supp_Figure6_18",
+    filename = "supp_fig6-18_population_net_live_growth_rate_signed_log_invivo_full_range"
+  )
+}
+
+if (sys.nframe() == 0L) draw_Supp_Figure6_18()

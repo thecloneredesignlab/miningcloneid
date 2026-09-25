@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=fixo2eig
+
+set -euo pipefail
+
+if [[ -n "${R_MODULE:-}" ]]; then
+  if command -v ml >/dev/null 2>&1; then
+    ml "${R_MODULE}"
+  elif command -v module >/dev/null 2>&1; then
+    module load "${R_MODULE}"
+  fi
+fi
+
+cd "${PROJECT_ROOT:?PROJECT_ROOT is required}"
+
+ARRAY_TASK_OFFSET="${ARRAY_TASK_OFFSET:-0}"
+EFFECTIVE_ARRAY_TASK_ID=$(( SLURM_ARRAY_TASK_ID + ARRAY_TASK_OFFSET ))
+
+Rscript "${HPC_TASK_R:?HPC_TASK_R is required}" \
+  --mode=run_task \
+  --result_root="${RESULT_ROOT:?RESULT_ROOT is required}" \
+  --source_root="${SOURCE_ROOT:?SOURCE_ROOT is required}" \
+  --invivo_input="${INVIVO_INPUT:?INVIVO_INPUT is required}" \
+  --invitro_input="${INVITRO_INPUT:?INVITRO_INPUT is required}" \
+  --task_table="${TASK_TABLE:?TASK_TABLE is required}" \
+  --array_task_id="${EFFECTIVE_ARRAY_TASK_ID:?EFFECTIVE_ARRAY_TASK_ID is required}" \
+  --points_per_task="${POINTS_PER_TASK:-1}" \
+  --max_task_id="${MAX_TASK_ID:?MAX_TASK_ID is required}" \
+  --o2_n="${O2_N:-201}" \
+  --o2_min="${O2_MIN:-0}" \
+  --o2_max="${O2_MAX:-5}" \
+  --o2_values="${O2_VALUES:-}" \
+  --force="${FORCE_TASKS:-FALSE}"

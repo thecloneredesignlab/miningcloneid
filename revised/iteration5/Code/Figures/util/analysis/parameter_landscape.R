@@ -259,9 +259,17 @@ make_peak_o2_strip_layers <- function(xmin, xmax) {
 make_heat_plot <- function(x_scale, strip_xmin, strip_xmax) {
   ggplot(
     association_plot,
-    aes(x = O2_pct, y = parameter_y, fill = spearman_rho)
+    aes(fill = spearman_rho)
   ) +
-    geom_tile(width = 0.025, height = 0.88) +
+    geom_rect(
+      aes(
+        xmin = O2_pct - 0.0125,
+        xmax = O2_pct + 0.0125,
+        ymin = parameter_y - 0.44,
+        ymax = parameter_y + 0.44
+      ),
+      color = NA
+    ) +
     make_peak_o2_strip_layers(strip_xmin, strip_xmax) +
     geom_hline(
       yintercept = row_separator_y,

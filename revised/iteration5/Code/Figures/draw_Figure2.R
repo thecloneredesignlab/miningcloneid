@@ -203,6 +203,15 @@ draw_curve_arrow <- function(x0, y0, x1, y1, curvature = 0.3,
   )
 }
 
+draw_inhibitory_bar <- function(x, y, col = muted, lwd = 1.45,
+                                length_mm = 3.0) {
+  grid.lines(
+    x = unit(c(x, x), "npc"),
+    y = unit(c(y, y), "npc") + unit(c(-0.5, 0.5) * length_mm, "mm"),
+    gp = gpar(col = col, lwd = lwd, lineend = "butt")
+  )
+}
+
 draw_cell <- function(x, y, r = 0.026, copies = 4L,
                       fill = white, border = blue,
                       chromosome_col = border, alpha = 1,
@@ -377,13 +386,13 @@ draw_panel_a <- function() {
 
   draw_card(
     0.190, 0.825, 0.27, 0.070,
-    "Proliferation rate decreases",
+    "Proliferation rate",
     fill = "#F4F5F6", border = muted,
     size = 7.8, col = ink, fontface = "bold"
   )
   draw_labeled_card(
     0.810, 0.825, 0.27, 0.095,
-    "State-specific death hazard\nincreases", "experienced cellular stress",
+    "Cell death", "resource stress + CIN-associated loss",
     fill = amber_light, border = amber,
     title_size = 7.5, subtitle_size = 6.8,
     title_col = amber_dark
@@ -396,27 +405,27 @@ draw_panel_a <- function() {
     title_col = magenta_dark
   )
 
-  draw_arrow(0.365, 0.825, 0.325, 0.825, col = blue, lwd = 1.45)
+  draw_arrow(0.365, 0.825, 0.331, 0.825, col = blue, lwd = 1.45, ends = "none")
+  draw_inhibitory_bar(0.331, 0.825, col = blue)
   draw_arrow(0.635, 0.825, 0.675, 0.825, col = amber, lwd = 1.45)
-  # Keep the short causal arrow clear of its horizontal annotation.
+  # Only the resource-stress hazard drives inducible CIN in the equations;
+  # the returning yellow edge denotes a separate nonviable-daughter flux.
   draw_arrow(0.920, 0.775, 0.920, 0.725, col = magenta, lwd = 1.6)
+  draw_arrow(0.705, 0.725, 0.705, 0.775, col = amber, lwd = 1.6)
   grid.text(
-    "death-hazard-linked missegregation",
-    0.800, 0.750,
-    gp = gp_text(5.9, magenta_dark, "bold")
+    "Stress-induced\nCIN", 0.855, 0.750,
+    gp = gp_text(7.0, magenta_dark, "bold")
+  )
+  grid.text(
+    "Daughter\ncell loss", 0.755, 0.750,
+    gp = gp_text(7.0, amber_dark, "bold")
   )
 
   draw_card(
     0.810, 0.545, 0.27, 0.065,
-    "Chromosome-number variation",
+    "Karyotype variation",
     fill = green_light, border = green,
     size = 7.7, col = green_dark, fontface = "bold"
-  )
-  draw_labeled_card(
-    0.500, 0.680, 0.27, 0.080,
-    "Post-MS survival", "+ state-dependent fitness selection",
-    fill = "#F4F5F6", border = muted,
-    title_size = 7.7, subtitle_size = 7.0
   )
   draw_labeled_card(
     0.190, 0.545, 0.27, 0.065,
@@ -432,36 +441,36 @@ draw_panel_a <- function() {
     title_size = 7.7, subtitle_size = 7.0
   )
 
-  # The three right-column cards are vertically dispersed. WGD is moved into
-  # the central column, while its causal link to chromosome-number variation
-  # is preserved as a horizontal arrow.
   draw_arrow(0.810, 0.635, 0.810, 0.580, col = magenta, lwd = 1.5)
   draw_arrow(0.635, 0.545, 0.675, 0.545, col = muted, lwd = 1.25)
-  draw_arrow(0.675, 0.565, 0.635, 0.650, col = green, lwd = 1.45)
-  draw_curve_arrow(
-    0.700, 0.778, 0.570, 0.720,
-    curvature = 0.12, col = amber, lwd = 1.35, length_mm = 2.1
-  )
-  draw_curve_arrow(
-    0.300, 0.790, 0.430, 0.720,
-    curvature = -0.12, col = muted, lwd = 1.25, length_mm = 2.1
-  )
-  draw_arrow(0.365, 0.655, 0.325, 0.565, col = green, lwd = 1.45)
 
-  # Route the population-composition feedback around the outside of every
-  # node. The final segment enters the death-hazard card from above, so no
-  # feedback segment intersects the proliferation branch or its label.
   draw_poly_arrow(
-    x = c(0.055, 0.045, 0.045, 0.810, 0.810),
-    y = c(0.545, 0.545, 0.910, 0.910, 0.875),
-    col = green, lwd = 1.65, length_mm = 2.4
+    x = c(0.730, 0.675, 0.365, 0.305),
+    y = c(0.580, 0.625, 0.625, 0.580),
+    col = green, lwd = 1.45
   )
-  grid.text(
-    "better-adapted states lower\npopulation-average death\n(even at fixed O₂)",
-    0.060, 0.690,
-    just = c("left", "centre"),
-    gp = gp_text(7.0, green_dark, "bold")
+  grid.text("Selection and retention", 0.500, 0.645,
+            gp = gp_text(7.0, green_dark))
+
+  draw_arrow(0.240, 0.580, 0.240, 0.790, col = green, lwd = 1.45)
+  # Route below the environmental-input card, then enter the death node.
+  grid.bezier(
+    x = c(0.290, 0.330, 0.490, 0.625),
+    y = c(0.580, 0.710, 0.745, 0.755),
+    gp = gpar(col = green, fill = NA, lwd = 1.45)
   )
+  grid.bezier(
+    x = c(0.625, 0.649, 0.640, 0.667),
+    y = c(0.755, 0.755, 0.790, 0.790),
+    gp = gpar(col = green, fill = NA, lwd = 1.45)
+  )
+  draw_inhibitory_bar(0.667, 0.790, col = green)
+
+  draw_arrow(0.080, 0.685, 0.110, 0.685, col = muted, length_mm = 1.8)
+  grid.text("Activation", 0.122, 0.685, just = "left", gp = gp_text(7.0, muted))
+  draw_arrow(0.080, 0.660, 0.110, 0.660, col = muted, ends = "none")
+  draw_inhibitory_bar(0.110, 0.660, col = muted, length_mm = 2.4)
+  grid.text("Inhibition", 0.122, 0.660, just = "left", gp = gp_text(7.0, muted))
 }
 
 # -----------------------------------------------------------------------------

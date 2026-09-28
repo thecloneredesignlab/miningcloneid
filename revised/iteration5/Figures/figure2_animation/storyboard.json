@@ -1,0 +1,79 @@
+[
+  {
+    "stage": 0,
+    "name": "three_nodes",
+    "hold": 4,
+    "title": "Resource limitation pushes ploidy in two opposing directions",
+    "takeaway": "Resource costs can oppose high ploidy; buffering can favor its retention under CIN.",
+    "notes": "Start with the central tension from slide 6. Extra chromosomes can buffer segregation errors, but maintaining them can be costly under resource limitation. The simple CIN-to-ploidy edge summarizes variation and retention, not a claim that each error increases ploidy. Ask the audience whether resource limitation should raise or lower ploidy. The original slide's WGD shorthand is deliberately deferred to a separate branch.",
+    "png": "stage_01_three_nodes.png",
+    "start_seconds": 0,
+    "end_seconds": 4
+  },
+  {
+    "stage": 1,
+    "name": "death_hazard",
+    "hold": 6,
+    "title": "Experienced resource stress links the environment to CIN",
+    "takeaway": "CIN responds to the modeled death hazard, not to oxygen alone.",
+    "notes": "First unpack the resource-to-CIN arrow. Resource limitation changes the modeled death hazard, which represents experienced stress. The hazard increases inducible per-chromosome missegregation. A cell need not die in order to missegregate. The coarse direct resource-cost edge is set aside here and resolved through growth and death later in the build.",
+    "png": "stage_02_death_hazard.png",
+    "start_seconds": 5.6,
+    "end_seconds": 11.6
+  },
+  {
+    "stage": 2,
+    "name": "variation_and_adaptation",
+    "hold": 7,
+    "title": "Generating variation and retaining adapted descendants are different processes",
+    "takeaway": "CIN supplies karyotype variation; selection and retention reshape the population.",
+    "notes": "Now unpack ploidy. Missegregation generates chromosome-number variation, and selection and survival filtering determine which descendants persist. Adapted composition is a population-level outcome, not a claim that every new variant is adaptive. Ploidy-dependent buffering is represented within selection and retention; the approved final diagram has no separate post-missegregation-survival node.",
+    "png": "stage_03_variation_and_adaptation.png",
+    "start_seconds": 13.2,
+    "end_seconds": 20.2
+  },
+  {
+    "stage": 3,
+    "name": "stress_induced_mutagenesis",
+    "hold": 12,
+    "title": "Stress-induced mutagenesis: adaptation can turn CIN back down",
+    "takeaway": "At unchanged oxygen, adaptation can reduce experienced stress and population-average CIN.",
+    "notes": "Pause here. This is the core stress-induced-mutagenesis architecture. At the same environmental oxygen, a shift toward better-performing chromosome states can lower the population-average resource-stress hazard. Because inducible CIN depends on that hazard, average CIN can then decrease without oxygen changing. This is a model possibility, not a claim that all fitted populations must adapt.",
+    "png": "stage_04_stress_induced_mutagenesis.png",
+    "start_seconds": 21.8,
+    "end_seconds": 33.8
+  },
+  {
+    "stage": 4,
+    "name": "proliferation",
+    "hold": 7,
+    "title": "Adapted composition also changes population growth",
+    "takeaway": "Resource limitation suppresses proliferation; better-performing states can expand.",
+    "notes": "Complete the direct fitness effects. Resources inhibit proliferation, while changes in composition can favor faster-growing states. This restores the direct resource-cost side of the original shorthand in its explicit growth and death components. The newly drawn green growth connection does not mean every altered state grows faster.",
+    "png": "stage_05_proliferation.png",
+    "start_seconds": 35.4,
+    "end_seconds": 42.4
+  },
+  {
+    "stage": 5,
+    "name": "cin_linked_loss",
+    "hold": 6,
+    "title": "Missegregation can also produce nonviable daughters",
+    "takeaway": "Stress-associated death and division-linked daughter loss are distinct sources of cell loss.",
+    "notes": "Missegregation can also produce daughters that fail to survive. Add the yellow upward arrow and broaden the aggregate label from Death hazard to Cell death. Crucially, this daughter-loss flux is separate from the continuous resource-stress hazard. The model does not feed total CIN-associated loss back into the inducible-CIN equation.",
+    "png": "stage_06_cin_linked_loss.png",
+    "start_seconds": 44,
+    "end_seconds": 50
+  },
+  {
+    "stage": 6,
+    "name": "full_model",
+    "hold": 8,
+    "title": "Death-hazard-linked CIN and ploidy selection create a population-composition feedback",
+    "takeaway": "A constant-probability WGD branch supplies an additional route into high-ploidy states.",
+    "notes": "Finally add WGD as a distinct constant-probability branch per division. Stress does not directly increase its per-division probability in this model. WGD changes the states supplied to selection, whereas ploidy-dependent buffering affects their retention. This is the unchanged current Figure 2A diagram, not a new model. Re-emphasize the core takeaway: changing population composition can change CIN at fixed oxygen.",
+    "png": "stage_07_full_model.png",
+    "start_seconds": 51.6,
+    "end_seconds": 59.6
+  }
+]

@@ -134,7 +134,7 @@ panel_a <- ggplot(
 ) +
   geom_errorbar(
     aes(xmin = bootstrap_ci_lower, xmax = bootstrap_ci_upper),
-    orientation = "y", height = 0.18, linewidth = 0.65,
+    orientation = "y", width = 0.18, linewidth = 0.65,
     position = score_position
   ) +
   geom_point(
@@ -187,7 +187,7 @@ panel_b <- ggplot(
   geom_vline(xintercept = 0, color = "#4C5157", linewidth = 0.5) +
   geom_errorbar(
     aes(xmin = bootstrap_ci_lower, xmax = bootstrap_ci_upper),
-    orientation = "y", height = 0.18, linewidth = 0.65,
+    orientation = "y", width = 0.18, linewidth = 0.65,
     color = "#5B6066"
   ) +
   geom_point(

@@ -2,10 +2,10 @@
 
 # Render Figure 4B and Supplementary Figure 4-1 from the continuous fixed-O2 analysis.
 # The 500 fitted rows are optimizer-derived endpoints, not posterior samples or
-# biological replicates. Figure 4B groups parameters by the O2 concentration
-# at their maximum absolute Spearman association (High, Medium, then Low O2).
-# Within each O2 group, parameters are ordered by decreasing maximum absolute
-# correlation, irrespective of the sign at the peak.
+# biological replicates. Figure 4B groups parameters using endpoint-bootstrap
+# comparisons of normalized window AUC for absolute Spearman rho over Low
+# [0,1], Medium [1,3], and High [3,5] O2. Within each resulting group,
+# parameters are ordered by decreasing maximum absolute correlation.
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -46,6 +46,15 @@ paths <- list(
   pooled_summary = file.path(data_dir, "all_parameter_pooled_distribution_summary.tsv"),
   endpoint_ranges = file.path(data_dir, "all_parameter_log10_range_summary.tsv"),
   endpoint_density = file.path(data_dir, "all_parameter_log10_density.tsv"),
+  o2_window_scores = file.path(
+    data_dir, "continuous_ploidy_o2_window_absrho_scores.tsv"
+  ),
+  o2_window_tests = file.path(
+    data_dir, "continuous_ploidy_o2_window_pairwise_tests.tsv"
+  ),
+  o2_window_classification = file.path(
+    data_dir, "continuous_ploidy_o2_window_classification.tsv"
+  ),
   clusters = file.path(data_dir, "invivo_best_tsne_cluster_coordinates.tsv"),
   cluster_summary = file.path(data_dir, "invivo_tsne_cluster_summary.tsv"),
   tsne_metadata = file.path(data_dir, "invivo_tsne_run_metadata.tsv")
@@ -61,6 +70,9 @@ parameter_long <- fread(paths$endpoints)
 pooled_summary <- fread(paths$pooled_summary)
 endpoint_ranges <- fread(paths$endpoint_ranges)
 endpoint_density <- fread(paths$endpoint_density)
+o2_window_scores <- fread(paths$o2_window_scores)
+o2_window_tests <- fread(paths$o2_window_tests)
+o2_window_classification <- fread(paths$o2_window_classification)
 clusters_raw <- fread(paths$clusters)[dataset == "invivo"]
 cluster_summary <- fread(paths$cluster_summary)[dataset == "invivo"]
 tsne_metadata <- fread(paths$tsne_metadata)
@@ -77,6 +89,9 @@ if (nrow(association) != 18L * 201L ||
     uniqueN(endpoint_ranges$parameter) != 18L ||
     nrow(endpoint_density) < 18L * 3L ||
     uniqueN(endpoint_density$parameter) != 18L ||
+    nrow(o2_window_scores) != 18L * 3L ||
+    nrow(o2_window_tests) != 18L * 3L ||
+    nrow(o2_window_classification) != 18L ||
     sum(parameter_long$is_lowest_objective_fit) != 18L) {
   stop("Continuous Figure 4 inputs do not satisfy the 18 x 201 / 500-endpoint contract.")
 }
@@ -87,34 +102,39 @@ if (!identical(sort(ranking$display_order), seq_len(18L)) ||
     !identical(sort(ranking$importance_rank), seq_len(18L))) {
   stop("Parameter display and importance ranks must each be 1 through 18.")
 }
-peak_o2_group_levels <- c("High O2", "Medium O2", "Low O2")
-peak_o2_group_palette <- c(
+o2_association_group_levels <- c(
+  "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
+  "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+)
+o2_association_group_palette <- c(
   "Low O2" = "#2166AC",
+  "Low + Medium O2" = "#1B9E77",
   "Medium O2" = "#E6A400",
-  "High O2" = "#B2182B"
+  "High O2" = "#B2182B",
+  "Medium + High O2" = "#D95F0E",
+  "Low + High O2" = "#7B3294",
+  "O2-independent" = "#8A8A8A",
+  "Ambiguous" = "#343A40"
 )
 peak_direction_palette <- c(
   "Positive peak rho" = "#EF8A62",
   "Negative peak rho" = "#67A9CF"
 )
 ranking_order_check <- ranking[order(display_order)]
-expected_peak_o2_group <- fcase(
-  ranking_order_check$O2_at_max_abs >= 0 &
-    ranking_order_check$O2_at_max_abs < 1.5, "Low O2",
-  ranking_order_check$O2_at_max_abs >= 1.5 &
-    ranking_order_check$O2_at_max_abs < 3.5, "Medium O2",
-  ranking_order_check$O2_at_max_abs >= 3.5 &
-    ranking_order_check$O2_at_max_abs <= 5, "High O2",
-  default = NA_character_
-)
-if (anyNA(expected_peak_o2_group) ||
-    !identical(ranking_order_check$peak_o2_group, expected_peak_o2_group) ||
-    any(diff(ranking_order_check$peak_o2_group_order) < 0) ||
+classification_order_check <- o2_window_classification[order(display_order)]
+if (!identical(
+      ranking_order_check$o2_association_group,
+      classification_order_check$o2_association_group
+    ) ||
+    anyNA(ranking_order_check$o2_association_group) ||
+    any(!ranking_order_check$o2_association_group %in%
+          o2_association_group_levels) ||
+    any(diff(ranking_order_check$o2_association_group_order) < 0) ||
     any(ranking_order_check[, diff(max_abs_rho) > 1e-12,
-      by = peak_o2_group_order]$V1)) {
+      by = o2_association_group_order]$V1)) {
   stop(paste0(
-    "Figure 4B rows are not ordered by High-to-Low peak O2, then ",
-    "descending max-|rho| within each peak-O2 group."
+    "Figure 4B rows are not ordered by O2-window association group, then ",
+    "descending max-|rho| within each group."
   ))
 }
 
@@ -224,42 +244,49 @@ if (length(log_floor_raw) != 1L || !is.finite(log_floor_raw) ||
 }
 
 row_separator_y <- seq(1.5, 17.5, by = 1)
-peak_o2_group_counts <- setNames(
+o2_association_group_counts <- setNames(
   vapply(
-    peak_o2_group_levels,
-    function(group) sum(ranking$peak_o2_group == group),
+    o2_association_group_levels,
+    function(group) sum(ranking$o2_association_group == group),
     integer(1L)
   ),
-  peak_o2_group_levels
+  o2_association_group_levels
 )
-nonempty_peak_o2_group_counts <- peak_o2_group_counts[
-  peak_o2_group_counts > 0
+nonempty_o2_association_group_counts <- o2_association_group_counts[
+  o2_association_group_counts > 0
 ]
-peak_o2_group_separator_y <- if (length(nonempty_peak_o2_group_counts) > 1L) {
-  18.5 - head(cumsum(nonempty_peak_o2_group_counts), -1L)
+o2_association_group_separator_y <- if (
+    length(nonempty_o2_association_group_counts) > 1L
+) {
+  18.5 - head(cumsum(nonempty_o2_association_group_counts), -1L)
 } else {
   numeric()
 }
 
-make_peak_o2_strip_layers <- function(xmin, xmax) {
+make_o2_association_strip_layers <- function(xmin, xmax) {
   lapply(seq_len(nrow(parameter_axis)), function(i) {
     annotate(
       "rect",
       xmin = xmin, xmax = xmax,
       ymin = parameter_axis$parameter_y[[i]] - 0.44,
       ymax = parameter_axis$parameter_y[[i]] + 0.44,
-      fill = unname(peak_o2_group_palette[[
-        parameter_axis$peak_o2_group[[i]]
+      fill = unname(o2_association_group_palette[[
+        parameter_axis$o2_association_group[[i]]
       ]]),
       color = NA
     )
   })
 }
 
-make_heat_plot <- function(x_scale, strip_xmin, strip_xmax) {
+make_heat_plot <- function(
+    x_scale,
+    strip_xmin,
+    strip_xmax,
+    absolute_rho = FALSE
+) {
   ggplot(
     association_plot,
-    aes(fill = spearman_rho)
+    aes(fill = if (absolute_rho) abs(spearman_rho) else spearman_rho)
   ) +
     geom_rect(
       aes(
@@ -270,13 +297,13 @@ make_heat_plot <- function(x_scale, strip_xmin, strip_xmax) {
       ),
       color = NA
     ) +
-    make_peak_o2_strip_layers(strip_xmin, strip_xmax) +
+    make_o2_association_strip_layers(strip_xmin, strip_xmax) +
     geom_hline(
       yintercept = row_separator_y,
       linewidth = 0.24, color = "#D0D3D6"
     ) +
     geom_hline(
-      yintercept = peak_o2_group_separator_y,
+      yintercept = o2_association_group_separator_y,
       linewidth = 0.80, color = "#555B61"
     ) +
     x_scale +
@@ -286,11 +313,21 @@ make_heat_plot <- function(x_scale, strip_xmin, strip_xmax) {
       labels = parameter_axis$parameter_axis_label,
       limits = c(0.5, 18.5), expand = c(0, 0)
     ) +
-    scale_fill_gradient2(
-      low = "#2166AC", mid = "#F7F7F7", high = "#B2182B",
-      midpoint = 0, limits = c(-1, 1), oob = squish,
-      na.value = "#D9D9D9", guide = "none"
-    ) +
+    {
+      if (absolute_rho) {
+        scale_fill_gradient(
+          low = "#FFFFFF", high = "#6A51A3",
+          limits = c(0, 1), oob = squish,
+          na.value = "#D9D9D9", guide = "none"
+        )
+      } else {
+        scale_fill_gradient2(
+          low = "#2166AC", mid = "#F7F7F7", high = "#B2182B",
+          midpoint = 0, limits = c(-1, 1), oob = squish,
+          na.value = "#D9D9D9", guide = "none"
+        )
+      }
+    } +
     labs(title = "Parameter-ploidy association") +
     coord_cartesian(clip = "off") +
     theme_bw(base_size = 12, base_family = "Arial") +
@@ -319,6 +356,15 @@ p_heat <- make_heat_plot(
   strip_xmin = -0.22,
   strip_xmax = -0.155
 )
+p_heat_absrho <- make_heat_plot(
+  scale_x_continuous(
+    name = expression(paste("Fixed ", O[2], " concentration (%)")),
+    limits = c(-0.25, 5.0125), breaks = 0:5, expand = c(0, 0)
+  ),
+  strip_xmin = -0.22,
+  strip_xmax = -0.155,
+  absolute_rho = TRUE
+)
 
 o2_pseudo_log_sigma <- 0.025
 p_heat_logx <- make_heat_plot(
@@ -339,6 +385,25 @@ p_heat_logx <- make_heat_plot(
   strip_xmin = -0.0125,
   strip_xmax = -0.006
 )
+p_heat_absrho_logx <- make_heat_plot(
+  scale_x_continuous(
+    name = expression(atop(
+      paste("Fixed ", O[2], " concentration (%)"),
+      "(pseudo-log10 scale)"
+    )),
+    trans = scales::pseudo_log_trans(
+      sigma = o2_pseudo_log_sigma,
+      base = 10
+    ),
+    limits = c(-0.015, 5.0125),
+    breaks = c(0, 0.025, 0.1, 0.5, 1, 5),
+    labels = c("0", "0.025", "0.1", "0.5", "1", "5"),
+    expand = c(0, 0)
+  ),
+  strip_xmin = -0.0125,
+  strip_xmax = -0.006,
+  absolute_rho = TRUE
+)
 
 effect_label_offset <- 0.075
 ranking_plot[, effect_label_x := max_abs_rho + effect_label_offset]
@@ -355,7 +420,7 @@ p_effect <- ggplot(
     linewidth = 0.24, color = "#D0D3D6"
   ) +
   geom_hline(
-    yintercept = peak_o2_group_separator_y,
+    yintercept = o2_association_group_separator_y,
     linewidth = 0.80, color = "#555B61"
   ) +
   geom_segment(
@@ -439,7 +504,7 @@ p_prior <- ggplot() +
     linewidth = 0.24, color = "#D0D3D6"
   ) +
   geom_hline(
-    yintercept = peak_o2_group_separator_y,
+    yintercept = o2_association_group_separator_y,
     linewidth = 0.80, color = "#555B61"
   ) +
   geom_ribbon(
@@ -658,52 +723,68 @@ p_tsne <- ggplot(clusters, aes(tSNE1, tSNE2)) +
 # directly in the standalone Figure 4C and are therefore not repeated here.
 legend_title_size <- 13
 legend_text_size <- 10.6
-peak_o2_group_labels <- c(
-  "Low O2" = "Low O2\n[0, 1.5%)",
-  "Medium O2" = "Medium O2\n[1.5, 3.5%)",
-  "High O2" = "High O2\n[3.5, 5%]"
+make_sidebar <- function(absolute_rho = FALSE) {
+o2_association_group_labels <- setNames(
+  o2_association_group_levels,
+  o2_association_group_levels
 )
-peak_o2_legend <- data.table(
-  peak_o2_group = peak_o2_group_levels,
-  label = unname(peak_o2_group_labels[peak_o2_group_levels]),
-  color = unname(peak_o2_group_palette[peak_o2_group_levels]),
-  y = seq(0.90, 0.68, length.out = length(peak_o2_group_levels))
+nonempty_group_levels <- names(nonempty_o2_association_group_counts)
+legend_half_height <- if (length(nonempty_group_levels) <= 1L) {
+  0.026
+} else {
+  min(0.026, 0.34 / (length(nonempty_group_levels) - 1L) * 0.34)
+}
+o2_association_legend <- data.table(
+  o2_association_group = nonempty_group_levels,
+  label = unname(o2_association_group_labels[nonempty_group_levels]),
+  color = unname(o2_association_group_palette[nonempty_group_levels]),
+  y = seq(0.93, 0.59, length.out = length(nonempty_group_levels))
 )
+rho_values <- if (absolute_rho) {
+  seq(0, 1, length.out = 201)
+} else {
+  seq(-1, 1, length.out = 201)
+}
 rho_steps <- data.table(
-  rho = seq(-1, 1, length.out = 201),
+  rho = rho_values,
   y = seq(0.33, 0.47, length.out = 201)
 )
-rho_pal <- scales::gradient_n_pal(c("#2166AC", "#F7F7F7", "#B2182B"))
+rho_pal <- if (absolute_rho) {
+  scales::gradient_n_pal(c("#FFFFFF", "#6A51A3"))
+} else {
+  scales::gradient_n_pal(c("#2166AC", "#F7F7F7", "#B2182B"))
+}
 rho_steps[, color := rho_pal(rescale(rho, to = c(0, 1)))]
 rho_ticks <- data.table(
   y = seq(0.33, 0.47, length.out = 3),
-  label = c("-1", "0", "+1")
+  label = if (absolute_rho) c("0", "0.5", "1") else c("-1", "0", "+1")
 )
 
-p_sidebar <- ggplot() +
+ggplot() +
   annotate(
-    "text", x = 0.02, y = 0.985, label = "Peak O2 group",
+    "text", x = 0.02, y = 0.985, label = "O2 association group",
     hjust = 0, vjust = 1, family = "Arial", fontface = "bold",
     size = legend_title_size / ggplot2::.pt, color = "#202020"
   ) +
   geom_rect(
-    data = peak_o2_legend,
+    data = o2_association_legend,
     aes(
       xmin = 0.05, xmax = 0.12,
-      ymin = y - 0.034, ymax = y + 0.034,
+      ymin = y - legend_half_height, ymax = y + legend_half_height,
       fill = color
     ),
     color = NA, inherit.aes = FALSE
   ) +
   geom_text(
-    data = peak_o2_legend,
+    data = o2_association_legend,
     aes(x = 0.16, y = y, label = label),
     hjust = 0, vjust = 0.5, family = "Arial",
     size = legend_text_size / ggplot2::.pt, fontface = "bold",
     lineheight = 0.92, color = "#25292D"
   ) +
   annotate(
-    "text", x = 0.02, y = 0.52, label = "Spearman rho",
+    "text", x = 0.02, y = 0.52,
+    label = if (absolute_rho) "|Spearman rho|" else "Spearman rho",
     hjust = 0, vjust = 1, family = "Arial", fontface = "bold",
     size = legend_title_size / ggplot2::.pt, color = "#202020"
   ) +
@@ -774,10 +855,19 @@ p_sidebar <- ggplot() +
     plot.margin = margin(2, 3, 4, 5),
     plot.background = element_rect(fill = "white", color = NA)
   )
+}
 
-# The lite sidebar retains the peak-O2 grouping and Spearman scale while
+p_sidebar <- make_sidebar(absolute_rho = FALSE)
+p_sidebar_absrho <- make_sidebar(absolute_rho = TRUE)
+
+# The lite sidebar retains the O2-association grouping and Spearman scale while
 # removing the endpoint/range key together with the endpoint distribution.
 p_sidebar_lite <- p_sidebar +
+  annotate(
+    "rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0.32,
+    fill = "white", color = NA
+  )
+p_sidebar_absrho_lite <- p_sidebar_absrho +
   annotate(
     "rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0.32,
     fill = "white", color = NA
@@ -795,6 +885,11 @@ combined_core <- p_heat + p_effect + p_prior + p_sidebar +
 combined <- combined_core
 combined_logx <- p_heat_logx + p_effect + p_prior + p_sidebar +
   plot_layout(design = combined_design, widths = rep(1, 27))
+combined_absrho <- p_heat_absrho + p_effect + p_prior + p_sidebar_absrho +
+  plot_layout(design = combined_design, widths = rep(1, 27))
+combined_absrho_logx <-
+  p_heat_absrho_logx + p_effect + p_prior + p_sidebar_absrho +
+  plot_layout(design = combined_design, widths = rep(1, 27))
 
 lite_design <- c(
   area(t = 1, l = 1, b = 1, r = 11),
@@ -804,6 +899,12 @@ lite_design <- c(
 combined_lite <- p_heat + p_effect + p_sidebar_lite +
   plot_layout(design = lite_design, widths = rep(1, 21))
 combined_lite_logx <- p_heat_logx + p_effect + p_sidebar_lite +
+  plot_layout(design = lite_design, widths = rep(1, 21))
+combined_lite_absrho <-
+  p_heat_absrho + p_effect + p_sidebar_absrho_lite +
+  plot_layout(design = lite_design, widths = rep(1, 21))
+combined_lite_absrho_logx <-
+  p_heat_absrho_logx + p_effect + p_sidebar_absrho_lite +
   plot_layout(design = lite_design, widths = rep(1, 21))
 
 main_base <- file.path(figure_dir, "parameter_continuous_ploidy_landscape")
@@ -832,6 +933,34 @@ ggsave(paste0(main_logx_base, ".svg"), combined_logx,
        width = main_width, height = main_height,
        units = "in", device = svglite::svglite, bg = "white")
 
+main_absrho_base <- file.path(
+  figure_dir,
+  "parameter_continuous_ploidy_landscape_absrho"
+)
+ggsave(paste0(main_absrho_base, ".png"), combined_absrho,
+       width = main_width, height = main_height,
+       units = "in", dpi = main_raster_dpi, bg = "white")
+ggsave(paste0(main_absrho_base, ".pdf"), combined_absrho,
+       width = main_width, height = main_height,
+       units = "in", device = cairo_pdf, bg = "white")
+ggsave(paste0(main_absrho_base, ".svg"), combined_absrho,
+       width = main_width, height = main_height,
+       units = "in", device = svglite::svglite, bg = "white")
+
+main_absrho_logx_base <- file.path(
+  figure_dir,
+  "parameter_continuous_ploidy_landscape_absrho_logx"
+)
+ggsave(paste0(main_absrho_logx_base, ".png"), combined_absrho_logx,
+       width = main_width, height = main_height,
+       units = "in", dpi = main_raster_dpi, bg = "white")
+ggsave(paste0(main_absrho_logx_base, ".pdf"), combined_absrho_logx,
+       width = main_width, height = main_height,
+       units = "in", device = cairo_pdf, bg = "white")
+ggsave(paste0(main_absrho_logx_base, ".svg"), combined_absrho_logx,
+       width = main_width, height = main_height,
+       units = "in", device = svglite::svglite, bg = "white")
+
 lite_base <- file.path(figure_dir, "Figure4B_lite")
 lite_width <- 12
 lite_height <- 9
@@ -853,12 +982,40 @@ ggsave(paste0(lite_logx_base, ".svg"), combined_lite_logx,
        width = lite_width, height = lite_height,
        units = "in", device = svglite::svglite, bg = "white")
 
+lite_absrho_base <- file.path(figure_dir, "Figure4B_lite_absrho")
+ggsave(paste0(lite_absrho_base, ".png"), combined_lite_absrho,
+       width = lite_width, height = lite_height,
+       units = "in", dpi = main_raster_dpi, bg = "white")
+ggsave(paste0(lite_absrho_base, ".pdf"), combined_lite_absrho,
+       width = lite_width, height = lite_height,
+       units = "in", device = cairo_pdf, bg = "white")
+ggsave(paste0(lite_absrho_base, ".svg"), combined_lite_absrho,
+       width = lite_width, height = lite_height,
+       units = "in", device = svglite::svglite, bg = "white")
+
+lite_absrho_logx_base <- file.path(figure_dir, "Figure4B_lite_absrho_logx")
+ggsave(paste0(lite_absrho_logx_base, ".png"), combined_lite_absrho_logx,
+       width = lite_width, height = lite_height,
+       units = "in", dpi = main_raster_dpi, bg = "white")
+ggsave(paste0(lite_absrho_logx_base, ".pdf"), combined_lite_absrho_logx,
+       width = lite_width, height = lite_height,
+       units = "in", device = cairo_pdf, bg = "white")
+ggsave(paste0(lite_absrho_logx_base, ".svg"), combined_lite_absrho_logx,
+       width = lite_width, height = lite_height,
+       units = "in", device = svglite::svglite, bg = "white")
+
 for (extension in c("png", "pdf", "svg")) {
   source_paths <- c(
     Figure4B = paste0(main_base, ".", extension),
     Figure4B_lite = paste0(lite_base, ".", extension),
     Figure4B_logx = paste0(main_logx_base, ".", extension),
-    Figure4B_lite_logx = paste0(lite_logx_base, ".", extension)
+    Figure4B_lite_logx = paste0(lite_logx_base, ".", extension),
+    Figure4B_absrho = paste0(main_absrho_base, ".", extension),
+    Figure4B_absrho_logx = paste0(main_absrho_logx_base, ".", extension),
+    Figure4B_lite_absrho = paste0(lite_absrho_base, ".", extension),
+    Figure4B_lite_absrho_logx = paste0(
+      lite_absrho_logx_base, ".", extension
+    )
   )
   destination_paths <- file.path(
     deliverable_dir,
@@ -1157,7 +1314,7 @@ supp_violin <- ggplot(
   labs(
     title = "All 18 fitted-parameter endpoint distributions across exploratory in vivo t-SNE clusters",
     subtitle = paste0(
-      "Parameters follow the Figure 4B High-, Medium-, then Low-O2 peak grouping; positive precedes negative peak rho within each group, with descending max-|rho| within each sign subgroup. ",
+      "Parameters follow the Figure 4B O2-window association grouping, with descending max-|rho| within each group. ",
       "All 18 parameters were inputs to the in-vivo-only t-SNE."
     ),
     x = "Exploratory t-SNE cluster",
@@ -1200,8 +1357,8 @@ validation <- data.table(
     "association_metric", "continuous_ploidy_outcome",
     "binary_ploidy_class_used", "parameter_sort_primary",
     "parameter_sort_secondary", "parameter_sort_tertiary",
-    "parameter_sort_tie_break", "high_o2_peak_parameter_count",
-    "medium_o2_peak_parameter_count", "low_o2_peak_parameter_count",
+    "parameter_sort_tie_break", "o2_association_group_order",
+    "o2_association_group_counts", "o2_window_classification_match",
     "row_annotation_field",
     "effect_position_field",
     "effect_fill_field", "effect_positive_fill", "effect_negative_fill",
@@ -1237,14 +1394,21 @@ validation <- data.table(
   ),
   value = c(
     18, 201, 500, "Spearman rho", "TRUE", "FALSE",
-    "peak O2 group: High [3.5,5], Medium [1.5,3.5), Low [0,1.5)",
-    "descending maximum absolute Spearman rho within peak O2 group",
+    paste(
+      "O2 association group: High; Medium + High; Low + High;",
+      "Medium; Low + Medium; Low; O2-independent; Ambiguous"
+    ),
+    "descending maximum absolute Spearman rho within O2 association group",
     "configured parameter order for exact max-|rho| ties",
     "none",
-    unname(peak_o2_group_counts[["High O2"]]),
-    unname(peak_o2_group_counts[["Medium O2"]]),
-    unname(peak_o2_group_counts[["Low O2"]]),
-    "peak_o2_group",
+    paste(o2_association_group_levels, collapse = ";"),
+    paste0(
+      names(o2_association_group_counts), "=",
+      unname(o2_association_group_counts),
+      collapse = ";"
+    ),
+    "TRUE",
+    "o2_association_group",
     "max_abs_rho", "peak_direction",
     unname(peak_direction_palette[["Positive peak rho"]]),
     unname(peak_direction_palette[["Negative peak rho"]]),
@@ -1276,6 +1440,32 @@ validation <- data.table(
     figure4d_width, figure4d_height
   )
 )
+validation <- rbind(
+  validation,
+  data.table(
+    metric = c(
+      "figure4b_absrho_rendered", "figure4b_absrho_heat_fill_field",
+      "figure4b_absrho_heat_fill_limits", "figure4b_absrho_heat_palette",
+      "figure4b_absrho_effect_fill_field",
+      "figure4b_absrho_effect_positive_fill",
+      "figure4b_absrho_effect_negative_fill",
+      "figure4b_absrho_logx_rendered",
+      "figure4b_lite_absrho_rendered",
+      "figure4b_lite_absrho_logx_rendered",
+      "figure4b_lite_absrho_endpoint_distribution_rendered",
+      "figure4b_lite_absrho_output_aspect_ratio",
+      "figure4b_lite_absrho_logx_output_aspect_ratio"
+    ),
+    value = c(
+      "TRUE", "abs(spearman_rho)", "0,1", "#FFFFFF to #6A51A3",
+      "peak_direction",
+      unname(peak_direction_palette[["Positive peak rho"]]),
+      unname(peak_direction_palette[["Negative peak rho"]]),
+      "TRUE", "TRUE", "TRUE", "FALSE",
+      lite_width / lite_height, lite_width / lite_height
+    )
+  )
+)
 fwrite(validation, file.path(data_dir, "parameter_landscape_layout_validation.tsv"), sep = "\t")
 
 source_paths <- c(
@@ -1296,6 +1486,13 @@ message("  Figure 4B: ", paste0(main_base, ".png"))
 message("  Figure 4B lite: ", paste0(lite_base, ".png"))
 message("  Figure 4B log-x: ", paste0(main_logx_base, ".png"))
 message("  Figure 4B lite log-x: ", paste0(lite_logx_base, ".png"))
+message("  Figure 4B |rho|: ", paste0(main_absrho_base, ".png"))
+message("  Figure 4B |rho| log-x: ", paste0(main_absrho_logx_base, ".png"))
+message("  Figure 4B lite |rho|: ", paste0(lite_absrho_base, ".png"))
+message(
+  "  Figure 4B lite |rho| log-x: ",
+  paste0(lite_absrho_logx_base, ".png")
+)
 message("  Figure 4C: ", paste0(tsne_base, ".png"))
 message("  Figure 4D: ", paste0(figure4d_base, ".png"))
 message("  Supplementary Figure 4-1: ", paste0(supp_base, ".png"))

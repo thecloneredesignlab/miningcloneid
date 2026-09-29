@@ -50,7 +50,9 @@ PANEL_DIR="${DATA_DIR}/panels"
 DELIVERABLE_DIR="${ITERATION_ROOT}/Figures"
 ASSOCIATION_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/figure4_continuous_ploidy_association.R"
 LANDSCAPE_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/parameter_landscape.R"
-for path in "${DATA_DIR}" "${ASSOCIATION_SCRIPT}" "${LANDSCAPE_SCRIPT}"; do
+SUPP_FIGURE4_3_SCRIPT="${ITERATION_ROOT}/Code/Figures/draw_Supp_Figure4_3.R"
+for path in "${DATA_DIR}" "${ASSOCIATION_SCRIPT}" "${LANDSCAPE_SCRIPT}" \
+  "${SUPP_FIGURE4_3_SCRIPT}"; do
   [[ -e "${path}" ]] || {
     echo "Missing iteration5 input: ${path}" >&2
     exit 2
@@ -95,6 +97,9 @@ CONTAINER_ARGS=(
   --env "LD_PRELOAD=${RED_LIBICONV_SO}"
   --env OMP_NUM_THREADS=1 --env OPENBLAS_NUM_THREADS=1
   --env MKL_NUM_THREADS=1 --env RCPP_PARALLEL_NUM_THREADS=1
+  --env FIGURE4_O2_WINDOW_BOOTSTRAP_REPS=5000
+  --env FIGURE4_O2_WINDOW_BOOTSTRAP_SEED=5826
+  --env FIGURE4_O2_WINDOW_BOOTSTRAP_CORES=8
   --env KMP_USE_SHM=0
   --env "ANALYSIS_DATA_DIR=${DATA_DIR}"
   --env "PLOT_OUTPUT_DIR=${PANEL_DIR}"
@@ -117,16 +122,20 @@ echo "container=${SIF_IMAGE}"
 CURRENT_STAGE="PARSE_R_SOURCES"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript -e \
-  "invisible(parse(file='${ASSOCIATION_SCRIPT}')); invisible(parse(file='${LANDSCAPE_SCRIPT}')); cat('parse_ok\\n')"
+  "invisible(parse(file='${ASSOCIATION_SCRIPT}')); invisible(parse(file='${LANDSCAPE_SCRIPT}')); invisible(parse(file='${SUPP_FIGURE4_3_SCRIPT}')); cat('parse_ok\\n')"
 
-CURRENT_STAGE="DERIVE_PEAK_O2_RANKING"
+CURRENT_STAGE="DERIVE_O2_WINDOW_ASSOCIATION_GROUPS"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${ASSOCIATION_SCRIPT}" \
   "--data-dir=${DATA_DIR}"
 
-CURRENT_STAGE="RENDER_FIGURE4B_LINEAR_AND_LOGX"
+CURRENT_STAGE="RENDER_FIGURE4B_SIGNED_AND_ABSRHO"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${LANDSCAPE_SCRIPT}"
+
+CURRENT_STAGE="RENDER_SUPP_FIGURE4_3"
+status RUNNING "${CURRENT_STAGE}"
+container_command Rscript "${SUPP_FIGURE4_3_SCRIPT}"
 
 CURRENT_STAGE="VALIDATE_RANKING_AND_OUTPUTS"
 status RUNNING "${CURRENT_STAGE}"
@@ -135,29 +144,40 @@ suppressPackageStartupMessages(library(data.table))
 data_dir <- Sys.getenv("ANALYSIS_DATA_DIR")
 ranking <- fread(file.path(data_dir, "continuous_ploidy_parameter_ranking.tsv"))
 ranking <- ranking[order(display_order)]
-expected_levels <- c("High O2", "Medium O2", "Low O2")
-expected_group <- fcase(
-  ranking$O2_at_max_abs >= 0 & ranking$O2_at_max_abs < 1.5, "Low O2",
-  ranking$O2_at_max_abs >= 1.5 & ranking$O2_at_max_abs < 3.5, "Medium O2",
-  ranking$O2_at_max_abs >= 3.5 & ranking$O2_at_max_abs <= 5, "High O2",
-  default = NA_character_
+scores <- fread(file.path(
+  data_dir, "continuous_ploidy_o2_window_absrho_scores.tsv"
+))
+tests <- fread(file.path(
+  data_dir, "continuous_ploidy_o2_window_pairwise_tests.tsv"
+))
+classification <- fread(file.path(
+  data_dir, "continuous_ploidy_o2_window_classification.tsv"
+))
+expected_levels <- c(
+  "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
+  "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
 )
 stopifnot(
   nrow(ranking) == 18L,
   identical(ranking$display_order, seq_len(18L)),
-  identical(ranking$peak_o2_group, expected_group),
-  !anyNA(ranking$peak_o2_group),
-  !any(diff(ranking$peak_o2_group_order) < 0)
+  nrow(scores) == 54L,
+  nrow(tests) == 54L,
+  nrow(classification) == 18L,
+  !anyNA(ranking$o2_association_group),
+  all(ranking$o2_association_group %in% expected_levels),
+  !any(diff(ranking$o2_association_group_order) < 0),
+  all(scores$bootstrap_reps == 5000L),
+  all(scores$bootstrap_seed == 5826L),
+  all(tests$bh_adjusted_p_value >= 0 & tests$bh_adjusted_p_value <= 1),
+  identical(
+    ranking$o2_association_group,
+    classification[order(display_order), o2_association_group]
+  )
 )
-counts <- ranking[, .N, by = peak_o2_group]
-stopifnot(identical(
-  counts[match(expected_levels, peak_o2_group), N],
-  c(3L, 6L, 9L)
-))
 within_group_fail <- ranking[, any(diff(max_abs_rho) > 1e-12),
-                             by = peak_o2_group_order]$V1
+                             by = o2_association_group_order]$V1
 expected_parameter_order <- ranking[
-  order(peak_o2_group_order, -max_abs_rho, parameter_order),
+  order(o2_association_group_order, -max_abs_rho, parameter_order),
   parameter
 ]
 stopifnot(
@@ -167,10 +187,11 @@ stopifnot(
 validation <- fread(file.path(data_dir, "parameter_landscape_layout_validation.tsv"))
 stopifnot(
   validation[metric == "parameter_sort_secondary", value] ==
-    "descending maximum absolute Spearman rho within peak O2 group",
+    "descending maximum absolute Spearman rho within O2 association group",
   validation[metric == "parameter_sort_tertiary", value] ==
     "configured parameter order for exact max-|rho| ties",
-  validation[metric == "row_annotation_field", value] == "peak_o2_group",
+  validation[metric == "row_annotation_field", value] ==
+    "o2_association_group",
   validation[metric == "effect_fill_field", value] == "peak_direction",
   validation[metric == "effect_positive_fill", value] == "#EF8A62",
   validation[metric == "effect_negative_fill", value] == "#67A9CF",
@@ -199,9 +220,43 @@ stopifnot(
   ]) == 9,
   abs(as.numeric(validation[
     metric == "figure4b_lite_logx_output_aspect_ratio", value
+  ]) - 4 / 3) < 1e-12,
+  validation[metric == "figure4b_absrho_rendered", value] == "TRUE",
+  validation[metric == "figure4b_absrho_heat_fill_field", value] ==
+    "abs(spearman_rho)",
+  validation[metric == "figure4b_absrho_heat_fill_limits", value] == "0,1",
+  validation[metric == "figure4b_absrho_heat_palette", value] ==
+    "#FFFFFF to #6A51A3",
+  validation[metric == "figure4b_absrho_effect_fill_field", value] ==
+    "peak_direction",
+  validation[metric == "figure4b_absrho_effect_positive_fill", value] ==
+    "#EF8A62",
+  validation[metric == "figure4b_absrho_effect_negative_fill", value] ==
+    "#67A9CF",
+  validation[metric == "figure4b_absrho_logx_rendered", value] == "TRUE",
+  validation[metric == "figure4b_lite_absrho_rendered", value] == "TRUE",
+  validation[metric == "figure4b_lite_absrho_logx_rendered", value] == "TRUE",
+  validation[
+    metric == "figure4b_lite_absrho_endpoint_distribution_rendered", value
+  ] == "FALSE",
+  abs(as.numeric(validation[
+    metric == "figure4b_lite_absrho_output_aspect_ratio", value
+  ]) - 4 / 3) < 1e-12,
+  abs(as.numeric(validation[
+    metric == "figure4b_lite_absrho_logx_output_aspect_ratio", value
   ]) - 4 / 3) < 1e-12
 )
-cat("ranking_linear_logx_and_lite_validation_ok\n")
+supp_validation <- fread(file.path(data_dir, "supp_figure4_3_validation.tsv"))
+stopifnot(
+  supp_validation[metric == "n_parameters", value] == "18",
+  supp_validation[metric == "n_windows", value] == "3",
+  supp_validation[metric == "n_pairwise_tests", value] == "54",
+  supp_validation[metric == "bootstrap_reps", value] == "5000",
+  supp_validation[metric == "png_rendered", value] == "TRUE",
+  supp_validation[metric == "pdf_rendered", value] == "TRUE",
+  supp_validation[metric == "svg_rendered", value] == "TRUE"
+)
+cat("o2_window_group_absrho_and_supp4_3_validation_ok\n")
 '
 
 outputs=(
@@ -217,6 +272,18 @@ outputs=(
   "${PANEL_DIR}/Figure4B_lite_logx.png"
   "${PANEL_DIR}/Figure4B_lite_logx.pdf"
   "${PANEL_DIR}/Figure4B_lite_logx.svg"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho.png"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho.pdf"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho.svg"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho_logx.png"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho_logx.pdf"
+  "${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho_logx.svg"
+  "${PANEL_DIR}/Figure4B_lite_absrho.png"
+  "${PANEL_DIR}/Figure4B_lite_absrho.pdf"
+  "${PANEL_DIR}/Figure4B_lite_absrho.svg"
+  "${PANEL_DIR}/Figure4B_lite_absrho_logx.png"
+  "${PANEL_DIR}/Figure4B_lite_absrho_logx.pdf"
+  "${PANEL_DIR}/Figure4B_lite_absrho_logx.svg"
   "${DELIVERABLE_DIR}/Figure4B.png"
   "${DELIVERABLE_DIR}/Figure4B.pdf"
   "${DELIVERABLE_DIR}/Figure4B.svg"
@@ -229,6 +296,21 @@ outputs=(
   "${DELIVERABLE_DIR}/Figure4B_lite_logx.png"
   "${DELIVERABLE_DIR}/Figure4B_lite_logx.pdf"
   "${DELIVERABLE_DIR}/Figure4B_lite_logx.svg"
+  "${DELIVERABLE_DIR}/Figure4B_absrho.png"
+  "${DELIVERABLE_DIR}/Figure4B_absrho.pdf"
+  "${DELIVERABLE_DIR}/Figure4B_absrho.svg"
+  "${DELIVERABLE_DIR}/Figure4B_absrho_logx.png"
+  "${DELIVERABLE_DIR}/Figure4B_absrho_logx.pdf"
+  "${DELIVERABLE_DIR}/Figure4B_absrho_logx.svg"
+  "${DELIVERABLE_DIR}/Figure4B_lite_absrho.png"
+  "${DELIVERABLE_DIR}/Figure4B_lite_absrho.pdf"
+  "${DELIVERABLE_DIR}/Figure4B_lite_absrho.svg"
+  "${DELIVERABLE_DIR}/Figure4B_lite_absrho_logx.png"
+  "${DELIVERABLE_DIR}/Figure4B_lite_absrho_logx.pdf"
+  "${DELIVERABLE_DIR}/Figure4B_lite_absrho_logx.svg"
+  "${DELIVERABLE_DIR}/Supp_Figure4_3.png"
+  "${DELIVERABLE_DIR}/Supp_Figure4_3.pdf"
+  "${DELIVERABLE_DIR}/Supp_Figure4_3.svg"
 )
 for path in "${outputs[@]}"; do
   [[ -s "${path}" ]] || {
@@ -247,4 +329,4 @@ status COMPLETE "${CURRENT_STAGE}"
 trap - ERR
 echo "status_path=${STATUS_PATH}"
 echo "checksum_path=${CHECKSUM_PATH}"
-echo "Figure 4B linear and pseudo-log-x renders complete."
+echo "Figure 4B signed/absolute linear/log-x and Supp Figure 4-3 renders complete."

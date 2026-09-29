@@ -2,7 +2,9 @@
 
 # Derive the continuous fitted-parameter/ploidy association layer used by
 # Figure 4B and Supplementary Figure 4-1. The 500 rows are optimizer-derived fitted
-# endpoints.  They are not posterior samples or biological replicates.
+# endpoints. They are not posterior samples or biological replicates. O2-window
+# comparisons therefore quantify stability across fitted endpoints and are not
+# interpreted as population-level biological inference.
 
 suppressPackageStartupMessages(library(data.table))
 
@@ -54,6 +56,310 @@ parameter_display_dictionary <- function() {
       "Post-missegregation viability-loss strength (buffer_beta)",
       "Ploidy exponent of post-missegregation survival (buffer_n_exp)"
     )
+  )
+}
+
+figure4_o2_windows <- function() {
+  data.table(
+    o2_window = c("Low O2", "Medium O2", "High O2"),
+    window_order = 1:3,
+    lower_o2 = c(0, 1, 3),
+    upper_o2 = c(1, 3, 5)
+  )
+}
+
+normalized_trapezoid_weights <- function(o2_grid, windows) {
+  weights <- matrix(
+    0,
+    nrow = length(o2_grid),
+    ncol = nrow(windows),
+    dimnames = list(NULL, windows$o2_window)
+  )
+  for (window_index in seq_len(nrow(windows))) {
+    lower <- windows$lower_o2[[window_index]]
+    upper <- windows$upper_o2[[window_index]]
+    grid_index <- which(
+      o2_grid >= lower - 1e-12 & o2_grid <= upper + 1e-12
+    )
+    grid <- o2_grid[grid_index]
+    if (length(grid) < 2L ||
+        abs(grid[[1L]] - lower) > 1e-12 ||
+        abs(grid[[length(grid)]] - upper) > 1e-12) {
+      stop("The fixed-O2 grid does not span an exact O2 window boundary.")
+    }
+    delta <- diff(grid)
+    local_weights <- numeric(length(grid))
+    local_weights[[1L]] <- delta[[1L]] / 2
+    local_weights[[length(grid)]] <- delta[[length(delta)]] / 2
+    if (length(grid) > 2L) {
+      local_weights[2:(length(grid) - 1L)] <-
+        (delta[-length(delta)] + delta[-1L]) / 2
+    }
+    weights[grid_index, window_index] <- local_weights / (upper - lower)
+  }
+  if (any(abs(colSums(weights) - 1) > 1e-12)) {
+    stop("Normalized O2-window trapezoid weights do not sum to one.")
+  }
+  weights
+}
+
+derive_o2_window_statistics <- function(
+    parameter_matrix,
+    outcome_matrix,
+    parameter_names,
+    o2_grid,
+    bootstrap_reps = 5000L,
+    bootstrap_seed = 5826L,
+    bootstrap_cores = 1L
+) {
+  if (nrow(parameter_matrix) != 500L ||
+      nrow(outcome_matrix) != 500L ||
+      ncol(parameter_matrix) != 18L ||
+      ncol(outcome_matrix) != 201L) {
+    stop("O2-window bootstrap requires the 500 x 18 / 500 x 201 matrices.")
+  }
+  if (!is.finite(bootstrap_reps) || bootstrap_reps < 1000L) {
+    stop("At least 1000 endpoint bootstrap replicates are required.")
+  }
+  if (!is.finite(bootstrap_cores) || bootstrap_cores < 1L) {
+    stop("The O2-window bootstrap core count must be positive.")
+  }
+  windows <- figure4_o2_windows()
+  window_weights <- normalized_trapezoid_weights(o2_grid, windows)
+  observed_rho <- suppressWarnings(stats::cor(
+    parameter_matrix,
+    outcome_matrix,
+    method = "spearman"
+  ))
+  if (!all(dim(observed_rho) == c(18L, 201L)) ||
+      any(!is.finite(observed_rho))) {
+    stop("Observed parameter/O2 Spearman matrix is incomplete.")
+  }
+  observed_scores <- abs(observed_rho) %*% window_weights
+  dimnames(observed_scores) <- list(parameter_names, windows$o2_window)
+
+  set.seed(bootstrap_seed)
+  bootstrap_index <- matrix(
+    sample.int(
+      nrow(parameter_matrix),
+      nrow(parameter_matrix) * bootstrap_reps,
+      replace = TRUE
+    ),
+    nrow = nrow(parameter_matrix),
+    ncol = bootstrap_reps
+  )
+  score_one_bootstrap <- function(bootstrap_index_number) {
+    row_index <- bootstrap_index[, bootstrap_index_number]
+    rho <- suppressWarnings(stats::cor(
+      parameter_matrix[row_index, , drop = FALSE],
+      outcome_matrix[row_index, , drop = FALSE],
+      method = "spearman"
+    ))
+    score <- abs(rho) %*% window_weights
+    if (any(!is.finite(score))) {
+      stop("A bootstrap replicate produced a non-finite O2-window score.")
+    }
+    score
+  }
+  worker <- if (bootstrap_cores > 1L && .Platform$OS.type != "windows") {
+    parallel::mclapply(
+      seq_len(bootstrap_reps),
+      score_one_bootstrap,
+      mc.cores = bootstrap_cores,
+      mc.preschedule = TRUE,
+      mc.set.seed = FALSE
+    )
+  } else {
+    lapply(seq_len(bootstrap_reps), score_one_bootstrap)
+  }
+  bootstrap_scores <- simplify2array(worker)
+  expected_dimensions <- c(18L, 3L, bootstrap_reps)
+  if (!identical(dim(bootstrap_scores), expected_dimensions)) {
+    stop("Unexpected O2-window bootstrap score dimensions.")
+  }
+
+  score_rows <- vector("list", length(parameter_names) * nrow(windows))
+  output_index <- 0L
+  for (parameter_index in seq_along(parameter_names)) {
+    for (window_index in seq_len(nrow(windows))) {
+      output_index <- output_index + 1L
+      values <- bootstrap_scores[parameter_index, window_index, ]
+      interval <- stats::quantile(
+        values,
+        probs = c(0.025, 0.5, 0.975),
+        names = FALSE,
+        type = 8
+      )
+      score_rows[[output_index]] <- data.table(
+        parameter = parameter_names[[parameter_index]],
+        o2_window = windows$o2_window[[window_index]],
+        window_order = windows$window_order[[window_index]],
+        lower_o2 = windows$lower_o2[[window_index]],
+        upper_o2 = windows$upper_o2[[window_index]],
+        observed_mean_abs_rho = observed_scores[
+          parameter_index, window_index
+        ],
+        bootstrap_median = interval[[2L]],
+        bootstrap_ci_lower = interval[[1L]],
+        bootstrap_ci_upper = interval[[3L]],
+        bootstrap_reps = bootstrap_reps,
+        bootstrap_seed = bootstrap_seed
+      )
+    }
+  }
+  window_scores <- rbindlist(score_rows)
+
+  contrast_definition <- data.table(
+    contrast = c("Low - Medium", "Low - High", "Medium - High"),
+    window_a = c("Low O2", "Low O2", "Medium O2"),
+    window_b = c("Medium O2", "High O2", "High O2"),
+    window_a_index = c(1L, 1L, 2L),
+    window_b_index = c(2L, 3L, 3L)
+  )
+  contrast_rows <- vector(
+    "list",
+    length(parameter_names) * nrow(contrast_definition)
+  )
+  output_index <- 0L
+  for (parameter_index in seq_along(parameter_names)) {
+    for (contrast_index in seq_len(nrow(contrast_definition))) {
+      output_index <- output_index + 1L
+      definition <- contrast_definition[contrast_index]
+      delta_bootstrap <-
+        bootstrap_scores[parameter_index, definition$window_a_index, ] -
+        bootstrap_scores[parameter_index, definition$window_b_index, ]
+      delta_observed <-
+        observed_scores[parameter_index, definition$window_a_index] -
+        observed_scores[parameter_index, definition$window_b_index]
+      interval <- stats::quantile(
+        delta_bootstrap,
+        probs = c(0.025, 0.5, 0.975),
+        names = FALSE,
+        type = 8
+      )
+      lower_tail <-
+        (sum(delta_bootstrap <= 0) + 1) / (bootstrap_reps + 1)
+      upper_tail <-
+        (sum(delta_bootstrap >= 0) + 1) / (bootstrap_reps + 1)
+      contrast_rows[[output_index]] <- data.table(
+        parameter = parameter_names[[parameter_index]],
+        contrast = definition$contrast,
+        contrast_order = contrast_index,
+        window_a = definition$window_a,
+        window_b = definition$window_b,
+        observed_delta_mean_abs_rho = delta_observed,
+        bootstrap_median_delta = interval[[2L]],
+        bootstrap_ci_lower = interval[[1L]],
+        bootstrap_ci_upper = interval[[3L]],
+        bootstrap_sign_p_value = min(1, 2 * min(lower_tail, upper_tail)),
+        bootstrap_reps = bootstrap_reps,
+        bootstrap_seed = bootstrap_seed
+      )
+    }
+  }
+  pairwise_tests <- rbindlist(contrast_rows)
+  pairwise_tests[, bh_adjusted_p_value := stats::p.adjust(
+    bootstrap_sign_p_value,
+    method = "BH"
+  )]
+  pairwise_tests[, significant_bh_0p05 := bh_adjusted_p_value < 0.05]
+
+  group_levels <- c(
+    "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
+    "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+  )
+  classification_rows <- vector("list", length(parameter_names))
+  for (parameter_index in seq_along(parameter_names)) {
+    current_parameter <- parameter_names[[parameter_index]]
+    scores <- observed_scores[parameter_index, ]
+    names(scores) <- windows$o2_window
+    current_tests <- pairwise_tests[parameter == current_parameter]
+    q_matrix <- matrix(
+      1,
+      nrow = 3L,
+      ncol = 3L,
+      dimnames = list(windows$o2_window, windows$o2_window)
+    )
+    for (test_index in seq_len(nrow(current_tests))) {
+      a <- current_tests$window_a[[test_index]]
+      b <- current_tests$window_b[[test_index]]
+      q_matrix[a, b] <- current_tests$bh_adjusted_p_value[[test_index]]
+      q_matrix[b, a] <- current_tests$bh_adjusted_p_value[[test_index]]
+    }
+    greater_than <- function(a, b) {
+      scores[[a]] > scores[[b]] && q_matrix[a, b] < 0.05
+    }
+    not_different <- function(a, b) q_matrix[a, b] >= 0.05
+    significant_count <- sum(current_tests$significant_bh_0p05)
+
+    if (greater_than("High O2", "Medium O2") &&
+        greater_than("High O2", "Low O2")) {
+      assigned_group <- "High O2"
+      decision_rule <- "High exceeds both Medium and Low at BH q < 0.05"
+    } else if (greater_than("Medium O2", "Low O2") &&
+               greater_than("Medium O2", "High O2")) {
+      assigned_group <- "Medium O2"
+      decision_rule <- "Medium exceeds both Low and High at BH q < 0.05"
+    } else if (greater_than("Low O2", "Medium O2") &&
+               greater_than("Low O2", "High O2")) {
+      assigned_group <- "Low O2"
+      decision_rule <- "Low exceeds both Medium and High at BH q < 0.05"
+    } else if (greater_than("Medium O2", "Low O2") &&
+               greater_than("High O2", "Low O2") &&
+               not_different("Medium O2", "High O2")) {
+      assigned_group <- "Medium + High O2"
+      decision_rule <- paste(
+        "Medium and High each exceed Low at BH q < 0.05;",
+        "Medium and High do not differ"
+      )
+    } else if (greater_than("Low O2", "Medium O2") &&
+               greater_than("High O2", "Medium O2") &&
+               not_different("Low O2", "High O2")) {
+      assigned_group <- "Low + High O2"
+      decision_rule <- paste(
+        "Low and High each exceed Medium at BH q < 0.05;",
+        "Low and High do not differ"
+      )
+    } else if (greater_than("Low O2", "High O2") &&
+               greater_than("Medium O2", "High O2") &&
+               not_different("Low O2", "Medium O2")) {
+      assigned_group <- "Low + Medium O2"
+      decision_rule <- paste(
+        "Low and Medium each exceed High at BH q < 0.05;",
+        "Low and Medium do not differ"
+      )
+    } else if (significant_count == 0L) {
+      assigned_group <- "O2-independent"
+      decision_rule <- "No pairwise O2-window contrast reaches BH q < 0.05"
+    } else {
+      assigned_group <- "Ambiguous"
+      decision_rule <- paste0(
+        "Partial/non-transitive pattern: ", significant_count,
+        " pairwise contrast(s) at BH q < 0.05"
+      )
+    }
+    classification_rows[[parameter_index]] <- data.table(
+      parameter = current_parameter,
+      o2_association_group = assigned_group,
+      o2_association_group_order = match(assigned_group, group_levels),
+      o2_window_significant_contrast_count = significant_count,
+      o2_window_decision_rule = decision_rule
+    )
+  }
+  classification <- rbindlist(classification_rows)
+  if (anyNA(classification$o2_association_group_order)) {
+    stop("An O2-window association group is outside the configured order.")
+  }
+
+  list(
+    observed_rho = observed_rho,
+    window_scores = window_scores,
+    pairwise_tests = pairwise_tests,
+    classification = classification,
+    windows = windows,
+    bootstrap_reps = bootstrap_reps,
+    bootstrap_seed = bootstrap_seed,
+    bootstrap_cores = bootstrap_cores
   )
 }
 
@@ -177,6 +483,55 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     sort = FALSE
   )
 
+  seed_order <- sort(as.integer(parameter_wide$seed_number))
+  o2_grid <- sort(unique(fixed_min$O2_pct))
+  parameter_matrix <- as.matrix(
+    parameter_wide[match(seed_order, seed_number), ..all_parameters]
+  )
+  fixed_matrix_table <- copy(fixed_min)
+  setorder(fixed_matrix_table, seed_number, O2_pct)
+  if (!identical(unique(fixed_matrix_table$seed_number), seed_order) ||
+      !identical(unique(fixed_matrix_table$O2_pct), o2_grid)) {
+    stop("The fixed-O2 table cannot be aligned to the fitted endpoints.")
+  }
+  outcome_matrix <- matrix(
+    fixed_matrix_table$dominant_mean_ploidy,
+    nrow = length(seed_order),
+    ncol = length(o2_grid),
+    byrow = TRUE
+  )
+  bootstrap_reps <- suppressWarnings(as.integer(Sys.getenv(
+    "FIGURE4_O2_WINDOW_BOOTSTRAP_REPS",
+    unset = "5000"
+  )))
+  bootstrap_seed <- suppressWarnings(as.integer(Sys.getenv(
+    "FIGURE4_O2_WINDOW_BOOTSTRAP_SEED",
+    unset = "5826"
+  )))
+  bootstrap_cores <- suppressWarnings(as.integer(Sys.getenv(
+    "FIGURE4_O2_WINDOW_BOOTSTRAP_CORES",
+    unset = "1"
+  )))
+  o2_window_statistics <- derive_o2_window_statistics(
+    parameter_matrix = parameter_matrix,
+    outcome_matrix = outcome_matrix,
+    parameter_names = all_parameters,
+    o2_grid = o2_grid,
+    bootstrap_reps = bootstrap_reps,
+    bootstrap_seed = bootstrap_seed,
+    bootstrap_cores = bootstrap_cores
+  )
+  observed_association_check <- association[
+    order(match(parameter, all_parameters), O2_pct),
+    spearman_rho
+  ]
+  if (max(abs(
+    observed_association_check -
+      as.vector(t(o2_window_statistics$observed_rho))
+  )) > 1e-12) {
+    stop("Bootstrap input does not reproduce the canonical Spearman matrix.")
+  }
+
   ranking <- association[, {
     finite_rows <- which(is.finite(spearman_rho))
     if (!length(finite_rows)) {
@@ -212,37 +567,37 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
   }
   setorder(ranking, -max_abs_rho, parameter_order)
   ranking[, importance_rank := seq_len(.N)]
-  ranking[, `:=`(
-    peak_direction = fifelse(
-      rho_at_max_abs > 0,
-      "Positive peak rho",
-      "Negative peak rho"
-    ),
-    peak_o2_group = fcase(
-      O2_at_max_abs >= 0 & O2_at_max_abs < 1.5, "Low O2",
-      O2_at_max_abs >= 1.5 & O2_at_max_abs < 3.5, "Medium O2",
-      O2_at_max_abs >= 3.5 & O2_at_max_abs <= 5, "High O2",
-      default = NA_character_
-    )
+  ranking[, peak_direction := fifelse(
+    rho_at_max_abs > 0,
+    "Positive peak rho",
+    "Negative peak rho"
   )]
-  if (anyNA(ranking$peak_o2_group)) {
-    stop("A peak-O2 value lies outside the prespecified 0--5% grouping range.")
+  ranking <- merge(
+    ranking,
+    o2_window_statistics$classification,
+    by = "parameter",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  if (anyNA(ranking$o2_association_group) ||
+      anyNA(ranking$o2_association_group_order)) {
+    stop("O2-window association classifications are incomplete.")
   }
-  ranking[, peak_o2_group_order := match(
-    peak_o2_group, c("High O2", "Medium O2", "Low O2")
-  )]
   setorder(
     ranking,
-    peak_o2_group_order, -max_abs_rho, parameter_order
+    o2_association_group_order, -max_abs_rho, parameter_order
   )
-  ranking[, within_peak_o2_group_rank := seq_len(.N), by = peak_o2_group_order]
+  ranking[, within_o2_association_group_rank := seq_len(.N),
+          by = o2_association_group_order]
   ranking[, display_order := seq_len(.N)]
   association <- merge(
     association,
     ranking[, .(
       parameter, display_order, importance_rank,
       peak_direction,
-      peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
+      o2_association_group, o2_association_group_order,
+      within_o2_association_group_rank,
+      o2_window_significant_contrast_count, o2_window_decision_rule,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -323,7 +678,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     ranking[, .(
       parameter, display_order, importance_rank,
       peak_direction,
-      peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
+      o2_association_group, o2_association_group_order,
+      within_o2_association_group_rank,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -360,7 +716,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     ranking[, .(
       parameter, display_order, importance_rank,
       peak_direction,
-      peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
+      o2_association_group, o2_association_group_order,
+      within_o2_association_group_rank,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -489,11 +846,62 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
   }, by = .(
     parameter, parameter_group, parameter_plot_label,
     parameter_display_label, display_order, importance_rank,
-    peak_o2_group, peak_o2_group_order, within_peak_o2_group_rank,
+    o2_association_group, o2_association_group_order,
+    within_o2_association_group_rank,
     peak_direction,
     max_abs_rho, rho_at_max_abs, O2_at_max_abs
   )]
   setorder(pooled_summary, display_order)
+
+  o2_window_scores <- merge(
+    o2_window_statistics$window_scores,
+    ranking[, .(
+      parameter, parameter_order, parameter_plot_label,
+      parameter_display_label, display_order, importance_rank,
+      o2_association_group, o2_association_group_order,
+      within_o2_association_group_rank,
+      max_abs_rho, rho_at_max_abs, O2_at_max_abs
+    )],
+    by = "parameter",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  setorder(o2_window_scores, display_order, window_order)
+  o2_window_pairwise_tests <- merge(
+    o2_window_statistics$pairwise_tests,
+    ranking[, .(
+      parameter, parameter_order, parameter_plot_label,
+      parameter_display_label, display_order, importance_rank,
+      o2_association_group, o2_association_group_order,
+      within_o2_association_group_rank,
+      max_abs_rho, rho_at_max_abs, O2_at_max_abs
+    )],
+    by = "parameter",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  setorder(o2_window_pairwise_tests, display_order, contrast_order)
+  o2_window_classification <- merge(
+    o2_window_statistics$classification,
+    ranking[, .(
+      parameter, parameter_order, parameter_plot_label,
+      parameter_display_label, display_order, importance_rank,
+      within_o2_association_group_rank,
+      max_abs_rho, rho_at_max_abs, O2_at_max_abs
+    )],
+    by = "parameter",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  setorder(o2_window_classification, display_order)
+  if (nrow(o2_window_scores) != 18L * 3L ||
+      nrow(o2_window_pairwise_tests) != 18L * 3L ||
+      nrow(o2_window_classification) != 18L ||
+      anyNA(o2_window_scores$display_order) ||
+      anyNA(o2_window_pairwise_tests$display_order) ||
+      anyNA(o2_window_classification$display_order)) {
+    stop("The O2-window statistical audit tables are incomplete.")
+  }
 
   fwrite(
     association,
@@ -523,6 +931,21 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
   fwrite(
     endpoint_density,
     file.path(data_dir, "all_parameter_log10_density.tsv"),
+    sep = "\t"
+  )
+  fwrite(
+    o2_window_scores,
+    file.path(data_dir, "continuous_ploidy_o2_window_absrho_scores.tsv"),
+    sep = "\t"
+  )
+  fwrite(
+    o2_window_pairwise_tests,
+    file.path(data_dir, "continuous_ploidy_o2_window_pairwise_tests.tsv"),
+    sep = "\t"
+  )
+  fwrite(
+    o2_window_classification,
+    file.path(data_dir, "continuous_ploidy_o2_window_classification.tsv"),
     sep = "\t"
   )
 
@@ -599,15 +1022,23 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     sep = "\t"
   )
 
+  o2_group_counts <- ranking[
+    order(o2_association_group_order),
+    .N,
+    by = .(o2_association_group, o2_association_group_order)
+  ][, paste0(o2_association_group, "=", N, collapse = ";")]
   validation <- data.table(
     metric = c(
       "n_fitted_endpoints", "n_fixed_o2_values", "n_parameters",
       "n_parameter_o2_correlations", "association_metric",
       "outcome_is_continuous", "binary_ploidy_class_used_in_figure4b",
+      "o2_window_score", "o2_window_boundaries",
+      "o2_window_bootstrap_unit", "o2_window_bootstrap_reps",
+      "o2_window_bootstrap_seed", "o2_window_bootstrap_cores",
+      "o2_window_pairwise_test_count", "o2_window_multiple_testing",
+      "o2_window_significance_threshold", "o2_association_group_counts",
       "parameter_sort_primary", "parameter_sort_secondary",
       "parameter_sort_tertiary", "parameter_sort_tie_break",
-      "high_o2_peak_parameter_count", "medium_o2_peak_parameter_count",
-      "low_o2_peak_parameter_count",
       "ranking_magnitude_field", "ranking_signed_color_field",
       "canonical_lowest_objective_seed", "pooled_endpoint_n_per_parameter",
       "lowest_objective_markers", "endpoint_display_scale",
@@ -619,13 +1050,22 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     value = c(
       500, 201, 18, nrow(association), "Spearman rho",
       "TRUE", "FALSE",
-      "peak O2 group: High [3.5,5], Medium [1.5,3.5), Low [0,1.5)",
-      "descending maximum absolute Spearman rho within peak O2 group",
+      "normalized trapezoid AUC of absolute Spearman rho",
+      "Low [0,1]; Medium [1,3]; High [3,5]",
+      "complete fitted-endpoint row with its full 201-point O2 curve",
+      o2_window_statistics$bootstrap_reps,
+      o2_window_statistics$bootstrap_seed,
+      o2_window_statistics$bootstrap_cores,
+      nrow(o2_window_pairwise_tests),
+      "Benjamini-Hochberg across all 54 pairwise window contrasts",
+      "BH q < 0.05", o2_group_counts,
+      paste(
+        "O2 association group: High; Medium + High; Low + High;",
+        "Medium; Low + Medium; Low; O2-independent; Ambiguous"
+      ),
+      "descending maximum absolute Spearman rho within O2 association group",
       "configured parameter order for exact max-|rho| ties",
-      "none", sum(ranking$peak_o2_group == "High O2"),
-      sum(ranking$peak_o2_group == "Medium O2"),
-      sum(ranking$peak_o2_group == "Low O2"),
-      "max_abs_rho", "rho_at_max_abs", best_seed,
+      "none", "max_abs_rho", "rho_at_max_abs", best_seed,
       paste(sort(unique(pooled_summary$n)), collapse = ","),
       sum(parameter_prior$is_lowest_objective_fit),
       "original parameter value on shared log10 axis",
@@ -668,6 +1108,9 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     association = association,
     ranking = ranking,
     pooled_summary = pooled_summary,
+    o2_window_scores = o2_window_scores,
+    o2_window_pairwise_tests = o2_window_pairwise_tests,
+    o2_window_classification = o2_window_classification,
     burden_audit = burden_audit
   ))
 }

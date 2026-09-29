@@ -1,0 +1,323 @@
+#!/usr/bin/env Rscript
+
+# Visualize the O2-window comparisons used to classify Figure 4B rows.
+# The resampling unit is a complete optimizer-derived fitted endpoint with its
+# full 201-point O2 curve. These endpoints are not biological replicates or
+# posterior samples.
+
+suppressPackageStartupMessages({
+  library(data.table)
+  library(ggplot2)
+  library(patchwork)
+  library(scales)
+})
+
+script_path <- local({
+  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(file_arg)) {
+    normalizePath(sub("^--file=", "", file_arg[[1L]]), mustWork = FALSE)
+  } else {
+    normalizePath("draw_Supp_Figure4_3.R", mustWork = FALSE)
+  }
+})
+data_dir <- normalizePath(
+  Sys.getenv("ANALYSIS_DATA_DIR", unset = file.path(dirname(script_path), "data")),
+  mustWork = TRUE
+)
+output_dir <- normalizePath(
+  Sys.getenv("DELIVERABLE_OUTPUT_DIR", unset = file.path(dirname(script_path), "figures")),
+  mustWork = FALSE
+)
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+paths <- list(
+  scores = file.path(
+    data_dir, "continuous_ploidy_o2_window_absrho_scores.tsv"
+  ),
+  tests = file.path(
+    data_dir, "continuous_ploidy_o2_window_pairwise_tests.tsv"
+  ),
+  classification = file.path(
+    data_dir, "continuous_ploidy_o2_window_classification.tsv"
+  ),
+  ranking = file.path(data_dir, "continuous_ploidy_parameter_ranking.tsv")
+)
+missing <- unlist(paths)[!file.exists(unlist(paths))]
+if (length(missing)) {
+  stop("Missing Supplementary Figure 4-3 input(s): ", paste(missing, collapse = ", "))
+}
+
+scores <- fread(paths$scores)
+tests <- fread(paths$tests)
+classification <- fread(paths$classification)
+ranking <- fread(paths$ranking)
+if (nrow(scores) != 18L * 3L ||
+    nrow(tests) != 18L * 3L ||
+    nrow(classification) != 18L ||
+    nrow(ranking) != 18L ||
+    uniqueN(scores$parameter) != 18L ||
+    uniqueN(tests$parameter) != 18L ||
+    uniqueN(classification$parameter) != 18L) {
+  stop("Supplementary Figure 4-3 requires 18 parameters and three windows/contrasts.")
+}
+if (any(scores$observed_mean_abs_rho < -1e-12 |
+        scores$observed_mean_abs_rho > 1 + 1e-12) ||
+    any(scores$bootstrap_ci_lower < -1e-12 |
+        scores$bootstrap_ci_upper > 1 + 1e-12) ||
+    any(tests$bh_adjusted_p_value < 0 |
+        tests$bh_adjusted_p_value > 1)) {
+  stop("Supplementary Figure 4-3 statistics lie outside their valid ranges.")
+}
+
+group_levels <- c(
+  "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
+  "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+)
+window_levels <- c("Low O2", "Medium O2", "High O2")
+contrast_levels <- c("Low - Medium", "Low - High", "Medium - High")
+parameter_levels <- ranking[order(display_order), parameter]
+
+prepare_plot_table <- function(table) {
+  table[, parameter_factor := factor(
+    parameter,
+    levels = rev(parameter_levels)
+  )]
+  table[, o2_association_group := factor(
+    o2_association_group,
+    levels = group_levels
+  )]
+  table
+}
+scores <- prepare_plot_table(scores)
+tests <- prepare_plot_table(tests)
+scores[, o2_window := factor(o2_window, levels = window_levels)]
+tests[, contrast := factor(contrast, levels = contrast_levels)]
+tests[, q_label := fifelse(
+  bh_adjusted_p_value < 0.001,
+  "q<0.001",
+  sprintf("q=%.3f", bh_adjusted_p_value)
+)]
+
+window_palette <- c(
+  "Low O2" = "#2166AC",
+  "Medium O2" = "#E6A400",
+  "High O2" = "#B2182B"
+)
+window_shapes <- c("Low O2" = 21, "Medium O2" = 22, "High O2" = 24)
+score_position <- position_dodge(width = 0.62)
+
+theme_supp4_3 <- function(base_size = 9) {
+  theme_bw(base_size = base_size, base_family = "Arial") +
+    theme(
+      text = element_text(face = "bold", color = "#202428"),
+      plot.title = element_text(size = 13, face = "bold"),
+      plot.subtitle = element_text(size = 9.2, color = "#4B5259"),
+      plot.tag = element_text(size = 14, face = "bold"),
+      axis.title = element_text(size = 10.5),
+      axis.text = element_text(size = 8.3, color = "#252A2F"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "#ECEDEF", linewidth = 0.28),
+      panel.grid.major.x = element_line(color = "#E0E2E5", linewidth = 0.28),
+      panel.border = element_rect(color = "#858A90", linewidth = 0.35),
+      strip.background = element_rect(fill = "#F1F2F4", color = "#A7ABB0"),
+      strip.text = element_text(size = 8.3, face = "bold"),
+      legend.position = "top",
+      legend.title = element_blank(),
+      legend.text = element_text(size = 8.6),
+      plot.margin = margin(7, 8, 7, 8)
+    )
+}
+
+panel_a <- ggplot(
+  scores,
+  aes(x = observed_mean_abs_rho, y = parameter_factor, color = o2_window)
+) +
+  geom_errorbar(
+    aes(xmin = bootstrap_ci_lower, xmax = bootstrap_ci_upper),
+    orientation = "y", height = 0.18, linewidth = 0.65,
+    position = score_position
+  ) +
+  geom_point(
+    aes(fill = o2_window, shape = o2_window),
+    size = 2.8, stroke = 0.55, color = "#202428",
+    position = score_position
+  ) +
+  facet_grid(
+    rows = vars(o2_association_group),
+    scales = "free_y", space = "free_y", switch = "y", drop = TRUE
+  ) +
+  scale_color_manual(values = window_palette, drop = FALSE) +
+  scale_fill_manual(values = window_palette, drop = FALSE) +
+  scale_shape_manual(values = window_shapes, drop = FALSE) +
+  scale_x_continuous(
+    limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  labs(
+    tag = "A",
+    title = "Window-averaged absolute parameter-ploidy association",
+    subtitle = "Points are observed normalized AUC; bars are 95% endpoint-bootstrap intervals",
+    x = expression(paste("Window mean |Spearman ", rho, "|")),
+    y = NULL
+  ) +
+  theme_supp4_3() +
+  theme(
+    strip.placement = "outside",
+    strip.text.y.left = element_text(angle = 0, hjust = 1),
+    axis.text.y = element_text(face = "bold"),
+    legend.position = "top"
+  )
+
+contrast_limit <- max(abs(c(
+  tests$bootstrap_ci_lower,
+  tests$bootstrap_ci_upper,
+  tests$observed_delta_mean_abs_rho
+)), na.rm = TRUE)
+contrast_limit <- max(0.05, ceiling(contrast_limit * 20) / 20)
+label_offset <- contrast_limit * 0.04
+tests[, q_label_x := pmin(
+  contrast_limit * 1.27,
+  pmax(bootstrap_ci_upper, observed_delta_mean_abs_rho) + label_offset
+)]
+
+panel_b <- ggplot(
+  tests,
+  aes(x = observed_delta_mean_abs_rho, y = parameter_factor)
+) +
+  geom_vline(xintercept = 0, color = "#4C5157", linewidth = 0.5) +
+  geom_errorbar(
+    aes(xmin = bootstrap_ci_lower, xmax = bootstrap_ci_upper),
+    orientation = "y", height = 0.18, linewidth = 0.65,
+    color = "#5B6066"
+  ) +
+  geom_point(
+    aes(fill = significant_bh_0p05),
+    shape = 21, size = 2.6, stroke = 0.55, color = "#202428"
+  ) +
+  geom_text(
+    aes(x = q_label_x, label = q_label),
+    hjust = 0, size = 2.35, fontface = "bold", color = "#30353A"
+  ) +
+  facet_grid(
+    rows = vars(o2_association_group),
+    cols = vars(contrast),
+    scales = "free_y", space = "free_y", drop = TRUE
+  ) +
+  scale_fill_manual(
+    values = c("FALSE" = "white", "TRUE" = "#6A51A3"),
+    labels = c("FALSE" = "BH q >= 0.05", "TRUE" = "BH q < 0.05"),
+    drop = FALSE
+  ) +
+  scale_x_continuous(
+    limits = c(-contrast_limit, contrast_limit * 1.35),
+    breaks = pretty(c(-contrast_limit, contrast_limit), n = 5),
+    expand = expansion(mult = c(0.02, 0.01))
+  ) +
+  labs(
+    tag = "B",
+    title = "Pairwise O2-window contrasts",
+    subtitle = "Positive values favor the first named window; labels report BH-adjusted q values",
+    x = expression(paste(Delta, " window mean |Spearman ", rho, "|")),
+    y = NULL,
+    fill = NULL
+  ) +
+  theme_supp4_3() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    strip.text.y = element_blank(),
+    strip.background.y = element_blank(),
+    legend.position = "top"
+  )
+
+figure <- panel_a + panel_b +
+  plot_layout(widths = c(0.43, 0.57), guides = "collect") +
+  plot_annotation(
+    title = "O2-window association tests underlying Figure 4B parameter groups",
+    subtitle = paste(
+      "Low [0,1], Medium [1,3], and High [3,5] scores use normalized",
+      paste0(
+        "trapezoid AUC of |rho|; ",
+        comma(unique(scores$bootstrap_reps)),
+        " complete-endpoint bootstrap replicates"
+      )
+    ),
+    caption = paste(
+      "All 54 pairwise comparisons are adjusted together by Benjamini-Hochberg.",
+      "O2-independent means no detected window enrichment, not rho = 0.",
+      "Optimizer-derived fitted endpoints are not biological replicates or posterior samples."
+    ),
+    theme = theme(
+      plot.title = element_text(
+        family = "Arial", size = 16, face = "bold", color = "#15191D"
+      ),
+      plot.subtitle = element_text(
+        family = "Arial", size = 10.2, face = "bold", color = "#3E454C"
+      ),
+      plot.caption = element_text(
+        family = "Arial", size = 8.2, face = "bold", color = "#4B5259",
+        hjust = 0
+      ),
+      plot.margin = margin(8, 8, 8, 8)
+    )
+  )
+
+stem <- file.path(output_dir, "Supp_Figure4_3")
+figure_width <- 17
+figure_height <- 12
+ggsave(
+  paste0(stem, ".png"), figure,
+  width = figure_width, height = figure_height,
+  units = "in", dpi = 300, bg = "white"
+)
+ggsave(
+  paste0(stem, ".pdf"), figure,
+  width = figure_width, height = figure_height,
+  units = "in", device = cairo_pdf, bg = "white"
+)
+ggsave(
+  paste0(stem, ".svg"), figure,
+  width = figure_width, height = figure_height,
+  units = "in", device = svglite::svglite, bg = "white"
+)
+
+validation <- data.table(
+  metric = c(
+    "n_parameters", "n_windows", "n_pairwise_tests",
+    "bootstrap_reps", "bootstrap_seed", "multiple_testing",
+    "window_score", "figure_width_in", "figure_height_in",
+    "png_rendered", "pdf_rendered", "svg_rendered",
+    "endpoint_rows_are_biological_replicates",
+    "endpoint_rows_are_posterior_samples"
+  ),
+  value = c(
+    uniqueN(scores$parameter), uniqueN(scores$o2_window), nrow(tests),
+    paste(unique(scores$bootstrap_reps), collapse = ","),
+    paste(unique(scores$bootstrap_seed), collapse = ","),
+    "Benjamini-Hochberg across 54 pairwise contrasts",
+    "normalized trapezoid AUC of absolute Spearman rho",
+    figure_width, figure_height,
+    file.exists(paste0(stem, ".png")),
+    file.exists(paste0(stem, ".pdf")),
+    file.exists(paste0(stem, ".svg")),
+    "FALSE", "FALSE"
+  )
+)
+fwrite(
+  validation,
+  file.path(data_dir, "supp_figure4_3_validation.tsv"),
+  sep = "\t"
+)
+provenance <- data.table(
+  source = c(names(paths), "script"),
+  path = c(unname(unlist(paths)), script_path),
+  md5 = unname(tools::md5sum(c(unname(unlist(paths)), script_path))),
+  role = c(rep("input", length(paths)), "script")
+)
+fwrite(
+  provenance,
+  file.path(data_dir, "supp_figure4_3_source_provenance.tsv"),
+  sep = "\t"
+)
+
+message("Supplementary Figure 4-3 written to: ", paste0(stem, ".png"))

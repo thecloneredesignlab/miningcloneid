@@ -104,7 +104,7 @@ if (!identical(sort(ranking$display_order), seq_len(18L)) ||
 }
 o2_association_group_levels <- c(
   "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-  "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+  "Low + Medium O2", "Low O2", "O2-independent"
 )
 o2_association_group_palette <- c(
   "Low O2" = "#2166AC",
@@ -113,8 +113,7 @@ o2_association_group_palette <- c(
   "High O2" = "#B2182B",
   "Medium + High O2" = "#D95F0E",
   "Low + High O2" = "#7B3294",
-  "O2-independent" = "#8A8A8A",
-  "Ambiguous" = "#343A40"
+  "O2-independent" = "#8A8A8A"
 )
 peak_direction_palette <- c(
   "Positive peak rho" = "#EF8A62",
@@ -1396,7 +1395,7 @@ validation <- data.table(
     18, 201, 500, "Spearman rho", "TRUE", "FALSE",
     paste(
       "O2 association group: High; Medium + High; Low + High;",
-      "Medium; Low + Medium; Low; O2-independent; Ambiguous"
+      "Medium; Low + Medium; Low; O2-independent"
     ),
     "descending maximum absolute Spearman rho within O2 association group",
     "configured parameter order for exact max-|rho| ties",

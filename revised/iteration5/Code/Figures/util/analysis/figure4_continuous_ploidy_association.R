@@ -266,7 +266,7 @@ derive_o2_window_statistics <- function(
 
   group_levels <- c(
     "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-    "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+    "Low + Medium O2", "Low O2", "O2-independent"
   )
   classification_rows <- vector("list", length(parameter_names))
   for (parameter_index in seq_along(parameter_names)) {
@@ -332,10 +332,20 @@ derive_o2_window_statistics <- function(
       assigned_group <- "O2-independent"
       decision_rule <- "No pairwise O2-window contrast reaches BH q < 0.05"
     } else {
-      assigned_group <- "Ambiguous"
+      significant_tests <- current_tests[significant_bh_0p05 == TRUE]
+      significant_tests[, higher_window := fifelse(
+        observed_delta_mean_abs_rho > 0,
+        window_a,
+        window_b
+      )]
+      winner_scores <- scores[significant_tests$higher_window]
+      assigned_group <- significant_tests$higher_window[[
+        which.max(winner_scores)
+      ]]
       decision_rule <- paste0(
-        "Partial/non-transitive pattern: ", significant_count,
-        " pairwise contrast(s) at BH q < 0.05"
+        "At least one pairwise O2-window contrast reaches BH q < 0.05; ",
+        "assigned to the highest-scoring window among significant-contrast ",
+        "winners (", assigned_group, ")"
       )
     }
     classification_rows[[parameter_index]] <- data.table(
@@ -349,6 +359,16 @@ derive_o2_window_statistics <- function(
   classification <- rbindlist(classification_rows)
   if (anyNA(classification$o2_association_group_order)) {
     stop("An O2-window association group is outside the configured order.")
+  }
+  if (classification[
+        o2_window_significant_contrast_count == 0L,
+        any(o2_association_group != "O2-independent")
+      ] ||
+      classification[
+        o2_window_significant_contrast_count > 0L,
+        any(o2_association_group == "O2-independent")
+      ]) {
+    stop("O2-window significance and association-group assignments disagree.")
   }
 
   list(
@@ -1061,7 +1081,7 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       "BH q < 0.05", o2_group_counts,
       paste(
         "O2 association group: High; Medium + High; Low + High;",
-        "Medium; Low + Medium; Low; O2-independent; Ambiguous"
+        "Medium; Low + Medium; Low; O2-independent"
       ),
       "descending maximum absolute Spearman rho within O2 association group",
       "configured parameter order for exact max-|rho| ties",

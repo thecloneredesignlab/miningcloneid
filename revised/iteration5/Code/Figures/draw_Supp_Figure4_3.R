@@ -71,7 +71,7 @@ if (any(scores$observed_mean_abs_rho < -1e-12 |
 
 group_levels <- c(
   "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-  "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+  "Low + Medium O2", "Low O2", "O2-independent"
 )
 window_levels <- c("Low O2", "Medium O2", "High O2")
 contrast_levels <- c("Low - Medium", "Low - High", "Medium - High")
@@ -244,6 +244,7 @@ figure <- panel_a + panel_b +
     ),
     caption = paste(
       "All 54 pairwise comparisons are adjusted together by Benjamini-Hochberg.",
+      "Detected contrasts assign parameters to their higher-scoring window(s).",
       "O2-independent means no detected window enrichment, not rho = 0.",
       "Optimizer-derived fitted endpoints are not biological replicates or posterior samples."
     ),

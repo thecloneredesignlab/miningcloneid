@@ -155,7 +155,7 @@ classification <- fread(file.path(
 ))
 expected_levels <- c(
   "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-  "Low + Medium O2", "Low O2", "O2-independent", "Ambiguous"
+  "Low + Medium O2", "Low O2", "O2-independent"
 )
 stopifnot(
   nrow(ranking) == 18L,
@@ -165,6 +165,7 @@ stopifnot(
   nrow(classification) == 18L,
   !anyNA(ranking$o2_association_group),
   all(ranking$o2_association_group %in% expected_levels),
+  !any(ranking$o2_association_group == "Ambiguous"),
   !any(diff(ranking$o2_association_group_order) < 0),
   all(scores$bootstrap_reps == 5000L),
   all(scores$bootstrap_seed == 5826L),
@@ -172,6 +173,34 @@ stopifnot(
   identical(
     ranking$o2_association_group,
     classification[order(display_order), o2_association_group]
+  ),
+  classification[
+    o2_window_significant_contrast_count == 0L,
+    all(o2_association_group == "O2-independent")
+  ],
+  classification[
+    o2_window_significant_contrast_count > 0L,
+    all(o2_association_group != "O2-independent")
+  ]
+)
+single_contrast_classification <- merge(
+  classification[o2_window_significant_contrast_count == 1L],
+  tests[significant_bh_0p05 == TRUE, .(
+    parameter,
+    higher_window = fifelse(
+      observed_delta_mean_abs_rho > 0,
+      window_a,
+      window_b
+    )
+  )],
+  by = "parameter"
+)
+stopifnot(
+  nrow(single_contrast_classification) ==
+    sum(classification$o2_window_significant_contrast_count == 1L),
+  all(
+    single_contrast_classification$o2_association_group ==
+      single_contrast_classification$higher_window
   )
 )
 within_group_fail <- ranking[, any(diff(max_abs_rho) > 1e-12),

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -76,6 +77,16 @@ PANEL_TITLE_X = 140
 PANEL_LABEL_Y = 18
 PDF_PAGE_SIZE_BP = 1296
 PDF_BP_PER_PIXEL = PDF_PAGE_SIZE_BP / CANVAS_WIDTH
+SKIP_VECTOR_PDF = os.environ.get(
+    "COMPOSITOR_SKIP_VECTOR_PDF", "FALSE"
+).strip().upper() == "TRUE"
+VECTOR_PDF_BACKEND = os.environ.get(
+    "COMPOSITOR_VECTOR_PDF_BACKEND", "auto"
+).strip().lower()
+if VECTOR_PDF_BACKEND not in {"auto", "pdflatex", "ghostscript"}:
+    raise RuntimeError(
+        "COMPOSITOR_VECTOR_PDF_BACKEND must be auto, pdflatex, or ghostscript."
+    )
 
 if PANEL_A_HEIGHT + VERTICAL_GAP + BOTTOM_ROW_HEIGHT != CANVAS_HEIGHT:
     raise RuntimeError("Canvas and row heights are inconsistent.")
@@ -167,10 +178,224 @@ def vector_pdf_panel(
     )
 
 
+def postscript_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def eps_bounding_box(path: Path) -> tuple[float, float, float, float]:
+    content = path.read_text(encoding="latin-1", errors="replace")
+    match = re.search(
+        r"^%%HiResBoundingBox:\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+"
+        r"([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*$",
+        content,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        match = re.search(
+            r"^%%BoundingBox:\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+"
+            r"([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*$",
+            content,
+            flags=re.MULTILINE,
+        )
+    if match is None:
+        raise RuntimeError(f"EPS bounding box was not found: {path}")
+    bounds = tuple(float(value) for value in match.groups())
+    if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
+        raise RuntimeError(f"Invalid EPS bounding box in {path}: {bounds}")
+    return bounds
+
+
+def ghostscript_panel_placement(
+    label: str,
+    source: Path,
+    eps_source: Path,
+    *,
+    slot_x: int,
+    slot_y: int,
+    slot_width: int,
+    slot_height: int,
+) -> str:
+    source_width, source_height = png_dimensions(source)
+    content_width = slot_width - 2 * ROW_PAD
+    content_height = slot_height - PANEL_LABEL_BAND
+    scale = min(content_width / source_width, content_height / source_height)
+    drawn_width = round(source_width * scale)
+    drawn_height = round(source_height * scale)
+    left = (slot_x + (slot_width - drawn_width) / 2) * PDF_BP_PER_PIXEL
+    bottom = (
+        CANVAS_HEIGHT - slot_y - PANEL_LABEL_BAND - drawn_height
+    ) * PDF_BP_PER_PIXEL
+    x0, y0, x1, y1 = eps_bounding_box(eps_source)
+    scale_x = drawn_width * PDF_BP_PER_PIXEL / (x1 - x0)
+    scale_y = drawn_height * PDF_BP_PER_PIXEL / (y1 - y0)
+    return "\n".join(
+        (
+            "gsave",
+            f"{left:.6f} {bottom:.6f} translate",
+            f"{scale_x:.9f} {scale_y:.9f} scale",
+            f"{-x0:.6f} {-y0:.6f} translate",
+            "BeginEPSF",
+            f"({postscript_string(str(eps_source.resolve()))}) run",
+            "EndEPSF",
+            "grestore",
+        )
+    )
+
+
+def ghostscript_panel_heading(
+    label: str,
+    *,
+    slot_x: int,
+    slot_y: int,
+) -> str:
+    label_size = PANEL_LABEL_POINTSIZE * PDF_BP_PER_PIXEL
+    title_size = PANEL_TITLE_POINTSIZE[label] * PDF_BP_PER_PIXEL
+    title_y = PANEL_LABEL_Y + round(
+        (PANEL_LABEL_POINTSIZE - PANEL_TITLE_POINTSIZE[label]) / 2
+    )
+    label_x = (slot_x + PANEL_LABEL_X) * PDF_BP_PER_PIXEL
+    label_baseline = (
+        CANVAS_HEIGHT * PDF_BP_PER_PIXEL
+        - (slot_y + PANEL_LABEL_Y) * PDF_BP_PER_PIXEL
+        - label_size * 0.82
+    )
+    title_x = (slot_x + PANEL_TITLE_X) * PDF_BP_PER_PIXEL
+    title_baseline = (
+        CANVAS_HEIGHT * PDF_BP_PER_PIXEL
+        - (slot_y + title_y) * PDF_BP_PER_PIXEL
+        - title_size * 0.82
+    )
+    return "\n".join(
+        (
+            f"/Helvetica-Bold findfont {label_size:.6f} scalefont setfont",
+            "0 setgray",
+            f"{label_x:.6f} {label_baseline:.6f} moveto",
+            f"({postscript_string(label + '.')}) show",
+            f"/Helvetica-Bold findfont {title_size:.6f} scalefont setfont",
+            f"{title_x:.6f} {title_baseline:.6f} moveto",
+            f"({postscript_string(PANEL_TITLES[label])}) show",
+        )
+    )
+
+
+def make_vector_pdf_ghostscript(
+    staged: dict[str, Path], destination: Path, temp: Path
+) -> None:
+    pdftops = shutil.which("pdftops")
+    ghostscript = shutil.which("gs")
+    if pdftops is None or ghostscript is None:
+        raise RuntimeError(
+            "Ghostscript Figure 4 PDF assembly requires pdftops and gs."
+        )
+    panels = (
+        ("A", staged["a"], 0, 0, CANVAS_WIDTH, PANEL_A_HEIGHT),
+        ("B", staged["b"], 0, PANEL_A_HEIGHT + VERTICAL_GAP,
+         PANEL_B_WIDTH, BOTTOM_ROW_HEIGHT),
+        ("C", staged["c"], PANEL_B_WIDTH + HORIZONTAL_GAP,
+         PANEL_A_HEIGHT + VERTICAL_GAP, RIGHT_COLUMN_WIDTH, PANEL_C_HEIGHT),
+        ("D", staged["d"], PANEL_B_WIDTH + HORIZONTAL_GAP,
+         PANEL_A_HEIGHT + VERTICAL_GAP + PANEL_C_HEIGHT + RIGHT_STACK_GAP,
+         RIGHT_COLUMN_WIDTH, PANEL_D_HEIGHT),
+    )
+    eps_sources: dict[str, Path] = {}
+    for label, source, *_ in panels:
+        eps_source = temp / f"panel_{label.lower()}.eps"
+        run(
+            [
+                pdftops,
+                "-f", "1", "-l", "1", "-level3", "-eps",
+                str(source.with_suffix(".pdf")), str(eps_source),
+            ]
+        )
+        if not eps_source.exists() or eps_source.stat().st_size == 0:
+            raise RuntimeError(f"Panel {label} EPS conversion failed.")
+        eps_sources[label] = eps_source
+    placements = "\n".join(
+        ghostscript_panel_placement(
+            label,
+            source,
+            eps_sources[label],
+            slot_x=x,
+            slot_y=y,
+            slot_width=width,
+            slot_height=height,
+        )
+        for label, source, x, y, width, height in panels
+    )
+    headings = "\n".join(
+        ghostscript_panel_heading(label, slot_x=x, slot_y=y)
+        for label, _, x, y, _, _ in panels
+    )
+    page_size = CANVAS_WIDTH * PDF_BP_PER_PIXEL
+    postscript = "\n".join(
+        (
+            "%!PS-Adobe-3.0",
+            f"%%BoundingBox: 0 0 {PDF_PAGE_SIZE_BP} {PDF_PAGE_SIZE_BP}",
+            f"<< /PageSize [{page_size:.6f} {page_size:.6f}] >> setpagedevice",
+            "/BeginEPSF {",
+            "  /b4_Inc_state save def",
+            "  /dict_count countdictstack def",
+            "  /op_count count 1 sub def",
+            "  userdict begin /showpage {} def",
+            "  0 setgray 0 setlinecap 1 setlinewidth 0 setlinejoin",
+            "  10 setmiterlimit [] 0 setdash newpath",
+            "} bind def",
+            "/EndEPSF {",
+            "  count op_count sub {pop} repeat",
+            "  countdictstack dict_count sub {end} repeat",
+            "  b4_Inc_state restore",
+            "} bind def",
+            placements,
+            headings,
+            "showpage",
+            "",
+        )
+    )
+    postscript_path = temp / "assembled_fig4_vector.ps"
+    postscript_path.write_text(postscript, encoding="utf-8")
+    run(
+        [
+            ghostscript,
+            "-dNOSAFER", "-dBATCH", "-dNOPAUSE",
+            "-dAutoRotatePages=/None", "-dCompatibilityLevel=1.7",
+            "-sDEVICE=pdfwrite", f"-sOutputFile={destination}",
+            str(postscript_path),
+        ]
+    )
+    if not destination.exists() or destination.stat().st_size == 0:
+        raise RuntimeError("Ghostscript did not create the Figure 4 PDF.")
+
+
 def make_vector_pdf(staged: dict[str, Path], destination: Path, temp: Path) -> None:
     pdflatex = shutil.which("pdflatex")
-    if pdflatex is None:
-        raise RuntimeError("pdfLaTeX is required for selectable Figure 4 PDF text.")
+    if VECTOR_PDF_BACKEND == "ghostscript" or (
+        VECTOR_PDF_BACKEND == "auto" and pdflatex is None
+    ):
+        make_vector_pdf_ghostscript(staged, destination, temp)
+    elif pdflatex is None:
+        raise RuntimeError("The requested pdfLaTeX Figure 4 backend is unavailable.")
+    else:
+        make_vector_pdf_pdflatex(staged, destination, temp, pdflatex)
+    pdftotext = shutil.which("pdftotext")
+    if pdftotext is None:
+        raise RuntimeError("pdftotext is required to validate selectable PDF text.")
+    extracted = subprocess.run(
+        [pdftotext, str(destination), "-"],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ).stdout
+    if (
+        "In vivo cohort dynamics and terminal ploidy" not in extracted
+        or "Strongest fitted-parameter separation" not in extracted
+    ):
+        raise RuntimeError("Figure 4 PDF is missing selectable panel headings.")
+
+
+def make_vector_pdf_pdflatex(
+    staged: dict[str, Path], destination: Path, temp: Path, pdflatex: str
+) -> None:
     panels = (
         ("A", staged["a"], 0, 0, CANVAS_WIDTH, PANEL_A_HEIGHT),
         ("B", staged["b"], 0, PANEL_A_HEIGHT + VERTICAL_GAP,
@@ -215,21 +440,6 @@ def make_vector_pdf(staged: dict[str, Path], destination: Path, temp: Path) -> N
     rendered = tex_path.with_suffix(".pdf")
     if not rendered.exists() or rendered.stat().st_size == 0:
         raise RuntimeError("The vector Figure 4 PDF was not created.")
-    pdftotext = shutil.which("pdftotext")
-    if pdftotext is None:
-        raise RuntimeError("pdftotext is required to validate selectable PDF text.")
-    extracted = subprocess.run(
-        [pdftotext, str(rendered), "-"],
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    ).stdout
-    if (
-        "In vivo cohort dynamics and terminal ploidy" not in extracted
-        or "Strongest fitted-parameter separation" not in extracted
-    ):
-        raise RuntimeError("Figure 4 PDF is missing selectable panel headings.")
     shutil.copy2(rendered, destination)
 
 
@@ -478,13 +688,15 @@ def assemble(staged: dict[str, Path]) -> Path:
             )
 
         local_pdf = PANEL_ROOT / f"{OUTPUT_BASENAME}.pdf"
-        make_vector_pdf(staged, local_pdf, temp)
-        if not local_pdf.exists() or local_pdf.stat().st_size == 0:
-            raise RuntimeError("Final composite PDF was not created.")
+        if not SKIP_VECTOR_PDF:
+            make_vector_pdf(staged, local_pdf, temp)
+            if not local_pdf.exists() or local_pdf.stat().st_size == 0:
+                raise RuntimeError("Final composite PDF was not created.")
 
         OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
         shutil.copy2(local_output, OUTPUT_ROOT / f"{OUTPUT_BASENAME}.png")
-        shutil.copy2(local_pdf, OUTPUT_ROOT / f"{OUTPUT_BASENAME}.pdf")
+        if not SKIP_VECTOR_PDF:
+            shutil.copy2(local_pdf, OUTPUT_ROOT / f"{OUTPUT_BASENAME}.pdf")
 
         layout_log = VALIDATION_ROOT / VALIDATION_BASENAME
         header = (
@@ -557,7 +769,10 @@ def compose_figure4_panels() -> None:
     output = assemble(staged)
     width, height = png_dimensions(output)
     print(f"Figure 4 composite -> {output} ({width}x{height})")
-    print(f"Figure 4 composite PDF -> {output.with_suffix('.pdf')}")
+    if SKIP_VECTOR_PDF:
+        print("Figure 4 vector PDF deferred to the external vector compositor.")
+    else:
+        print(f"Figure 4 composite PDF -> {output.with_suffix('.pdf')}")
 
 
 if __name__ == "__main__":

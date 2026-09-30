@@ -2,7 +2,7 @@
 
 # Rebuild Figure 4B and Figure 4B lite on hpctpa3pc0028 from staged
 # iteration5 inputs. All generated files and logs remain inside iteration5.
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 ITERATION_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd -P)"
@@ -45,6 +45,12 @@ else
   echo "Apptainer/Singularity is unavailable." >&2
   exit 2
 fi
+for tool in python3 pdftops gs pdftotext; do
+  command -v "${tool}" >/dev/null 2>&1 || {
+    echo "Missing host-side vector-compositor tool: ${tool}" >&2
+    exit 2
+  }
+done
 
 DATA_DIR="${ITERATION_ROOT}/data/Figures/Figure4"
 PANEL_DIR="${DATA_DIR}/panels"
@@ -53,8 +59,10 @@ ASSOCIATION_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/figure4_continu
 LANDSCAPE_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/parameter_landscape.R"
 SUPP_FIGURE4_3_SCRIPT="${ITERATION_ROOT}/Code/Figures/draw_Supp_Figure4_3.R"
 COMPOSITOR_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/graphics/top_with_two_column_bottom_compositor.py"
+VECTOR_COMPOSITOR_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/graphics/render_Figure4_vector_pdf.py"
 for path in "${DATA_DIR}" "${ASSOCIATION_SCRIPT}" "${LANDSCAPE_SCRIPT}" \
   "${SUPP_FIGURE4_3_SCRIPT}" "${COMPOSITOR_SCRIPT}" \
+  "${VECTOR_COMPOSITOR_SCRIPT}" \
   "${PANEL_LABEL_FONT}"; do
   [[ -e "${path}" ]] || {
     echo "Missing iteration5 input: ${path}" >&2
@@ -145,6 +153,7 @@ container_command Rscript "${SUPP_FIGURE4_3_SCRIPT}"
 CURRENT_STAGE="ASSEMBLE_FIGURE4_WITH_LOGX_PANEL_B"
 status RUNNING "${CURRENT_STAGE}"
 container_command env \
+  "COMPOSITOR_SKIP_VECTOR_PDF=TRUE" \
   "HYPOXIA_REPO_ROOT=${REPO_ROOT}" \
   "COMPOSITOR_DATA_DIR=${DATA_DIR}" \
   "COMPOSITOR_PANEL_DIR=${PANEL_DIR}" \
@@ -158,6 +167,24 @@ container_command env \
   "COMPOSITOR_OUTPUT_BASENAME=assembled_fig4" \
   "COMPOSITOR_VALIDATION_BASENAME=figure4_layout_validation.tsv" \
   python3 "${COMPOSITOR_SCRIPT}"
+
+CURRENT_STAGE="ASSEMBLE_FIGURE4_VECTOR_PDF_WITH_LOGX_PANEL_B"
+status RUNNING "${CURRENT_STAGE}"
+env \
+  "COMPOSITOR_VECTOR_PDF_BACKEND=ghostscript" \
+  "HYPOXIA_REPO_ROOT=${REPO_ROOT}" \
+  "COMPOSITOR_DATA_DIR=${DATA_DIR}" \
+  "COMPOSITOR_PANEL_DIR=${PANEL_DIR}" \
+  "COMPOSITOR_OUTPUT_DIR=${DELIVERABLE_DIR}" \
+  "COMPOSITOR_TOP_PANEL=${PANEL_DIR}/fig4a_combined_invivo_dynamics.png" \
+  "COMPOSITOR_BOTTOM_LEFT_PANEL=${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.png" \
+  "COMPOSITOR_BOTTOM_RIGHT_TOP_PANEL=${PANEL_DIR}/parameter_tsne_groups.png" \
+  "COMPOSITOR_BOTTOM_RIGHT_BOTTOM_PANEL=${PANEL_DIR}/strongest_cluster_parameter_distribution.png" \
+  "COMPOSITOR_SUPPLEMENTARY_SOURCE=${PANEL_DIR}/all_parameter_fitted_endpoint_distributions" \
+  "COMPOSITOR_SUPPLEMENTARY_DESTINATION=${DELIVERABLE_DIR}/supp_fig4-1_all18_cluster_prior_violins" \
+  "COMPOSITOR_OUTPUT_BASENAME=assembled_fig4" \
+  "COMPOSITOR_VALIDATION_BASENAME=figure4_layout_validation.tsv" \
+  python3 "${VECTOR_COMPOSITOR_SCRIPT}"
 
 CURRENT_STAGE="VALIDATE_RANKING_AND_OUTPUTS"
 status RUNNING "${CURRENT_STAGE}"

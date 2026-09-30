@@ -1194,13 +1194,16 @@ draw_Figure4 <- function() {
         "figure4d_strongest_parameter.tsv"
       )),
       file.path(panel_dir, c(
-        "parameter_continuous_ploidy_landscape.png",
+        "parameter_continuous_ploidy_landscape_logx.png",
+        "parameter_continuous_ploidy_landscape_logx.pdf",
+        "parameter_continuous_ploidy_landscape_logx.svg",
         "Figure4B_lite.png",
         "parameter_tsne_groups.png",
         "strongest_cluster_parameter_distribution.png"
       )),
       file.path(OUTPUT_ROOT, c(
         "Figure4B.png", "Figure4B.pdf", "Figure4B.svg",
+        "Figure4B_logx.png", "Figure4B_logx.pdf", "Figure4B_logx.svg",
         "Figure4B_lite.png", "Figure4B_lite.pdf", "Figure4B_lite.svg"
       ))
     ),
@@ -1214,7 +1217,7 @@ draw_Figure4 <- function() {
       panel_dir, "fig4a_combined_invivo_dynamics.png"
     ),
     bottom_left_panel = file.path(
-      panel_dir, "parameter_continuous_ploidy_landscape.png"
+      panel_dir, "parameter_continuous_ploidy_landscape_logx.png"
     ),
     bottom_right_top_panel = file.path(
       panel_dir, "parameter_tsne_groups.png"

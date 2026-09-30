@@ -495,6 +495,9 @@ def assemble(staged: dict[str, Path]) -> Path:
             "panel_b_source_width\tpanel_b_source_height\t"
             "panel_c_source_width\tpanel_c_source_height\t"
             "panel_d_source_width\tpanel_d_source_height\t"
+            "panel_a_source_file\tpanel_b_source_file\t"
+            "panel_b_pdf_source_file\tpanel_c_source_file\t"
+            "panel_d_source_file\t"
             "target_width_to_height\ttarget_panel_a_to_bottom_height\t"
             "panel_b_c_top_aligned\tpanel_c_d_combined_height_equals_b\t"
             "vertical_gap_px\thorizontal_gap_px\tright_stack_gap_px\t"
@@ -517,6 +520,11 @@ def assemble(staged: dict[str, Path]) -> Path:
             *png_dimensions(staged["b"]),
             *png_dimensions(staged["c"]),
             *png_dimensions(staged["d"]),
+            staged["a"].name,
+            staged["b"].name,
+            staged["b"].with_suffix(".pdf").name,
+            staged["c"].name,
+            staged["d"].name,
             "1:1",
             "1:2",
             "TRUE",

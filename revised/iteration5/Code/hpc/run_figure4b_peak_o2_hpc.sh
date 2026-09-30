@@ -10,6 +10,7 @@ REPO_ROOT="$(cd -- "${ITERATION_ROOT}/../.." && pwd -P)"
 EXPECTED_NODE="hpctpa3pc0028"
 EXPECTED_ITERATION_ROOT="/share/lab_crd/taoli/Project/HypoxiaLTEEFigures/revised/iteration5"
 SIF_IMAGE="/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif"
+PANEL_LABEL_FONT="${REPO_ROOT}/data/fonts/Arial Bold.ttf"
 RED_EASYBUILD_ROOT="/app/eb"
 RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64"
 RED_OPENBLAS_LIB="${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib"
@@ -51,8 +52,10 @@ DELIVERABLE_DIR="${ITERATION_ROOT}/Figures"
 ASSOCIATION_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/figure4_continuous_ploidy_association.R"
 LANDSCAPE_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/parameter_landscape.R"
 SUPP_FIGURE4_3_SCRIPT="${ITERATION_ROOT}/Code/Figures/draw_Supp_Figure4_3.R"
+COMPOSITOR_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/graphics/top_with_two_column_bottom_compositor.py"
 for path in "${DATA_DIR}" "${ASSOCIATION_SCRIPT}" "${LANDSCAPE_SCRIPT}" \
-  "${SUPP_FIGURE4_3_SCRIPT}"; do
+  "${SUPP_FIGURE4_3_SCRIPT}" "${COMPOSITOR_SCRIPT}" \
+  "${PANEL_LABEL_FONT}"; do
   [[ -e "${path}" ]] || {
     echo "Missing iteration5 input: ${path}" >&2
     exit 2
@@ -104,8 +107,10 @@ CONTAINER_ARGS=(
   --env "ANALYSIS_DATA_DIR=${DATA_DIR}"
   --env "PLOT_OUTPUT_DIR=${PANEL_DIR}"
   --env "DELIVERABLE_OUTPUT_DIR=${DELIVERABLE_DIR}"
+  --env "FIGURE_PANEL_LABEL_FONT=${PANEL_LABEL_FONT}"
   --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
   --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
+  --bind "${PANEL_LABEL_FONT}:${PANEL_LABEL_FONT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
   --bind "${TASK_TMP_DIR}:/tmp:rw"
   --bind "${TASK_TMP_DIR}:/var/tmp:rw"
@@ -136,6 +141,23 @@ container_command Rscript "${LANDSCAPE_SCRIPT}"
 CURRENT_STAGE="RENDER_SUPP_FIGURE4_3"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${SUPP_FIGURE4_3_SCRIPT}"
+
+CURRENT_STAGE="ASSEMBLE_FIGURE4_WITH_LOGX_PANEL_B"
+status RUNNING "${CURRENT_STAGE}"
+container_command env \
+  "HYPOXIA_REPO_ROOT=${REPO_ROOT}" \
+  "COMPOSITOR_DATA_DIR=${DATA_DIR}" \
+  "COMPOSITOR_PANEL_DIR=${PANEL_DIR}" \
+  "COMPOSITOR_OUTPUT_DIR=${DELIVERABLE_DIR}" \
+  "COMPOSITOR_TOP_PANEL=${PANEL_DIR}/fig4a_combined_invivo_dynamics.png" \
+  "COMPOSITOR_BOTTOM_LEFT_PANEL=${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.png" \
+  "COMPOSITOR_BOTTOM_RIGHT_TOP_PANEL=${PANEL_DIR}/parameter_tsne_groups.png" \
+  "COMPOSITOR_BOTTOM_RIGHT_BOTTOM_PANEL=${PANEL_DIR}/strongest_cluster_parameter_distribution.png" \
+  "COMPOSITOR_SUPPLEMENTARY_SOURCE=${PANEL_DIR}/all_parameter_fitted_endpoint_distributions" \
+  "COMPOSITOR_SUPPLEMENTARY_DESTINATION=${DELIVERABLE_DIR}/supp_fig4-1_all18_cluster_prior_violins" \
+  "COMPOSITOR_OUTPUT_BASENAME=assembled_fig4" \
+  "COMPOSITOR_VALIDATION_BASENAME=figure4_layout_validation.tsv" \
+  python3 "${COMPOSITOR_SCRIPT}"
 
 CURRENT_STAGE="VALIDATE_RANKING_AND_OUTPUTS"
 status RUNNING "${CURRENT_STAGE}"
@@ -279,14 +301,33 @@ stopifnot(
   ]) - 4 / 3) < 1e-12
 )
 supp_validation <- fread(file.path(data_dir, "supp_figure4_3_validation.tsv"))
+layout_validation <- fread(file.path(data_dir, "figure4_layout_validation.tsv"))
 stopifnot(
   supp_validation[metric == "n_parameters", value] == "18",
   supp_validation[metric == "n_windows", value] == "3",
   supp_validation[metric == "n_pairwise_tests", value] == "54",
   supp_validation[metric == "bootstrap_reps", value] == "5000",
+  supp_validation[metric == "left_annotation_field", value] ==
+    "o2_association_group",
+  supp_validation[metric == "left_annotation_palette", value] == paste(
+    c(
+      "Low O2", "Low + Medium O2", "Medium O2", "High O2",
+      "Medium + High O2", "Low + High O2", "O2-independent"
+    ),
+    c(
+      "#2166AC", "#1B9E77", "#E6A400", "#B2182B",
+      "#D95F0E", "#7B3294", "#8A8A8A"
+    ),
+    sep = "=", collapse = ";"
+  ),
+  supp_validation[metric == "left_annotation_colored", value] == "TRUE",
   supp_validation[metric == "png_rendered", value] == "TRUE",
   supp_validation[metric == "pdf_rendered", value] == "TRUE",
-  supp_validation[metric == "svg_rendered", value] == "TRUE"
+  supp_validation[metric == "svg_rendered", value] == "TRUE",
+  layout_validation$panel_b_source_file ==
+    "parameter_continuous_ploidy_landscape_logx.png",
+  layout_validation$panel_b_pdf_source_file ==
+    "parameter_continuous_ploidy_landscape_logx.pdf"
 )
 cat("o2_window_group_absrho_and_supp4_3_validation_ok\n")
 '
@@ -343,6 +384,8 @@ outputs=(
   "${DELIVERABLE_DIR}/Supp_Figure4_3.png"
   "${DELIVERABLE_DIR}/Supp_Figure4_3.pdf"
   "${DELIVERABLE_DIR}/Supp_Figure4_3.svg"
+  "${DELIVERABLE_DIR}/assembled_fig4.png"
+  "${DELIVERABLE_DIR}/assembled_fig4.pdf"
 )
 for path in "${outputs[@]}"; do
   [[ -s "${path}" ]] || {
@@ -361,4 +404,4 @@ status COMPLETE "${CURRENT_STAGE}"
 trap - ERR
 echo "status_path=${STATUS_PATH}"
 echo "checksum_path=${CHECKSUM_PATH}"
-echo "Figure 4B signed/absolute linear/log-x and Supp Figure 4-3 renders complete."
+echo "Figure 4 with log-x Panel B, all Figure 4B variants, and Supp Figure 4-3 complete."

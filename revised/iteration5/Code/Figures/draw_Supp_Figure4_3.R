@@ -73,6 +73,20 @@ group_levels <- c(
   "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
   "Low + Medium O2", "Low O2", "O2-independent"
 )
+o2_association_group_palette <- c(
+  "Low O2" = "#2166AC",
+  "Low + Medium O2" = "#1B9E77",
+  "Medium O2" = "#E6A400",
+  "High O2" = "#B2182B",
+  "Medium + High O2" = "#D95F0E",
+  "Low + High O2" = "#7B3294",
+  "O2-independent" = "#8A8A8A"
+)
+o2_association_group_text_palette <- setNames(
+  rep("#FFFFFF", length(o2_association_group_palette)),
+  names(o2_association_group_palette)
+)
+o2_association_group_text_palette[["Medium O2"]] <- "#202428"
 window_levels <- c("Low O2", "Medium O2", "High O2")
 contrast_levels <- c("Low - Medium", "Low - High", "Medium - High")
 parameter_levels <- ranking[order(display_order), parameter]
@@ -263,21 +277,111 @@ figure <- panel_a + panel_b +
     )
   )
 
+set_grob_text_color <- function(grob, color) {
+  if (inherits(grob, "text")) {
+    grob$gp$col <- color
+  }
+  if (!is.null(grob$children)) {
+    for (index in seq_along(grob$children)) {
+      grob$children[[index]] <- set_grob_text_color(
+        grob$children[[index]], color
+      )
+    }
+  }
+  if (!is.null(grob$grobs)) {
+    for (index in seq_along(grob$grobs)) {
+      grob$grobs[[index]] <- set_grob_text_color(grob$grobs[[index]], color)
+    }
+  }
+  grob
+}
+
+color_panel_a_group_strips <- function(figure, group_palette, text_palette) {
+  figure_grob <- patchwork::patchworkGrob(figure)
+  strip_index <- grep(
+    "^strip-l.*-1$", figure_grob$layout$name
+  )
+  if (length(strip_index) != 1L) {
+    stop(
+      "Expected exactly one Panel A left-strip collection; found ",
+      length(strip_index), "."
+    )
+  }
+  strip_collection <- figure_grob$grobs[[strip_index]]
+  present_groups <- group_levels[
+    group_levels %in% as.character(unique(scores$o2_association_group))
+  ]
+  if (length(strip_collection$grobs) != length(present_groups)) {
+    stop(
+      "Panel A strip count does not match the nonempty O2 association groups."
+    )
+  }
+  for (index in seq_along(present_groups)) {
+    group <- present_groups[[index]]
+    strip <- strip_collection$grobs[[index]]
+    if (length(strip$grobs) != 1L || is.null(strip$grobs[[1L]]$children)) {
+      stop("Unexpected Panel A facet-strip grob structure.")
+    }
+    strip_tree <- strip$grobs[[1L]]
+    background_index <- grep(
+      "^strip\\.background", strip_tree$childrenOrder
+    )
+    text_index <- grep("^strip\\.text", strip_tree$childrenOrder)
+    if (length(background_index) != 1L || length(text_index) != 1L) {
+      stop("Panel A facet strip lacks one background and one text grob.")
+    }
+    strip_tree$children[[background_index]]$gp$fill <-
+      unname(group_palette[[group]])
+    strip_tree$children[[background_index]]$gp$col <- "#5B6066"
+    strip_tree$children[[text_index]] <- set_grob_text_color(
+      strip_tree$children[[text_index]], unname(text_palette[[group]])
+    )
+    strip$grobs[[1L]] <- strip_tree
+    strip_collection$grobs[[index]] <- strip
+  }
+  figure_grob$grobs[[strip_index]] <- strip_collection
+  figure_grob
+}
+
 stem <- file.path(output_dir, "Supp_Figure4_3")
 figure_width <- 17
 figure_height <- 12
+build_figure_grob <- function() {
+  metric_device <- file.path(
+    output_dir, ".Supp_Figure4_3_grob_metrics.png"
+  )
+  grDevices::png(
+    metric_device,
+    width = figure_width,
+    height = figure_height,
+    units = "in",
+    res = 300,
+    type = "cairo",
+    bg = "white"
+  )
+  on.exit({
+    grDevices::dev.off()
+    unlink(metric_device)
+  }, add = TRUE)
+  color_panel_a_group_strips(
+    figure,
+    group_palette = o2_association_group_palette,
+    text_palette = o2_association_group_text_palette
+  )
+}
+figure_grob <- build_figure_grob()
 ggsave(
-  paste0(stem, ".png"), figure,
+  paste0(stem, ".png"), figure_grob,
   width = figure_width, height = figure_height,
   units = "in", dpi = 300, bg = "white"
 )
 ggsave(
-  paste0(stem, ".pdf"), figure,
+  paste0(stem, ".pdf"), figure_grob,
   width = figure_width, height = figure_height,
   units = "in", device = cairo_pdf, bg = "white"
 )
 ggsave(
-  paste0(stem, ".svg"), figure,
+  paste0(stem, ".svg"), figure_grob,
   width = figure_width, height = figure_height,
   units = "in", device = svglite::svglite, bg = "white"
 )
@@ -287,6 +391,8 @@ validation <- data.table(
     "n_parameters", "n_windows", "n_pairwise_tests",
     "bootstrap_reps", "bootstrap_seed", "multiple_testing",
     "window_score", "figure_width_in", "figure_height_in",
+    "left_annotation_field", "left_annotation_palette",
+    "left_annotation_colored",
     "png_rendered", "pdf_rendered", "svg_rendered",
     "endpoint_rows_are_biological_replicates",
     "endpoint_rows_are_posterior_samples"
@@ -298,6 +404,13 @@ validation <- data.table(
     "Benjamini-Hochberg across 54 pairwise contrasts",
     "normalized trapezoid AUC of absolute Spearman rho",
     figure_width, figure_height,
+    "o2_association_group",
+    paste(
+      names(o2_association_group_palette),
+      unname(o2_association_group_palette),
+      sep = "=", collapse = ";"
+    ),
+    "TRUE",
     file.exists(paste0(stem, ".png")),
     file.exists(paste0(stem, ".pdf")),
     file.exists(paste0(stem, ".svg")),

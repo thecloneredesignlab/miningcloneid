@@ -262,25 +262,46 @@ o2_association_group_separator_y <- if (
   numeric()
 }
 
-make_o2_association_strip_layers <- function(xmin, xmax) {
-  lapply(seq_len(nrow(parameter_axis)), function(i) {
-    annotate(
-      "rect",
-      xmin = xmin, xmax = xmax,
-      ymin = parameter_axis$parameter_y[[i]] - 0.44,
-      ymax = parameter_axis$parameter_y[[i]] + 0.44,
-      fill = unname(o2_association_group_palette[[
-        parameter_axis$o2_association_group[[i]]
-      ]]),
-      color = NA
-    )
-  })
-}
+p_o2_annotation <- ggplot(parameter_axis) +
+  geom_rect(
+    aes(
+      xmin = 0.18, xmax = 0.82,
+      ymin = parameter_y - 0.44,
+      ymax = parameter_y + 0.44,
+      fill = o2_association_group
+    ),
+    color = NA
+  ) +
+  geom_hline(
+    yintercept = o2_association_group_separator_y,
+    linewidth = 0.80, color = "#555B61"
+  ) +
+  scale_fill_manual(values = o2_association_group_palette, guide = "none") +
+  scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  scale_y_continuous(
+    name = NULL,
+    breaks = parameter_axis$parameter_y,
+    labels = parameter_axis$parameter_axis_label,
+    limits = c(0.5, 18.5), expand = c(0, 0)
+  ) +
+  labs(title = " ", x = NULL) +
+  coord_cartesian(clip = "off") +
+  theme_void(base_family = "Arial") +
+  theme(
+    text = element_text(face = "bold", color = "#111111"),
+    plot.title = element_text(
+      face = "bold", size = 16, margin = margin(b = 1)
+    ),
+    axis.text.y = ggtext::element_markdown(
+      size = 11.5, color = "#202020", lineheight = 0.92,
+      margin = margin(r = 6)
+    ),
+    plot.margin = margin(4, 0, 4, 16),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
 
 make_heat_plot <- function(
     x_scale,
-    strip_xmin,
-    strip_xmax,
     absolute_rho = FALSE
 ) {
   ggplot(
@@ -296,7 +317,6 @@ make_heat_plot <- function(
       ),
       color = NA
     ) +
-    make_o2_association_strip_layers(strip_xmin, strip_xmax) +
     geom_hline(
       yintercept = row_separator_y,
       linewidth = 0.24, color = "#D0D3D6"
@@ -309,7 +329,7 @@ make_heat_plot <- function(
     scale_y_continuous(
       name = NULL,
       breaks = parameter_axis$parameter_y,
-      labels = parameter_axis$parameter_axis_label,
+      labels = NULL,
       limits = c(0.5, 18.5), expand = c(0, 0)
     ) +
     {
@@ -336,32 +356,25 @@ make_heat_plot <- function(
       plot.subtitle = element_text(face = "bold", size = 12, color = "#34393E", margin = margin(b = 5)),
       axis.title.x = element_text(size = 15.5, margin = margin(t = 6)),
       axis.text.x = element_text(size = 13, color = "#202020"),
-      axis.text.y = ggtext::element_markdown(
-        size = 11.5, color = "#202020", lineheight = 0.92,
-        margin = margin(r = 3)
-      ),
+      axis.text.y = element_blank(),
       axis.ticks.y = element_blank(),
       panel.grid = element_blank(),
       panel.border = element_rect(color = "#707070", linewidth = 0.35),
-      plot.margin = margin(4, 10, 4, 16)
+      plot.margin = margin(4, 10, 4, 0)
     )
 }
 
 p_heat <- make_heat_plot(
   scale_x_continuous(
     name = expression(paste("Fixed ", O[2], " concentration (%)")),
-    limits = c(-0.25, 5.0125), breaks = 0:5, expand = c(0, 0)
-  ),
-  strip_xmin = -0.22,
-  strip_xmax = -0.155
+    limits = c(-0.0125, 5.0125), breaks = 0:5, expand = c(0, 0)
+  )
 )
 p_heat_absrho <- make_heat_plot(
   scale_x_continuous(
     name = expression(paste("Fixed ", O[2], " concentration (%)")),
-    limits = c(-0.25, 5.0125), breaks = 0:5, expand = c(0, 0)
+    limits = c(-0.0125, 5.0125), breaks = 0:5, expand = c(0, 0)
   ),
-  strip_xmin = -0.22,
-  strip_xmax = -0.155,
   absolute_rho = TRUE
 )
 
@@ -376,13 +389,11 @@ p_heat_logx <- make_heat_plot(
       sigma = o2_pseudo_log_sigma,
       base = 10
     ),
-    limits = c(-0.015, 5.0125),
+    limits = c(-0.0125, 5.0125),
     breaks = c(0, 0.025, 0.1, 0.5, 1, 5),
     labels = c("0", "0.025", "0.1", "0.5", "1", "5"),
     expand = c(0, 0)
-  ),
-  strip_xmin = -0.0125,
-  strip_xmax = -0.006
+  )
 )
 p_heat_absrho_logx <- make_heat_plot(
   scale_x_continuous(
@@ -394,13 +405,11 @@ p_heat_absrho_logx <- make_heat_plot(
       sigma = o2_pseudo_log_sigma,
       base = 10
     ),
-    limits = c(-0.015, 5.0125),
+    limits = c(-0.0125, 5.0125),
     breaks = c(0, 0.025, 0.1, 0.5, 1, 5),
     labels = c("0", "0.025", "0.1", "0.5", "1", "5"),
     expand = c(0, 0)
   ),
-  strip_xmin = -0.0125,
-  strip_xmax = -0.006,
   absolute_rho = TRUE
 )
 
@@ -873,38 +882,46 @@ p_sidebar_absrho_lite <- p_sidebar_absrho +
   )
 
 combined_design <- c(
-  area(t = 1, l = 1, b = 1, r = 11),
-  area(t = 1, l = 12, b = 1, r = 15),
-  area(t = 1, l = 16, b = 1, r = 21),
-  area(t = 1, l = 22, b = 1, r = 27)
+  area(t = 1, l = 1, b = 1, r = 1),
+  area(t = 1, l = 2, b = 1, r = 12),
+  area(t = 1, l = 13, b = 1, r = 16),
+  area(t = 1, l = 17, b = 1, r = 22),
+  area(t = 1, l = 23, b = 1, r = 28)
 )
-combined_core <- p_heat + p_effect + p_prior + p_sidebar +
-  plot_layout(design = combined_design, widths = rep(1, 27))
+combined_widths <- c(0.55, rep(1, 27))
+combined_core <- p_o2_annotation + p_heat + p_effect + p_prior + p_sidebar +
+  plot_layout(design = combined_design, widths = combined_widths)
 
 combined <- combined_core
-combined_logx <- p_heat_logx + p_effect + p_prior + p_sidebar +
-  plot_layout(design = combined_design, widths = rep(1, 27))
-combined_absrho <- p_heat_absrho + p_effect + p_prior + p_sidebar_absrho +
-  plot_layout(design = combined_design, widths = rep(1, 27))
+combined_logx <- p_o2_annotation + p_heat_logx + p_effect + p_prior + p_sidebar +
+  plot_layout(design = combined_design, widths = combined_widths)
+combined_absrho <-
+  p_o2_annotation + p_heat_absrho + p_effect + p_prior + p_sidebar_absrho +
+  plot_layout(design = combined_design, widths = combined_widths)
 combined_absrho_logx <-
-  p_heat_absrho_logx + p_effect + p_prior + p_sidebar_absrho +
-  plot_layout(design = combined_design, widths = rep(1, 27))
+  p_o2_annotation + p_heat_absrho_logx + p_effect + p_prior +
+  p_sidebar_absrho +
+  plot_layout(design = combined_design, widths = combined_widths)
 
 lite_design <- c(
-  area(t = 1, l = 1, b = 1, r = 11),
-  area(t = 1, l = 12, b = 1, r = 15),
-  area(t = 1, l = 16, b = 1, r = 21)
+  area(t = 1, l = 1, b = 1, r = 1),
+  area(t = 1, l = 2, b = 1, r = 12),
+  area(t = 1, l = 13, b = 1, r = 16),
+  area(t = 1, l = 17, b = 1, r = 22)
 )
-combined_lite <- p_heat + p_effect + p_sidebar_lite +
-  plot_layout(design = lite_design, widths = rep(1, 21))
-combined_lite_logx <- p_heat_logx + p_effect + p_sidebar_lite +
-  plot_layout(design = lite_design, widths = rep(1, 21))
+lite_widths <- c(0.55, rep(1, 21))
+combined_lite <- p_o2_annotation + p_heat + p_effect + p_sidebar_lite +
+  plot_layout(design = lite_design, widths = lite_widths)
+combined_lite_logx <-
+  p_o2_annotation + p_heat_logx + p_effect + p_sidebar_lite +
+  plot_layout(design = lite_design, widths = lite_widths)
 combined_lite_absrho <-
-  p_heat_absrho + p_effect + p_sidebar_absrho_lite +
-  plot_layout(design = lite_design, widths = rep(1, 21))
+  p_o2_annotation + p_heat_absrho + p_effect + p_sidebar_absrho_lite +
+  plot_layout(design = lite_design, widths = lite_widths)
 combined_lite_absrho_logx <-
-  p_heat_absrho_logx + p_effect + p_sidebar_absrho_lite +
-  plot_layout(design = lite_design, widths = rep(1, 21))
+  p_o2_annotation + p_heat_absrho_logx + p_effect +
+  p_sidebar_absrho_lite +
+  plot_layout(design = lite_design, widths = lite_widths)
 
 main_base <- file.path(figure_dir, "parameter_continuous_ploidy_landscape")
 main_scale_boost <- 1.10
@@ -1358,7 +1375,8 @@ validation <- data.table(
     "parameter_sort_secondary", "parameter_sort_tertiary",
     "parameter_sort_tie_break", "o2_association_group_order",
     "o2_association_group_counts", "o2_window_classification_match",
-    "row_annotation_field",
+    "row_annotation_field", "row_annotation_position",
+    "row_annotation_separate_panel",
     "effect_position_field",
     "effect_fill_field", "effect_positive_fill", "effect_negative_fill",
     "all_parameters_in_main_distribution_plot",
@@ -1407,7 +1425,7 @@ validation <- data.table(
       collapse = ";"
     ),
     "TRUE",
-    "o2_association_group",
+    "o2_association_group", "left of heatmap", "TRUE",
     "max_abs_rho", "peak_direction",
     unname(peak_direction_palette[["Positive peak rho"]]),
     unname(peak_direction_palette[["Negative peak rho"]]),

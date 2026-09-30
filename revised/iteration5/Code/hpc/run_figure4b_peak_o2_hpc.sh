@@ -221,6 +221,9 @@ stopifnot(
     "configured parameter order for exact max-|rho| ties",
   validation[metric == "row_annotation_field", value] ==
     "o2_association_group",
+  validation[metric == "row_annotation_position", value] ==
+    "left of heatmap",
+  validation[metric == "row_annotation_separate_panel", value] == "TRUE",
   validation[metric == "effect_fill_field", value] == "peak_direction",
   validation[metric == "effect_positive_fill", value] == "#EF8A62",
   validation[metric == "effect_negative_fill", value] == "#67A9CF",

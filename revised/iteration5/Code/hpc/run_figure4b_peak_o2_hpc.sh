@@ -190,7 +190,7 @@ env \
 
 CURRENT_STAGE="VALIDATE_RANKING_AND_OUTPUTS"
 status RUNNING "${CURRENT_STAGE}"
-container_command Rscript -e '
+container_command Rscript - <<'FIGURE4_VALIDATION_R'
 suppressPackageStartupMessages(library(data.table))
 data_dir <- Sys.getenv("ANALYSIS_DATA_DIR")
 ranking <- fread(file.path(data_dir, "continuous_ploidy_parameter_ranking.tsv"))
@@ -393,7 +393,7 @@ stopifnot(
     "parameter_continuous_ploidy_landscape_absrho_logx.pdf"
 )
 cat("o2_window_group_absrho_and_supp4_3_validation_ok\n")
-'
+FIGURE4_VALIDATION_R
 
 outputs=(
   "${PANEL_DIR}/parameter_continuous_ploidy_landscape.png"

@@ -64,7 +64,7 @@ figure4_o2_windows <- function() {
     o2_window = c("Low O2", "High O2"),
     window_order = 1:2,
     lower_o2 = c(0, 3),
-    upper_o2 = c(1.5, 5)
+    upper_o2 = c(1, 5)
   )
 }
 
@@ -279,10 +279,10 @@ derive_o2_window_statistics <- function(
       decision_rule <- "No detected Low-High difference at BH q < 0.05"
     } else if (delta < 0) {
       assigned_group <- "High O2"
-      decision_rule <- "High [3,5] exceeds Low [0,1.5] at BH q < 0.05"
+      decision_rule <- "High [3,5] exceeds Low [0,1] at BH q < 0.05"
     } else if (delta > 0) {
       assigned_group <- "Low O2"
-      decision_rule <- "Low [0,1.5] exceeds High [3,5] at BH q < 0.05"
+      decision_rule <- "Low [0,1] exceeds High [3,5] at BH q < 0.05"
     } else {
       stop("A significant Low-High contrast cannot have zero observed delta.")
     }
@@ -1009,7 +1009,7 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       500, 201, 18, nrow(association), "Spearman rho",
       "TRUE", "FALSE",
       "normalized trapezoid AUC of absolute Spearman rho",
-      "Low [0,1.5]; High [3,5]; (1.5,3) excluded from window statistics",
+      "Low [0,1]; High [3,5]; (1,3) excluded from window statistics",
       "complete fitted-endpoint row with its full 201-point O2 curve",
       o2_window_statistics$bootstrap_reps,
       o2_window_statistics$bootstrap_seed,

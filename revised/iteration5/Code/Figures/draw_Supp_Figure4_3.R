@@ -240,11 +240,11 @@ figure <- panel_a + panel_b +
   plot_annotation(
     title = "O2-window association tests underlying Figure 4B parameter groups",
     subtitle = paste(
-      "Low [0,1.5] and High [3,5] scores use normalized",
+      "Low [0,1] and High [3,5] scores use normalized",
       paste0(
         "trapezoid AUC of |rho|; ",
         comma(unique(scores$bootstrap_reps)),
-        " complete-endpoint bootstrap replicates; (1.5,3) excluded"
+        " complete-endpoint bootstrap replicates; (1,3) excluded"
       )
     ),
     caption = paste0(

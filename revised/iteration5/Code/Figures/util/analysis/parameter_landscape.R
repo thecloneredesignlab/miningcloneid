@@ -4,7 +4,7 @@
 # The 500 fitted rows are optimizer-derived endpoints, not posterior samples or
 # biological replicates. Figure 4B groups parameters using endpoint-bootstrap
 # comparisons of normalized window AUC for absolute Spearman rho over Low
-# [0,1.5] and High [3,5] O2; (1.5,3) is excluded from window statistics.
+# [0,1] and High [3,5] O2; (1,3) is excluded from window statistics.
 # Within each resulting group,
 # parameters are ordered by decreasing maximum absolute correlation.
 

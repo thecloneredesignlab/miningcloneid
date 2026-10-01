@@ -211,7 +211,7 @@ stopifnot(
   nrow(scores) == 36L,
   nrow(tests) == 18L,
   setequal(scores$o2_window, c("Low O2", "High O2")),
-  scores[o2_window == "Low O2", all(lower_o2 == 0 & upper_o2 == 1.5)],
+  scores[o2_window == "Low O2", all(lower_o2 == 0 & upper_o2 == 1)],
   scores[o2_window == "High O2", all(lower_o2 == 3 & upper_o2 == 5)],
   all(tests$contrast == "Low - High"),
   uniqueN(tests$parameter) == 18L,

@@ -61,10 +61,10 @@ parameter_display_dictionary <- function() {
 
 figure4_o2_windows <- function() {
   data.table(
-    o2_window = c("Low O2", "Medium O2", "High O2"),
-    window_order = 1:3,
-    lower_o2 = c(0, 1, 3),
-    upper_o2 = c(1, 3, 5)
+    o2_window = c("Low O2", "High O2"),
+    window_order = 1:2,
+    lower_o2 = c(0, 3),
+    upper_o2 = c(1.5, 5)
   )
 }
 
@@ -173,7 +173,7 @@ derive_o2_window_statistics <- function(
     lapply(seq_len(bootstrap_reps), score_one_bootstrap)
   }
   bootstrap_scores <- simplify2array(worker)
-  expected_dimensions <- c(18L, 3L, bootstrap_reps)
+  expected_dimensions <- c(18L, nrow(windows), bootstrap_reps)
   if (!identical(dim(bootstrap_scores), expected_dimensions)) {
     stop("Unexpected O2-window bootstrap score dimensions.")
   }
@@ -210,11 +210,11 @@ derive_o2_window_statistics <- function(
   window_scores <- rbindlist(score_rows)
 
   contrast_definition <- data.table(
-    contrast = c("Low - Medium", "Low - High", "Medium - High"),
-    window_a = c("Low O2", "Low O2", "Medium O2"),
-    window_b = c("Medium O2", "High O2", "High O2"),
-    window_a_index = c(1L, 1L, 2L),
-    window_b_index = c(2L, 3L, 3L)
+    contrast = "Low - High",
+    window_a = "Low O2",
+    window_b = "High O2",
+    window_a_index = 1L,
+    window_b_index = 2L
   )
   contrast_rows <- vector(
     "list",
@@ -264,89 +264,27 @@ derive_o2_window_statistics <- function(
   )]
   pairwise_tests[, significant_bh_0p05 := bh_adjusted_p_value < 0.05]
 
-  group_levels <- c(
-    "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-    "Low + Medium O2", "Low O2", "O2-independent"
-  )
+  group_levels <- c("High O2", "Low O2", "O2-independent")
   classification_rows <- vector("list", length(parameter_names))
   for (parameter_index in seq_along(parameter_names)) {
     current_parameter <- parameter_names[[parameter_index]]
-    scores <- observed_scores[parameter_index, ]
-    names(scores) <- windows$o2_window
     current_tests <- pairwise_tests[parameter == current_parameter]
-    q_matrix <- matrix(
-      1,
-      nrow = 3L,
-      ncol = 3L,
-      dimnames = list(windows$o2_window, windows$o2_window)
-    )
-    for (test_index in seq_len(nrow(current_tests))) {
-      a <- current_tests$window_a[[test_index]]
-      b <- current_tests$window_b[[test_index]]
-      q_matrix[a, b] <- current_tests$bh_adjusted_p_value[[test_index]]
-      q_matrix[b, a] <- current_tests$bh_adjusted_p_value[[test_index]]
+    if (nrow(current_tests) != 1L) {
+      stop("Each parameter must have exactly one Low-High contrast.")
     }
-    greater_than <- function(a, b) {
-      scores[[a]] > scores[[b]] && q_matrix[a, b] < 0.05
-    }
-    not_different <- function(a, b) q_matrix[a, b] >= 0.05
     significant_count <- sum(current_tests$significant_bh_0p05)
-
-    if (greater_than("High O2", "Medium O2") &&
-        greater_than("High O2", "Low O2")) {
-      assigned_group <- "High O2"
-      decision_rule <- "High exceeds both Medium and Low at BH q < 0.05"
-    } else if (greater_than("Medium O2", "Low O2") &&
-               greater_than("Medium O2", "High O2")) {
-      assigned_group <- "Medium O2"
-      decision_rule <- "Medium exceeds both Low and High at BH q < 0.05"
-    } else if (greater_than("Low O2", "Medium O2") &&
-               greater_than("Low O2", "High O2")) {
-      assigned_group <- "Low O2"
-      decision_rule <- "Low exceeds both Medium and High at BH q < 0.05"
-    } else if (greater_than("Medium O2", "Low O2") &&
-               greater_than("High O2", "Low O2") &&
-               not_different("Medium O2", "High O2")) {
-      assigned_group <- "Medium + High O2"
-      decision_rule <- paste(
-        "Medium and High each exceed Low at BH q < 0.05;",
-        "Medium and High do not differ"
-      )
-    } else if (greater_than("Low O2", "Medium O2") &&
-               greater_than("High O2", "Medium O2") &&
-               not_different("Low O2", "High O2")) {
-      assigned_group <- "Low + High O2"
-      decision_rule <- paste(
-        "Low and High each exceed Medium at BH q < 0.05;",
-        "Low and High do not differ"
-      )
-    } else if (greater_than("Low O2", "High O2") &&
-               greater_than("Medium O2", "High O2") &&
-               not_different("Low O2", "Medium O2")) {
-      assigned_group <- "Low + Medium O2"
-      decision_rule <- paste(
-        "Low and Medium each exceed High at BH q < 0.05;",
-        "Low and Medium do not differ"
-      )
-    } else if (significant_count == 0L) {
+    delta <- current_tests$observed_delta_mean_abs_rho[[1L]]
+    if (significant_count == 0L) {
       assigned_group <- "O2-independent"
-      decision_rule <- "No pairwise O2-window contrast reaches BH q < 0.05"
+      decision_rule <- "No detected Low-High difference at BH q < 0.05"
+    } else if (delta < 0) {
+      assigned_group <- "High O2"
+      decision_rule <- "High [3,5] exceeds Low [0,1.5] at BH q < 0.05"
+    } else if (delta > 0) {
+      assigned_group <- "Low O2"
+      decision_rule <- "Low [0,1.5] exceeds High [3,5] at BH q < 0.05"
     } else {
-      significant_tests <- current_tests[significant_bh_0p05 == TRUE]
-      significant_tests[, higher_window := fifelse(
-        observed_delta_mean_abs_rho > 0,
-        window_a,
-        window_b
-      )]
-      winner_scores <- scores[significant_tests$higher_window]
-      assigned_group <- significant_tests$higher_window[[
-        which.max(winner_scores)
-      ]]
-      decision_rule <- paste0(
-        "At least one pairwise O2-window contrast reaches BH q < 0.05; ",
-        "assigned to the highest-scoring window among significant-contrast ",
-        "winners (", assigned_group, ")"
-      )
+      stop("A significant Low-High contrast cannot have zero observed delta.")
     }
     classification_rows[[parameter_index]] <- data.table(
       parameter = current_parameter,
@@ -914,8 +852,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
     sort = FALSE
   )
   setorder(o2_window_classification, display_order)
-  if (nrow(o2_window_scores) != 18L * 3L ||
-      nrow(o2_window_pairwise_tests) != 18L * 3L ||
+  if (nrow(o2_window_scores) != 18L * 2L ||
+      nrow(o2_window_pairwise_tests) != 18L ||
       nrow(o2_window_classification) != 18L ||
       anyNA(o2_window_scores$display_order) ||
       anyNA(o2_window_pairwise_tests$display_order) ||
@@ -1071,17 +1009,16 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       500, 201, 18, nrow(association), "Spearman rho",
       "TRUE", "FALSE",
       "normalized trapezoid AUC of absolute Spearman rho",
-      "Low [0,1]; Medium [1,3]; High [3,5]",
+      "Low [0,1.5]; High [3,5]; (1.5,3) excluded from window statistics",
       "complete fitted-endpoint row with its full 201-point O2 curve",
       o2_window_statistics$bootstrap_reps,
       o2_window_statistics$bootstrap_seed,
       o2_window_statistics$bootstrap_cores,
       nrow(o2_window_pairwise_tests),
-      "Benjamini-Hochberg across all 54 pairwise window contrasts",
+      "Benjamini-Hochberg across all 18 Low-High window contrasts",
       "BH q < 0.05", o2_group_counts,
       paste(
-        "O2 association group: High; Medium + High; Low + High;",
-        "Medium; Low + Medium; Low; O2-independent"
+        "O2 association group: High; Low; O2-independent"
       ),
       "descending maximum absolute Spearman rho within O2 association group",
       "configured parameter order for exact max-|rho| ties",

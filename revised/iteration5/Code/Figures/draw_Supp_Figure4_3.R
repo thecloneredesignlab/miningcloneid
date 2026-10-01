@@ -51,8 +51,8 @@ scores <- fread(paths$scores)
 tests <- fread(paths$tests)
 classification <- fread(paths$classification)
 ranking <- fread(paths$ranking)
-if (nrow(scores) != 18L * 3L ||
-    nrow(tests) != 18L * 3L ||
+if (nrow(scores) != 18L * 2L ||
+    nrow(tests) != 18L ||
     nrow(classification) != 18L ||
     nrow(ranking) != 18L ||
     uniqueN(scores$parameter) != 18L ||
@@ -69,26 +69,18 @@ if (any(scores$observed_mean_abs_rho < -1e-12 |
   stop("Supplementary Figure 4-3 statistics lie outside their valid ranges.")
 }
 
-group_levels <- c(
-  "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-  "Low + Medium O2", "Low O2", "O2-independent"
-)
+group_levels <- c("High O2", "Low O2", "O2-independent")
 o2_association_group_palette <- c(
-  "Low O2" = "#2166AC",
-  "Low + Medium O2" = "#1B9E77",
-  "Medium O2" = "#E6A400",
   "High O2" = "#B2182B",
-  "Medium + High O2" = "#D95F0E",
-  "Low + High O2" = "#7B3294",
+  "Low O2" = "#2166AC",
   "O2-independent" = "#8A8A8A"
 )
 o2_association_group_text_palette <- setNames(
   rep("#FFFFFF", length(o2_association_group_palette)),
   names(o2_association_group_palette)
 )
-o2_association_group_text_palette[["Medium O2"]] <- "#202428"
-window_levels <- c("Low O2", "Medium O2", "High O2")
-contrast_levels <- c("Low - Medium", "Low - High", "Medium - High")
+window_levels <- c("High O2", "Low O2")
+contrast_levels <- "Low - High"
 parameter_levels <- ranking[order(display_order), parameter]
 
 prepare_plot_table <- function(table) {
@@ -114,10 +106,9 @@ tests[, q_label := fifelse(
 
 window_palette <- c(
   "Low O2" = "#2166AC",
-  "Medium O2" = "#E6A400",
   "High O2" = "#B2182B"
 )
-window_shapes <- c("Low O2" = 21, "Medium O2" = 22, "High O2" = 24)
+window_shapes <- c("Low O2" = 21, "High O2" = 24)
 score_position <- position_dodge(width = 0.62)
 
 theme_supp4_3 <- function(base_size = 9) {
@@ -229,8 +220,8 @@ panel_b <- ggplot(
   ) +
   labs(
     tag = "B",
-    title = "Pairwise O2-window contrasts",
-    subtitle = "Positive values favor the first named window; labels report BH-adjusted q values",
+    title = "Low-High O2-window contrast",
+    subtitle = "Positive values favor Low O2; labels report BH-adjusted q values",
     x = expression(paste(Delta, " window mean |Spearman ", rho, "|")),
     y = NULL,
     fill = NULL
@@ -245,22 +236,22 @@ panel_b <- ggplot(
   )
 
 figure <- panel_a + panel_b +
-  plot_layout(widths = c(0.43, 0.57), guides = "collect") +
+  plot_layout(widths = c(0.55, 0.45), guides = "collect") +
   plot_annotation(
     title = "O2-window association tests underlying Figure 4B parameter groups",
     subtitle = paste(
-      "Low [0,1], Medium [1,3], and High [3,5] scores use normalized",
+      "Low [0,1.5] and High [3,5] scores use normalized",
       paste0(
         "trapezoid AUC of |rho|; ",
         comma(unique(scores$bootstrap_reps)),
-        " complete-endpoint bootstrap replicates"
+        " complete-endpoint bootstrap replicates; (1.5,3) excluded"
       )
     ),
-    caption = paste(
-      "All 54 pairwise comparisons are adjusted together by Benjamini-Hochberg.",
-      "Detected contrasts assign parameters to their higher-scoring window(s).",
-      "O2-independent means no detected window enrichment, not rho = 0.",
-      "Optimizer-derived fitted endpoints are not biological replicates or posterior samples."
+    caption = paste0(
+      "All 18 Low-High comparisons are adjusted together by Benjamini-Hochberg. ",
+      "Detected contrasts assign parameters to the higher-scoring window.\n",
+      "O2-independent means no detected Low-High difference, not absence of association. ",
+      "Optimizer-derived endpoints are not biological replicates or posterior samples."
     ),
     theme = theme(
       plot.title = element_text(
@@ -401,7 +392,7 @@ validation <- data.table(
     uniqueN(scores$parameter), uniqueN(scores$o2_window), nrow(tests),
     paste(unique(scores$bootstrap_reps), collapse = ","),
     paste(unique(scores$bootstrap_seed), collapse = ","),
-    "Benjamini-Hochberg across 54 pairwise contrasts",
+    "Benjamini-Hochberg across 18 Low-High contrasts",
     "normalized trapezoid AUC of absolute Spearman rho",
     figure_width, figure_height,
     "o2_association_group",

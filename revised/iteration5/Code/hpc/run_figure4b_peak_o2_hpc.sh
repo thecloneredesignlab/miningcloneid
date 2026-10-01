@@ -150,16 +150,17 @@ CURRENT_STAGE="RENDER_SUPP_FIGURE4_3"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${SUPP_FIGURE4_3_SCRIPT}"
 
-CURRENT_STAGE="ASSEMBLE_FIGURE4_WITH_LOGX_PANEL_B"
+CURRENT_STAGE="ASSEMBLE_FIGURE4_WITH_ABSRHO_LOGX_PANEL_B"
 status RUNNING "${CURRENT_STAGE}"
 container_command env \
+  "PYTHONDONTWRITEBYTECODE=1" \
   "COMPOSITOR_SKIP_VECTOR_PDF=TRUE" \
   "HYPOXIA_REPO_ROOT=${REPO_ROOT}" \
   "COMPOSITOR_DATA_DIR=${DATA_DIR}" \
   "COMPOSITOR_PANEL_DIR=${PANEL_DIR}" \
   "COMPOSITOR_OUTPUT_DIR=${DELIVERABLE_DIR}" \
   "COMPOSITOR_TOP_PANEL=${PANEL_DIR}/fig4a_combined_invivo_dynamics.png" \
-  "COMPOSITOR_BOTTOM_LEFT_PANEL=${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.png" \
+  "COMPOSITOR_BOTTOM_LEFT_PANEL=${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho_logx.png" \
   "COMPOSITOR_BOTTOM_RIGHT_TOP_PANEL=${PANEL_DIR}/parameter_tsne_groups.png" \
   "COMPOSITOR_BOTTOM_RIGHT_BOTTOM_PANEL=${PANEL_DIR}/strongest_cluster_parameter_distribution.png" \
   "COMPOSITOR_SUPPLEMENTARY_SOURCE=${PANEL_DIR}/all_parameter_fitted_endpoint_distributions" \
@@ -168,16 +169,17 @@ container_command env \
   "COMPOSITOR_VALIDATION_BASENAME=figure4_layout_validation.tsv" \
   python3 "${COMPOSITOR_SCRIPT}"
 
-CURRENT_STAGE="ASSEMBLE_FIGURE4_VECTOR_PDF_WITH_LOGX_PANEL_B"
+CURRENT_STAGE="ASSEMBLE_FIGURE4_VECTOR_PDF_WITH_ABSRHO_LOGX_PANEL_B"
 status RUNNING "${CURRENT_STAGE}"
 env \
+  "PYTHONDONTWRITEBYTECODE=1" \
   "COMPOSITOR_VECTOR_PDF_BACKEND=ghostscript" \
   "HYPOXIA_REPO_ROOT=${REPO_ROOT}" \
   "COMPOSITOR_DATA_DIR=${DATA_DIR}" \
   "COMPOSITOR_PANEL_DIR=${PANEL_DIR}" \
   "COMPOSITOR_OUTPUT_DIR=${DELIVERABLE_DIR}" \
   "COMPOSITOR_TOP_PANEL=${PANEL_DIR}/fig4a_combined_invivo_dynamics.png" \
-  "COMPOSITOR_BOTTOM_LEFT_PANEL=${PANEL_DIR}/parameter_continuous_ploidy_landscape_logx.png" \
+  "COMPOSITOR_BOTTOM_LEFT_PANEL=${PANEL_DIR}/parameter_continuous_ploidy_landscape_absrho_logx.png" \
   "COMPOSITOR_BOTTOM_RIGHT_TOP_PANEL=${PANEL_DIR}/parameter_tsne_groups.png" \
   "COMPOSITOR_BOTTOM_RIGHT_BOTTOM_PANEL=${PANEL_DIR}/strongest_cluster_parameter_distribution.png" \
   "COMPOSITOR_SUPPLEMENTARY_SOURCE=${PANEL_DIR}/all_parameter_fitted_endpoint_distributions" \
@@ -202,15 +204,20 @@ tests <- fread(file.path(
 classification <- fread(file.path(
   data_dir, "continuous_ploidy_o2_window_classification.tsv"
 ))
-expected_levels <- c(
-  "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-  "Low + Medium O2", "Low O2", "O2-independent"
-)
+expected_levels <- c("High O2", "Low O2", "O2-independent")
 stopifnot(
   nrow(ranking) == 18L,
   identical(ranking$display_order, seq_len(18L)),
-  nrow(scores) == 54L,
-  nrow(tests) == 54L,
+  nrow(scores) == 36L,
+  nrow(tests) == 18L,
+  setequal(scores$o2_window, c("Low O2", "High O2")),
+  scores[o2_window == "Low O2", all(lower_o2 == 0 & upper_o2 == 1.5)],
+  scores[o2_window == "High O2", all(lower_o2 == 3 & upper_o2 == 5)],
+  all(tests$contrast == "Low - High"),
+  uniqueN(tests$parameter) == 18L,
+  max(abs(tests$bh_adjusted_p_value - p.adjust(
+    tests$bootstrap_sign_p_value, method = "BH"
+  ))) < 1e-12,
   nrow(classification) == 18L,
   !anyNA(ranking$o2_association_group),
   all(ranking$o2_association_group %in% expected_levels),
@@ -263,6 +270,42 @@ stopifnot(
   identical(ranking$parameter, expected_parameter_order)
 )
 validation <- fread(file.path(data_dir, "parameter_landscape_layout_validation.tsv"))
+association <- fread(file.path(data_dir, "continuous_ploidy_spearman_by_o2.tsv"))
+# Reconstruct the window means directly from the exported full-grid rho,
+# independently of the bootstrap weight matrix. Unequal widths are normalized.
+score_checks <- scores[, {
+  current_parameter <- .BY$parameter
+  lower <- lower_o2[[1L]]
+  upper <- upper_o2[[1L]]
+  curve <- association[
+    parameter == current_parameter & O2_pct >= lower & O2_pct <= upper
+  ][order(O2_pct)]
+  rho <- abs(curve$spearman_rho)
+  reconstructed <- sum(diff(curve$O2_pct) *
+    (head(rho, -1L) + tail(rho, -1L)) / 2) /
+    (upper - lower)
+  list(error = reconstructed - observed_mean_abs_rho[[1L]])
+}, by = .(parameter, o2_window)]
+delta_checks <- merge(
+  scores[o2_window == "Low O2", .(parameter, low = observed_mean_abs_rho)],
+  scores[o2_window == "High O2", .(parameter, high = observed_mean_abs_rho)],
+  by = "parameter"
+)
+delta_checks <- merge(delta_checks, tests, by = "parameter")
+peak_checks <- merge(ranking, association[, .(
+  reconstructed_peak = max(abs(spearman_rho))
+), by = parameter], by = "parameter")
+stopifnot(max(abs(score_checks$error)) < 1e-12,
+          max(abs(delta_checks$low - delta_checks$high -
+            delta_checks$observed_delta_mean_abs_rho)) < 1e-12,
+          max(abs(peak_checks$max_abs_rho -
+            peak_checks$reconstructed_peak)) < 1e-12)
+rho_abs_max <- max(abs(association$spearman_rho))
+fill_limits <- as.numeric(strsplit(validation[
+  metric == "figure4b_absrho_heat_fill_limits", value
+], ",", fixed = TRUE)[[1L]])
+stopifnot(length(fill_limits) == 2L, fill_limits[[1L]] == 0,
+          abs(fill_limits[[2L]] - rho_abs_max) < 1e-12)
 stopifnot(
   validation[metric == "parameter_sort_secondary", value] ==
     "descending maximum absolute Spearman rho within O2 association group",
@@ -305,7 +348,6 @@ stopifnot(
   validation[metric == "figure4b_absrho_rendered", value] == "TRUE",
   validation[metric == "figure4b_absrho_heat_fill_field", value] ==
     "abs(spearman_rho)",
-  validation[metric == "figure4b_absrho_heat_fill_limits", value] == "0,1",
   validation[metric == "figure4b_absrho_heat_palette", value] ==
     "#FFFFFF to #6A51A3",
   validation[metric == "figure4b_absrho_effect_fill_field", value] ==
@@ -331,20 +373,14 @@ supp_validation <- fread(file.path(data_dir, "supp_figure4_3_validation.tsv"))
 layout_validation <- fread(file.path(data_dir, "figure4_layout_validation.tsv"))
 stopifnot(
   supp_validation[metric == "n_parameters", value] == "18",
-  supp_validation[metric == "n_windows", value] == "3",
-  supp_validation[metric == "n_pairwise_tests", value] == "54",
+  supp_validation[metric == "n_windows", value] == "2",
+  supp_validation[metric == "n_pairwise_tests", value] == "18",
   supp_validation[metric == "bootstrap_reps", value] == "5000",
   supp_validation[metric == "left_annotation_field", value] ==
     "o2_association_group",
   supp_validation[metric == "left_annotation_palette", value] == paste(
-    c(
-      "Low O2", "Low + Medium O2", "Medium O2", "High O2",
-      "Medium + High O2", "Low + High O2", "O2-independent"
-    ),
-    c(
-      "#2166AC", "#1B9E77", "#E6A400", "#B2182B",
-      "#D95F0E", "#7B3294", "#8A8A8A"
-    ),
+    c("High O2", "Low O2", "O2-independent"),
+    c("#B2182B", "#2166AC", "#8A8A8A"),
     sep = "=", collapse = ";"
   ),
   supp_validation[metric == "left_annotation_colored", value] == "TRUE",
@@ -352,9 +388,9 @@ stopifnot(
   supp_validation[metric == "pdf_rendered", value] == "TRUE",
   supp_validation[metric == "svg_rendered", value] == "TRUE",
   layout_validation$panel_b_source_file ==
-    "parameter_continuous_ploidy_landscape_logx.png",
+    "parameter_continuous_ploidy_landscape_absrho_logx.png",
   layout_validation$panel_b_pdf_source_file ==
-    "parameter_continuous_ploidy_landscape_logx.pdf"
+    "parameter_continuous_ploidy_landscape_absrho_logx.pdf"
 )
 cat("o2_window_group_absrho_and_supp4_3_validation_ok\n")
 '
@@ -413,6 +449,8 @@ outputs=(
   "${DELIVERABLE_DIR}/Supp_Figure4_3.svg"
   "${DELIVERABLE_DIR}/assembled_fig4.png"
   "${DELIVERABLE_DIR}/assembled_fig4.pdf"
+  "${DELIVERABLE_DIR}/supp_fig4-1_all18_cluster_prior_violins.pdf"
+  "${DELIVERABLE_DIR}/supp_fig4-1_all18_cluster_prior_violins.png"
 )
 for path in "${outputs[@]}"; do
   [[ -s "${path}" ]] || {
@@ -431,4 +469,4 @@ status COMPLETE "${CURRENT_STAGE}"
 trap - ERR
 echo "status_path=${STATUS_PATH}"
 echo "checksum_path=${CHECKSUM_PATH}"
-echo "Figure 4 with log-x Panel B, all Figure 4B variants, and Supp Figure 4-3 complete."
+echo "Figure 4 with absolute-rho log-x Panel B, all Figure 4B variants, and Supp Figure 4-3 complete."

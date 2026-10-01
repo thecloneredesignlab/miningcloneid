@@ -4,7 +4,8 @@
 # The 500 fitted rows are optimizer-derived endpoints, not posterior samples or
 # biological replicates. Figure 4B groups parameters using endpoint-bootstrap
 # comparisons of normalized window AUC for absolute Spearman rho over Low
-# [0,1], Medium [1,3], and High [3,5] O2. Within each resulting group,
+# [0,1.5] and High [3,5] O2; (1.5,3) is excluded from window statistics.
+# Within each resulting group,
 # parameters are ordered by decreasing maximum absolute correlation.
 
 suppressPackageStartupMessages({
@@ -89,8 +90,8 @@ if (nrow(association) != 18L * 201L ||
     uniqueN(endpoint_ranges$parameter) != 18L ||
     nrow(endpoint_density) < 18L * 3L ||
     uniqueN(endpoint_density$parameter) != 18L ||
-    nrow(o2_window_scores) != 18L * 3L ||
-    nrow(o2_window_tests) != 18L * 3L ||
+    nrow(o2_window_scores) != 18L * 2L ||
+    nrow(o2_window_tests) != 18L ||
     nrow(o2_window_classification) != 18L ||
     sum(parameter_long$is_lowest_objective_fit) != 18L) {
   stop("Continuous Figure 4 inputs do not satisfy the 18 x 201 / 500-endpoint contract.")
@@ -98,21 +99,19 @@ if (nrow(association) != 18L * 201L ||
 if (any(abs(association$spearman_rho) > 1 + 1e-12, na.rm = TRUE)) {
   stop("Spearman rho lies outside [-1, 1].")
 }
+# One shared observed-data scale for all four absolute-rho variants.
+rho_abs_max <- max(abs(association$spearman_rho))
+if (!is.finite(rho_abs_max) || rho_abs_max <= 0) {
+  stop("The absolute-rho color scale requires a finite positive maximum.")
+}
 if (!identical(sort(ranking$display_order), seq_len(18L)) ||
     !identical(sort(ranking$importance_rank), seq_len(18L))) {
   stop("Parameter display and importance ranks must each be 1 through 18.")
 }
-o2_association_group_levels <- c(
-  "High O2", "Medium + High O2", "Low + High O2", "Medium O2",
-  "Low + Medium O2", "Low O2", "O2-independent"
-)
+o2_association_group_levels <- c("High O2", "Low O2", "O2-independent")
 o2_association_group_palette <- c(
-  "Low O2" = "#2166AC",
-  "Low + Medium O2" = "#1B9E77",
-  "Medium O2" = "#E6A400",
   "High O2" = "#B2182B",
-  "Medium + High O2" = "#D95F0E",
-  "Low + High O2" = "#7B3294",
+  "Low O2" = "#2166AC",
   "O2-independent" = "#8A8A8A"
 )
 peak_direction_palette <- c(
@@ -336,7 +335,7 @@ make_heat_plot <- function(
       if (absolute_rho) {
         scale_fill_gradient(
           low = "#FFFFFF", high = "#6A51A3",
-          limits = c(0, 1), oob = squish,
+          limits = c(0, rho_abs_max), oob = squish,
           na.value = "#D9D9D9", guide = "none"
         )
       } else {
@@ -749,7 +748,7 @@ o2_association_legend <- data.table(
   y = seq(0.93, 0.59, length.out = length(nonempty_group_levels))
 )
 rho_values <- if (absolute_rho) {
-  seq(0, 1, length.out = 201)
+  seq(0, rho_abs_max, length.out = 201)
 } else {
   seq(-1, 1, length.out = 201)
 }
@@ -765,7 +764,9 @@ rho_pal <- if (absolute_rho) {
 rho_steps[, color := rho_pal(rescale(rho, to = c(0, 1)))]
 rho_ticks <- data.table(
   y = seq(0.33, 0.47, length.out = 3),
-  label = if (absolute_rho) c("0", "0.5", "1") else c("-1", "0", "+1")
+  label = if (absolute_rho) {
+    c("0", sprintf("%.3f", rho_abs_max / 2), sprintf("%.3f", rho_abs_max))
+  } else c("-1", "0", "+1")
 )
 
 ggplot() +
@@ -1412,8 +1413,7 @@ validation <- data.table(
   value = c(
     18, 201, 500, "Spearman rho", "TRUE", "FALSE",
     paste(
-      "O2 association group: High; Medium + High; Low + High;",
-      "Medium; Low + Medium; Low; O2-independent"
+      "O2 association group: High; Low; O2-independent"
     ),
     "descending maximum absolute Spearman rho within O2 association group",
     "configured parameter order for exact max-|rho| ties",
@@ -1474,7 +1474,9 @@ validation <- rbind(
       "figure4b_lite_absrho_logx_output_aspect_ratio"
     ),
     value = c(
-      "TRUE", "abs(spearman_rho)", "0,1", "#FFFFFF to #6A51A3",
+      "TRUE", "abs(spearman_rho)",
+      paste0("0,", format(rho_abs_max, digits = 17, trim = TRUE)),
+      "#FFFFFF to #6A51A3",
       "peak_direction",
       unname(peak_direction_palette[["Positive peak rho"]]),
       unname(peak_direction_palette[["Negative peak rho"]]),

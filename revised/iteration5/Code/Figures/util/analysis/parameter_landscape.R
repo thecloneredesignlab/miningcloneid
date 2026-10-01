@@ -730,22 +730,25 @@ p_tsne <- ggplot(clusters, aes(tSNE1, tSNE2)) +
 # directly in the standalone Figure 4C and are therefore not repeated here.
 legend_title_size <- 13
 legend_text_size <- 10.6
+o2_group_legend_step <- 0.075
+o2_group_legend_y <- 0.93 -
+  (seq_along(nonempty_o2_association_group_counts) - 1L) * o2_group_legend_step
+# Keep the rho and endpoint keys attached to the compact group legend rather
+# than leaving the space released by the tighter group entries empty.
+sidebar_lower_legend_shift <- tail(o2_group_legend_y, 1L) - 0.59
+sidebar_y <- function(y) y + sidebar_lower_legend_shift
 make_sidebar <- function(absolute_rho = FALSE) {
 o2_association_group_labels <- setNames(
   o2_association_group_levels,
   o2_association_group_levels
 )
 nonempty_group_levels <- names(nonempty_o2_association_group_counts)
-legend_half_height <- if (length(nonempty_group_levels) <= 1L) {
-  0.026
-} else {
-  min(0.026, 0.34 / (length(nonempty_group_levels) - 1L) * 0.34)
-}
+legend_half_height <- 0.026
 o2_association_legend <- data.table(
   o2_association_group = nonempty_group_levels,
   label = unname(o2_association_group_labels[nonempty_group_levels]),
   color = unname(o2_association_group_palette[nonempty_group_levels]),
-  y = seq(0.93, 0.59, length.out = length(nonempty_group_levels))
+  y = o2_group_legend_y
 )
 rho_values <- if (absolute_rho) {
   seq(0, rho_abs_max, length.out = 201)
@@ -754,7 +757,7 @@ rho_values <- if (absolute_rho) {
 }
 rho_steps <- data.table(
   rho = rho_values,
-  y = seq(0.33, 0.47, length.out = 201)
+  y = sidebar_y(seq(0.33, 0.47, length.out = 201))
 )
 rho_pal <- if (absolute_rho) {
   scales::gradient_n_pal(c("#FFFFFF", "#6A51A3"))
@@ -763,7 +766,7 @@ rho_pal <- if (absolute_rho) {
 }
 rho_steps[, color := rho_pal(rescale(rho, to = c(0, 1)))]
 rho_ticks <- data.table(
-  y = seq(0.33, 0.47, length.out = 3),
+  y = sidebar_y(seq(0.33, 0.47, length.out = 3)),
   label = if (absolute_rho) {
     c("0", sprintf("%.3f", rho_abs_max / 2), sprintf("%.3f", rho_abs_max))
   } else c("-1", "0", "+1")
@@ -792,7 +795,7 @@ ggplot() +
     lineheight = 0.92, color = "#25292D"
   ) +
   annotate(
-    "text", x = 0.02, y = 0.52,
+    "text", x = 0.02, y = sidebar_y(0.52),
     label = if (absolute_rho) "|Spearman rho|" else "Spearman rho",
     hjust = 0, vjust = 1, family = "Arial", fontface = "bold",
     size = legend_title_size / ggplot2::.pt, color = "#202020"
@@ -803,7 +806,8 @@ ggplot() +
     color = NA, inherit.aes = FALSE
   ) +
   annotate(
-    "rect", xmin = 0.07, xmax = 0.14, ymin = 0.33, ymax = 0.47,
+    "rect", xmin = 0.07, xmax = 0.14,
+    ymin = sidebar_y(0.33), ymax = sidebar_y(0.47),
     fill = NA, color = "#656A70", linewidth = 0.3
   ) +
   geom_segment(
@@ -818,41 +822,43 @@ ggplot() +
     size = legend_text_size / ggplot2::.pt, fontface = "bold", color = "#25292D"
   ) +
   annotate(
-    "text", x = 0.02, y = 0.315, label = "Endpoint /\nrange key",
+    "text", x = 0.02, y = sidebar_y(0.315), label = "Endpoint /\nrange key",
     hjust = 0, vjust = 1, family = "Arial", fontface = "bold",
     size = legend_title_size / ggplot2::.pt, color = "#202020"
   ) +
   annotate(
     "polygon",
     x = c(0.07, 0.17, 0.29, 0.41, 0.53, 0.65, 0.72, 0.72, 0.07),
-    y = c(0.205, 0.225, 0.250, 0.260, 0.245, 0.220, 0.205, 0.205, 0.205),
+    y = sidebar_y(c(0.205, 0.225, 0.250, 0.260, 0.245, 0.220, 0.205, 0.205, 0.205)),
     fill = violin_fill, color = violin_outline, linewidth = 0.30, alpha = 0.78
   ) +
   annotate(
-    "point", x = 0.51, y = 0.232, shape = 21, size = 2.8,
+    "point", x = 0.51, y = sidebar_y(0.232), shape = 21, size = 2.8,
     fill = best_seed_fill, color = "#075B46", stroke = 0.42
   ) +
   annotate(
-    "text", x = 0.07, y = 0.185,
+    "text", x = 0.07, y = sidebar_y(0.185),
     label = "500 endpoints\n+ seed25",
     hjust = 0, vjust = 1, family = "Arial",
     size = 10.6 / ggplot2::.pt, fontface = "bold",
     lineheight = 0.96, color = "#30353A"
   ) +
   annotate(
-    "rect", xmin = 0.07, xmax = 0.72, ymin = 0.105, ymax = 0.135,
+    "rect", xmin = 0.07, xmax = 0.72,
+    ymin = sidebar_y(0.105), ymax = sidebar_y(0.135),
     fill = range_fill, color = range_outline, linewidth = 0.32, alpha = 0.88
   ) +
   annotate(
-    "segment", x = 0.07, xend = 0.72, y = 0.120, yend = 0.120,
+    "segment", x = 0.07, xend = 0.72,
+    y = sidebar_y(0.120), yend = sidebar_y(0.120),
     linewidth = 0.38, color = range_outline
   ) +
   annotate(
-    "point", x = 0.48, y = 0.120, shape = 16, size = 2.8,
+    "point", x = 0.48, y = sidebar_y(0.120), shape = 16, size = 2.8,
     color = "#111111"
   ) +
   annotate(
-    "text", x = 0.07, y = 0.085,
+    "text", x = 0.07, y = sidebar_y(0.085),
     label = "fit range + initial",
     hjust = 0, vjust = 1, family = "Arial",
     size = 10.6 / ggplot2::.pt, fontface = "bold", color = "#30353A"
@@ -873,12 +879,12 @@ p_sidebar_absrho <- make_sidebar(absolute_rho = TRUE)
 # removing the endpoint/range key together with the endpoint distribution.
 p_sidebar_lite <- p_sidebar +
   annotate(
-    "rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0.32,
+    "rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = sidebar_y(0.32),
     fill = "white", color = NA
   )
 p_sidebar_absrho_lite <- p_sidebar_absrho +
   annotate(
-    "rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0.32,
+    "rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = sidebar_y(0.32),
     fill = "white", color = NA
   )
 
@@ -1471,7 +1477,11 @@ validation <- rbind(
       "figure4b_lite_absrho_logx_rendered",
       "figure4b_lite_absrho_endpoint_distribution_rendered",
       "figure4b_lite_absrho_output_aspect_ratio",
-      "figure4b_lite_absrho_logx_output_aspect_ratio"
+      "figure4b_lite_absrho_logx_output_aspect_ratio",
+      "o2_association_group_legend_center_step",
+      "o2_association_group_legend_centers",
+      "sidebar_lower_legend_shift",
+      "figure4b_lite_sidebar_mask_ymax"
     ),
     value = c(
       "TRUE", "abs(spearman_rho)",
@@ -1481,7 +1491,10 @@ validation <- rbind(
       unname(peak_direction_palette[["Positive peak rho"]]),
       unname(peak_direction_palette[["Negative peak rho"]]),
       "TRUE", "TRUE", "TRUE", "FALSE",
-      lite_width / lite_height, lite_width / lite_height
+      lite_width / lite_height, lite_width / lite_height,
+      o2_group_legend_step,
+      paste(o2_group_legend_y, collapse = ";"),
+      sidebar_lower_legend_shift, sidebar_y(0.32)
     )
   )
 )

@@ -58,7 +58,14 @@ if (nrow(scores) != 18L * 2L ||
     uniqueN(scores$parameter) != 18L ||
     uniqueN(tests$parameter) != 18L ||
     uniqueN(classification$parameter) != 18L) {
-  stop("Supplementary Figure 4-3 requires 18 parameters and three windows/contrasts.")
+  stop("Supplementary Figure 4-3 requires 18 parameters, two windows, and one contrast each.")
+}
+if (!all(c("o2_association_min_peak_abs_rho", "o2_association_peak_abs_rho_passes") %in%
+          names(classification)) ||
+    any(classification$o2_association_min_peak_abs_rho != 0.3) ||
+    any(classification$o2_association_peak_abs_rho_passes !=
+          (classification$max_abs_rho > 0.3))) {
+  stop("Supplementary Figure 4-3 lacks the strict global peak |rho| > 0.3 gate.")
 }
 if (any(scores$observed_mean_abs_rho < -1e-12 |
         scores$observed_mean_abs_rho > 1 + 1e-12) ||
@@ -249,8 +256,9 @@ figure <- panel_a + panel_b +
     ),
     caption = paste0(
       "All 18 Low-High comparisons are adjusted together by Benjamini-Hochberg. ",
-      "Detected contrasts assign parameters to the higher-scoring window.\n",
-      "O2-independent means no detected Low-High difference, not absence of association. ",
+      "Low/High assignment requires BH q < 0.05 and global peak |rho| > 0.3 across O2 [0,5].\n",
+      "Independent: q >= 0.05 or global peak |rho| <= 0.3; contrast markers retain the actual q significance.\n",
+      "Independent does not imply absence of association. ",
       "Optimizer-derived endpoints are not biological replicates or posterior samples."
     ),
     theme = theme(

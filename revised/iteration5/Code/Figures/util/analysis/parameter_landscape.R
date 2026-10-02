@@ -5,6 +5,7 @@
 # biological replicates. Figure 4B groups parameters using endpoint-bootstrap
 # comparisons of normalized window AUC for absolute Spearman rho over Low
 # [0,1] and High [3,5] O2; (1,3) is excluded from window statistics.
+# Low/High assignment additionally requires global peak |rho| > 0.3 over [0,5].
 # Within each resulting group,
 # parameters are ordered by decreasing maximum absolute correlation.
 
@@ -121,6 +122,20 @@ peak_direction_palette <- c(
 )
 ranking_order_check <- ranking[order(display_order)]
 classification_order_check <- o2_window_classification[order(display_order)]
+gate_columns <- c("o2_association_global_peak_abs_rho",
+                  "o2_association_min_peak_abs_rho",
+                  "o2_association_peak_abs_rho_passes")
+if (!all(gate_columns %in% names(classification_order_check)) ||
+    any(classification_order_check$o2_association_min_peak_abs_rho != 0.3) ||
+    any(abs(classification_order_check$o2_association_global_peak_abs_rho -
+            ranking_order_check$max_abs_rho) > 1e-12) ||
+    any(classification_order_check$o2_association_peak_abs_rho_passes !=
+          (ranking_order_check$max_abs_rho > 0.3)) ||
+    any(classification_order_check[
+      !o2_association_peak_abs_rho_passes, o2_association_group
+    ] != "O2-independent")) {
+  stop("Figure 4B inputs do not implement the strict global peak |rho| > 0.3 gate.")
+}
 if (!identical(
       ranking_order_check$o2_association_group,
       classification_order_check$o2_association_group
@@ -1467,6 +1482,10 @@ validation <- data.table(
 )
 validation <- rbind(
   validation,
+  data.table(
+    metric = c("o2_association_global_peak_minimum", "o2_association_magnitude_gate"),
+    value = c("0.3", "global max |rho| over all 201 O2 values in [0,5] must be strictly > 0.3")
+  ),
   data.table(
     metric = c(
       "figure4b_absrho_rendered", "figure4b_absrho_heat_fill_field",

@@ -58,10 +58,11 @@ DELIVERABLE_DIR="${ITERATION_ROOT}/Figures"
 ASSOCIATION_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/figure4_continuous_ploidy_association.R"
 LANDSCAPE_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/analysis/parameter_landscape.R"
 SUPP_FIGURE4_3_SCRIPT="${ITERATION_ROOT}/Code/Figures/draw_Supp_Figure4_3.R"
+GATE_TEST_SCRIPT="${ITERATION_ROOT}/Code/Figures/test_Figure4_o2_association_gate.R"
 COMPOSITOR_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/graphics/top_with_two_column_bottom_compositor.py"
 VECTOR_COMPOSITOR_SCRIPT="${ITERATION_ROOT}/Code/Figures/util/graphics/render_Figure4_vector_pdf.py"
 for path in "${DATA_DIR}" "${ASSOCIATION_SCRIPT}" "${LANDSCAPE_SCRIPT}" \
-  "${SUPP_FIGURE4_3_SCRIPT}" "${COMPOSITOR_SCRIPT}" \
+  "${SUPP_FIGURE4_3_SCRIPT}" "${GATE_TEST_SCRIPT}" "${COMPOSITOR_SCRIPT}" \
   "${VECTOR_COMPOSITOR_SCRIPT}" \
   "${PANEL_LABEL_FONT}"; do
   [[ -e "${path}" ]] || {
@@ -137,6 +138,9 @@ status RUNNING "${CURRENT_STAGE}"
 container_command Rscript -e \
   "invisible(parse(file='${ASSOCIATION_SCRIPT}')); invisible(parse(file='${LANDSCAPE_SCRIPT}')); invisible(parse(file='${SUPP_FIGURE4_3_SCRIPT}')); cat('parse_ok\\n')"
 
+CURRENT_STAGE="TEST_GLOBAL_PEAK_MAGNITUDE_GATE"
+status RUNNING "${CURRENT_STAGE}"
+container_command Rscript "${GATE_TEST_SCRIPT}" "${ASSOCIATION_SCRIPT}"
 CURRENT_STAGE="DERIVE_O2_WINDOW_ASSOCIATION_GROUPS"
 status RUNNING "${CURRENT_STAGE}"
 container_command Rscript "${ASSOCIATION_SCRIPT}" \
@@ -231,16 +235,16 @@ stopifnot(
     classification[order(display_order), o2_association_group]
   ),
   classification[
-    o2_window_significant_contrast_count == 0L,
+    o2_window_significant_contrast_count == 0L | !o2_association_peak_abs_rho_passes,
     all(o2_association_group == "O2-independent")
   ],
   classification[
-    o2_window_significant_contrast_count > 0L,
+    o2_window_significant_contrast_count > 0L & o2_association_peak_abs_rho_passes,
     all(o2_association_group != "O2-independent")
   ]
 )
 single_contrast_classification <- merge(
-  classification[o2_window_significant_contrast_count == 1L],
+  classification[o2_window_significant_contrast_count == 1L & o2_association_peak_abs_rho_passes],
   tests[significant_bh_0p05 == TRUE, .(
     parameter,
     higher_window = fifelse(
@@ -253,7 +257,8 @@ single_contrast_classification <- merge(
 )
 stopifnot(
   nrow(single_contrast_classification) ==
-    sum(classification$o2_window_significant_contrast_count == 1L),
+    sum(classification$o2_window_significant_contrast_count == 1L &
+          classification$o2_association_peak_abs_rho_passes),
   all(
     single_contrast_classification$o2_association_group ==
       single_contrast_classification$higher_window
@@ -300,6 +305,26 @@ stopifnot(max(abs(score_checks$error)) < 1e-12,
             delta_checks$observed_delta_mean_abs_rho)) < 1e-12,
           max(abs(peak_checks$max_abs_rho -
             peak_checks$reconstructed_peak)) < 1e-12)
+gate_checks <- merge(classification, tests[, .(
+  parameter, bh_adjusted_p_value, observed_delta_mean_abs_rho
+)], by = "parameter")
+gate_checks[, expected_group := fifelse(
+  max_abs_rho <= 0.3 | bh_adjusted_p_value >= 0.05,
+  "O2-independent",
+  fifelse(observed_delta_mean_abs_rho > 0, "Low O2", "High O2")
+)]
+stopifnot(
+  all(gate_checks$o2_association_min_peak_abs_rho == 0.3),
+  max(abs(gate_checks$o2_association_global_peak_abs_rho - gate_checks$max_abs_rho)) < 1e-12,
+  all(gate_checks$o2_association_peak_abs_rho_passes == (gate_checks$max_abs_rho > 0.3)),
+  all(gate_checks$o2_association_group == gate_checks$expected_group),
+  gate_checks[parameter == "k_o_mis", o2_association_group] == "O2-independent",
+  gate_checks[parameter == "k_o_mis", bh_adjusted_p_value] < 0.05,
+  gate_checks[parameter == "gamma_mu", o2_association_group] == "Low O2",
+  sum(gate_checks$o2_association_group == "High O2") == 4L,
+  sum(gate_checks$o2_association_group == "Low O2") == 2L,
+  sum(gate_checks$o2_association_group == "O2-independent") == 12L
+)
 rho_abs_max <- max(abs(association$spearman_rho))
 fill_limits <- as.numeric(strsplit(validation[
   metric == "figure4b_absrho_heat_fill_limits", value

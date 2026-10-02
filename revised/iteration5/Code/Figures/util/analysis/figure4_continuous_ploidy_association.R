@@ -68,6 +68,36 @@ figure4_o2_windows <- function() {
   )
 }
 
+figure4_min_global_peak_abs_rho <- function() 0.3
+
+figure4_o2_association_decision <- function(delta, bh_q, global_peak_abs_rho) {
+  if (length(delta) != 1L || length(bh_q) != 1L ||
+      length(global_peak_abs_rho) != 1L ||
+      any(!is.finite(c(delta, bh_q, global_peak_abs_rho))) ||
+      bh_q < 0 || bh_q > 1 || global_peak_abs_rho < 0 ||
+      global_peak_abs_rho > 1) {
+    stop("O2 association decisions require finite scalar delta, q, and peak |rho|.")
+  }
+  minimum_peak <- figure4_min_global_peak_abs_rho()
+  peak_passes <- global_peak_abs_rho > minimum_peak
+  if (!peak_passes) {
+    group <- "O2-independent"
+    rule <- sprintf("Global peak |rho| <= %g; fails the magnitude requirement", minimum_peak)
+  } else if (bh_q >= 0.05) {
+    group <- "O2-independent"
+    rule <- "No detected Low-High difference at BH q < 0.05"
+  } else if (delta < 0) {
+    group <- "High O2"
+    rule <- sprintf("High [3,5] exceeds Low [0,1] at BH q < 0.05 and global peak |rho| > %g", minimum_peak)
+  } else if (delta > 0) {
+    group <- "Low O2"
+    rule <- sprintf("Low [0,1] exceeds High [3,5] at BH q < 0.05 and global peak |rho| > %g", minimum_peak)
+  } else {
+    stop("A significant eligible Low-High contrast cannot have zero observed delta.")
+  }
+  list(group = group, rule = rule, minimum_peak = minimum_peak, peak_passes = peak_passes)
+}
+
 normalized_trapezoid_weights <- function(o2_grid, windows) {
   weights <- matrix(
     0,
@@ -135,6 +165,8 @@ derive_o2_window_statistics <- function(
       any(!is.finite(observed_rho))) {
     stop("Observed parameter/O2 Spearman matrix is incomplete.")
   }
+  # Global peak over all 201 O2 values in [0,5], not either window's mean/peak.
+  global_peak_abs_rho <- apply(abs(observed_rho), 1L, max)
   observed_scores <- abs(observed_rho) %*% window_weights
   dimnames(observed_scores) <- list(parameter_names, windows$o2_window)
 
@@ -274,23 +306,20 @@ derive_o2_window_statistics <- function(
     }
     significant_count <- sum(current_tests$significant_bh_0p05)
     delta <- current_tests$observed_delta_mean_abs_rho[[1L]]
-    if (significant_count == 0L) {
-      assigned_group <- "O2-independent"
-      decision_rule <- "No detected Low-High difference at BH q < 0.05"
-    } else if (delta < 0) {
-      assigned_group <- "High O2"
-      decision_rule <- "High [3,5] exceeds Low [0,1] at BH q < 0.05"
-    } else if (delta > 0) {
-      assigned_group <- "Low O2"
-      decision_rule <- "Low [0,1] exceeds High [3,5] at BH q < 0.05"
-    } else {
-      stop("A significant Low-High contrast cannot have zero observed delta.")
-    }
+    decision <- figure4_o2_association_decision(
+      delta, current_tests$bh_adjusted_p_value[[1L]],
+      global_peak_abs_rho[[parameter_index]]
+    )
+    assigned_group <- decision$group
+    decision_rule <- decision$rule
     classification_rows[[parameter_index]] <- data.table(
       parameter = current_parameter,
       o2_association_group = assigned_group,
       o2_association_group_order = match(assigned_group, group_levels),
       o2_window_significant_contrast_count = significant_count,
+      o2_association_global_peak_abs_rho = global_peak_abs_rho[[parameter_index]],
+      o2_association_min_peak_abs_rho = decision$minimum_peak,
+      o2_association_peak_abs_rho_passes = decision$peak_passes,
       o2_window_decision_rule = decision_rule
     )
   }
@@ -299,14 +328,14 @@ derive_o2_window_statistics <- function(
     stop("An O2-window association group is outside the configured order.")
   }
   if (classification[
-        o2_window_significant_contrast_count == 0L,
+        o2_window_significant_contrast_count == 0L | !o2_association_peak_abs_rho_passes,
         any(o2_association_group != "O2-independent")
       ] ||
       classification[
-        o2_window_significant_contrast_count > 0L,
+        o2_window_significant_contrast_count > 0L & o2_association_peak_abs_rho_passes,
         any(o2_association_group == "O2-independent")
       ]) {
-    stop("O2-window significance and association-group assignments disagree.")
+    stop("O2-window significance, global-peak magnitude gate, and groups disagree.")
   }
 
   list(
@@ -556,6 +585,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       o2_association_group, o2_association_group_order,
       within_o2_association_group_rank,
       o2_window_significant_contrast_count, o2_window_decision_rule,
+      o2_association_global_peak_abs_rho, o2_association_min_peak_abs_rho,
+      o2_association_peak_abs_rho_passes,
       max_abs_rho, rho_at_max_abs, O2_at_max_abs
     )],
     by = "parameter",
@@ -994,7 +1025,8 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       "o2_window_bootstrap_unit", "o2_window_bootstrap_reps",
       "o2_window_bootstrap_seed", "o2_window_bootstrap_cores",
       "o2_window_pairwise_test_count", "o2_window_multiple_testing",
-      "o2_window_significance_threshold", "o2_association_group_counts",
+      "o2_window_significance_threshold", "o2_association_global_peak_minimum",
+      "o2_association_magnitude_gate", "o2_association_group_counts",
       "parameter_sort_primary", "parameter_sort_secondary",
       "parameter_sort_tertiary", "parameter_sort_tie_break",
       "ranking_magnitude_field", "ranking_signed_color_field",
@@ -1016,7 +1048,9 @@ derive_figure4_continuous_ploidy_association <- function(data_dir) {
       o2_window_statistics$bootstrap_cores,
       nrow(o2_window_pairwise_tests),
       "Benjamini-Hochberg across all 18 Low-High window contrasts",
-      "BH q < 0.05", o2_group_counts,
+      "BH q < 0.05", figure4_min_global_peak_abs_rho(),
+      "global max |rho| over all 201 O2 values in [0,5] must be strictly > 0.3",
+      o2_group_counts,
       paste(
         "O2 association group: High; Low; O2-independent"
       ),

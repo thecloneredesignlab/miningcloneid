@@ -132,7 +132,7 @@ if (!all(gate_columns %in% names(classification_order_check)) ||
     any(classification_order_check$o2_association_peak_abs_rho_passes !=
           (ranking_order_check$max_abs_rho > 0.3)) ||
     any(classification_order_check[
-      !o2_association_peak_abs_rho_passes, o2_association_group
+      o2_association_peak_abs_rho_passes == FALSE, o2_association_group
     ] != "O2-independent")) {
   stop("Figure 4B inputs do not implement the strict global peak |rho| > 0.3 gate.")
 }

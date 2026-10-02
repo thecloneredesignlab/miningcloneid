@@ -17,6 +17,13 @@ check(.2, .05, .4, "O2-independent", TRUE) # q must be strict < .05
 check(.2, .2, .8, "O2-independent", TRUE)
 check(-.2, .001, .1, "O2-independent", FALSE) # gate applies to High too
 check(0, .5, .4, "O2-independent", TRUE)
+gate_rows <- data.table(
+  o2_association_peak_abs_rho_passes = c(FALSE, TRUE),
+  o2_association_group = c("O2-independent", "Low O2")
+)
+stopifnot(identical(gate_rows[
+  o2_association_peak_abs_rho_passes == FALSE, o2_association_group
+], "O2-independent"))
 stopifnot(inherits(try(figure4_o2_association_decision(0, .001, .4), silent = TRUE), "try-error"),
           inherits(try(figure4_o2_association_decision(.2, NA_real_, .4), silent = TRUE), "try-error"),
           inherits(try(figure4_o2_association_decision(.2, .001, 1.1), silent = TRUE), "try-error"))

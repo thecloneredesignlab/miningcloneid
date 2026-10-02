@@ -349,7 +349,7 @@ stopifnot(
   validation[metric == "figure4b_absrho_heat_fill_field", value] ==
     "abs(spearman_rho)",
   validation[metric == "figure4b_absrho_heat_palette", value] ==
-    "#FFFFFF to #2F4F6F",
+    "#FFFFFF to #2A1050",
   validation[metric == "figure4b_absrho_effect_fill_field", value] ==
     "peak_direction",
   validation[metric == "figure4b_absrho_effect_positive_fill", value] ==

@@ -101,7 +101,7 @@ if (any(abs(association$spearman_rho) > 1 + 1e-12, na.rm = TRUE)) {
 }
 # One shared observed-data scale for all four absolute-rho variants.
 rho_abs_max <- max(abs(association$spearman_rho))
-absrho_heat_palette <- c(low = "#FFFFFF", high = "#2F4F6F")
+absrho_heat_palette <- c(low = "#FFFFFF", high = "#2A1050")
 if (!is.finite(rho_abs_max) || rho_abs_max <= 0) {
   stop("The absolute-rho color scale requires a finite positive maximum.")
 }

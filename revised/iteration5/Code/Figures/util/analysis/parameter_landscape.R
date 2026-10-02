@@ -101,6 +101,7 @@ if (any(abs(association$spearman_rho) > 1 + 1e-12, na.rm = TRUE)) {
 }
 # One shared observed-data scale for all four absolute-rho variants.
 rho_abs_max <- max(abs(association$spearman_rho))
+absrho_heat_palette <- c(low = "#FFFFFF", high = "#2F4F6F")
 if (!is.finite(rho_abs_max) || rho_abs_max <= 0) {
   stop("The absolute-rho color scale requires a finite positive maximum.")
 }
@@ -334,7 +335,8 @@ make_heat_plot <- function(
     {
       if (absolute_rho) {
         scale_fill_gradient(
-          low = "#FFFFFF", high = "#6A51A3",
+          low = absrho_heat_palette[["low"]],
+          high = absrho_heat_palette[["high"]],
           limits = c(0, rho_abs_max), oob = squish,
           na.value = "#D9D9D9", guide = "none"
         )
@@ -760,7 +762,7 @@ rho_steps <- data.table(
   y = sidebar_y(seq(0.33, 0.47, length.out = 201))
 )
 rho_pal <- if (absolute_rho) {
-  scales::gradient_n_pal(c("#FFFFFF", "#6A51A3"))
+  scales::gradient_n_pal(absrho_heat_palette)
 } else {
   scales::gradient_n_pal(c("#2166AC", "#F7F7F7", "#B2182B"))
 }
@@ -1486,7 +1488,7 @@ validation <- rbind(
     value = c(
       "TRUE", "abs(spearman_rho)",
       paste0("0,", format(rho_abs_max, digits = 17, trim = TRUE)),
-      "#FFFFFF to #6A51A3",
+      paste(unname(absrho_heat_palette), collapse = " to "),
       "peak_direction",
       unname(peak_direction_palette[["Positive peak rho"]]),
       unname(peak_direction_palette[["Negative peak rho"]]),

@@ -79,6 +79,8 @@ for n in "${resolutions[@]}"; do
         --samples="$run_dir/samples.tsv.gz" --metadata="$run_dir/metadata.json" \
         --fit_root="$fit_root" --figure4_dir="$figure4_dir" \
         --out="$run_dir/outputs.tsv.gz" --workers="$workers" --validate=TRUE
+    elif [[ -s "$run_dir/outputs.tsv.gz.receipt.json" || "$rep" -gt 2 ]]; then
+      container python3 "$code_dir/neighborhood.py" verify --run-dir "$run_dir"
     fi
   done
 done

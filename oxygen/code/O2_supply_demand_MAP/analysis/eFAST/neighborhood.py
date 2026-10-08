@@ -292,6 +292,8 @@ def run(args):
         gate = json.loads((root / "pilot" / "convergence_gate.json").read_text())
         if gate["status"] != "passed" or gate["input_manifest_sha256"] != efast.sha256(root / "input_manifest.json"):
             raise ValueError("Full run requires a passing pilot convergence gate for these inputs")
+        if shutil.disk_usage(root).free < 200 * 1024 ** 3:
+            raise ValueError("Full run requires 200 GiB free for raw outputs, pilot and summaries")
         seeds, resolutions, target = manifest, [513], root
     else:
         seeds = sorted([x for x in manifest if x["pilot_order"]], key=lambda x: int(x["pilot_order"]))
@@ -581,9 +583,14 @@ def main():
             p.add_argument("--pilot-seeds", type=int, choices=range(3, 11), default=10)
     s = sub.add_parser("summarize")
     s.add_argument("--out-dir", required=True)
+    v = sub.add_parser("verify")
+    v.add_argument("--run-dir", required=True)
     args = parser.parse_args()
     if args.command == "audit":
         audit(args)
+    elif args.command == "verify":
+        if not verify_completion(Path(args.run_dir)):
+            raise ValueError("Design is incomplete: " + args.run_dir)
     elif args.command == "run":
         try:
             run(args)

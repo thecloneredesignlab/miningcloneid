@@ -30,7 +30,8 @@ seed25, and farthest points in normalized transformed parameter space.
 Full execution requires every pilot output/index/endpoint to have all cells
 defined, a p90 five-phase index range <=0.10, and a p90 absolute change from
 the N=257 mean to N=513 mean <=0.05. These are declared practical tolerances
-in variance-fraction units, not mathematical guarantees. A failed gate saves
+in variance-fraction units, not mathematical guarantees. Full execution also
+requires at least 200 GiB free disk space. A failed gate saves
 `pilot/convergence_gate.json` with `needs_review`; it does not launch all 500.
 Increasing N changes computational cost and requires reviewing that diagnostic.
 

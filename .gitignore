@@ -57,8 +57,11 @@
 /oxygen/results/eFAST/neighborhood10pct/pilot/*
 !/oxygen/results/eFAST/neighborhood10pct/pilot/*.json
 !/oxygen/results/eFAST/neighborhood10pct/pilot/*.tsv
+!/oxygen/results/eFAST/neighborhood10pct/pilot/*.tsv.gz
+!/oxygen/results/eFAST/neighborhood10pct/pilot/*.npz
 /oxygen/code/.rcpp_cache/
 /oxygen/code/.rcpp_cache_o2_invivo/
+/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/__pycache__/
 data/InVivoData_Gemcitabine/~$dt_Gem_VT_20260209_v5.xlsx
 /oxygen/code/O2_dynamic_simplify/.rcpp_cache_o2_invivo
 /oxygen/code/O2_dynamic_simplify/.rcpp_cache_o2_dynamic_simplify

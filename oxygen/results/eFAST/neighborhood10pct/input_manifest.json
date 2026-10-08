@@ -1,0 +1,23 @@
+{
+  "definition": "best +/- 0.10 * natural global span, clipped, inherited transforms",
+  "n_fit_seeds": 500,
+  "n_parameters": 14,
+  "n_phase_repeats": 5,
+  "neighborhood_bounds_sha256": "b56c306d96bd9624ce383e48cafffa944338652e5af4fa6ae1a00ce9d890eb5c",
+  "operator_audit_sha256": "1640c3b0961c289e49c4ebe28fd59582898b31f3aad3a771dda7f4d7f1cf17f9",
+  "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+  "pilot_seeds": [
+    "seed25",
+    "seed464",
+    "seed165",
+    "seed2",
+    "seed214",
+    "seed138",
+    "seed66",
+    "seed395",
+    "seed101",
+    "seed311"
+  ],
+  "reference_grid_sha256": "8d712f1007423de8cc57e592e05205e68debd3229c31cfad48bac365dba62095",
+  "seed_manifest_sha256": "dd495d6cac544e63f7d7637a40d234a351f217f33faa381a48849eeff30179d6"
+}

@@ -17,6 +17,34 @@ Fourteen parameters affect the fixed-oxygen operator. The oxygen grid is the
 same 201 points, 0–5% by 0.025%, as Figure 4. Each endpoint uses N=513, M=4
 and **five independent phase repetitions** if the pilot convergence gate passes.
 
+## Completed checks on 2026-10-08
+
+- All 500 endpoints and 7,000 neighborhood bounds passed the input audit.
+  All 1,500 reference comparisons passed (maximum absolute error
+  `6.6489036498751375e-12`). Six parameters per endpoint require clipping at the
+  median; every clipping event is documented in `neighborhood_bounds.tsv`.
+- All five regression checks passed locally and inside the specified SIF on
+  hpctpa3pc0028. A separate synthetic end-to-end check verified median versus
+  mean aggregation, labeled source arrays, and rendered PDF layout.
+- The timing pilot completed for seed25 (best fit), seed464 (worst fit), and
+  seed165 (most clipped), using N=129 and O2=0,0.5,2.5,5%, five phases each.
+  All 15 designs and 108,360 operator evaluations passed validation.
+- `pilot/runtime_projection.json` estimates 33.13 days (median throughput) to
+  35.17 days (p90 operator time) for the full 500-endpoint, 16-worker analysis.
+  This is an extrapolation from four oxygen points and excludes some analysis
+  overhead; the full-grid pilot will refine it. The 90.7 GiB raw-output estimate
+  comes from the existing global N=513 compressed outputs.
+- `pilot/smoke_seed*_convergence.tsv.gz` retains per-endpoint five-phase means
+  and ranges. `pilot/smoke_seed*_phase_indices_N129.npz` retains the exact
+  indices with axes `(phase, index [S1,ST], parameter [ACTIVE order in efast.py],
+  O2 [oxygen array], output [ploidy,growth])`.
+
+At this dated checkpoint the background pipeline has entered the global
+R3–R5 extension, followed by the ten-endpoint resolution pilot. The full
+500-endpoint neighborhood calculation has **not** started and its convergence
+has **not** been established. Controller PID: 1148713; log on HPC:
+`oxygen/results/eFAST/neighborhood10pct/logs/pipeline_20261008.log`.
+
 ## Execution and gates
 
 `run_neighborhood.sh pipeline` audits 500 endpoints and validates their original

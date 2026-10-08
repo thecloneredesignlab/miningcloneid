@@ -70,9 +70,9 @@ q < 0.05. The eFAST classification uses dominant mean ploidy only. Panel A is
 ordered by the ploidy S1-derived group and peak; panel B is ordered by the
 ploidy ST-derived group and peak. The growth heatmaps follow these ploidy-based
 orders and do not affect classification. The bootstrap unit is one complete
-phase-repeat curve, and only two phase repeats are available, so this
-classification is a repeat-consistency diagnostic rather than a high-precision
-uncertainty estimate. All four heatmaps use the same white-to-deep-purple palette, while
+phase-repeat curve. The original figure used two repeats; the extended runner
+uses five. This classification remains a repeat-consistency diagnostic rather
+than a high-precision uncertainty estimate. All four heatmaps use the same white-to-deep-purple palette, while
 ploidy and growth each use their own data-driven color maximum and horizontal
 colorbar. The oxygen axis uses a base-10 symmetric-log scale with a 0.025%
 linear threshold so the observed 0% point remains visible. Black dashed

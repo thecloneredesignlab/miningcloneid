@@ -1,0 +1,4 @@
+field	value
+git_commit	14c5041c038f2f1943f3ec6b47207358dae95f60
+updated_utc	2026-10-08T20:12:53Z
+note	Only completion-verification and free-disk gates changed; evaluator and input audit unchanged.

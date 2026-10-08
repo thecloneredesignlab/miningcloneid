@@ -1,0 +1,12 @@
+{
+  "full_operator_evaluations": 3608955000,
+  "n_phase_repeats": 5,
+  "n_pilot_designs": 15,
+  "n_pilot_fit_seeds": 3,
+  "projected_full_wall_days_median": 33.133502452761626,
+  "projected_full_wall_days_p90": 35.17078815406977,
+  "projected_raw_outputs_GiB": 90.7,
+  "seconds_per_operator_median": 0.0007932308970099668,
+  "seconds_per_operator_p90": 0.0008420044296788483,
+  "status": "timing_only_not_a_convergence_pass"
+}

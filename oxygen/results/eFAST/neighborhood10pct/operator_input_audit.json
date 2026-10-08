@@ -1,0 +1,4523 @@
+{
+  "n_seeds": 500,
+  "operator_config": {
+    "N_MIN": 22,
+    "N_MAX": 154,
+    "N_UNIT": 22,
+    "chr_lengths_bp": [248956422, 242193529, 198295559, 190214555, 181538259, 170805979, 159345973, 145138636, 138394717, 133797422, 135086622, 133275309, 114364328, 107043718, 101991189, 90338345, 83257441, 80373285, 58617616, 64444167, 46709983, 50818468],
+    "start_with": "chr_number",
+    "O2_growth": true,
+    "ploidy_O2_death": "ploidy_related",
+    "o2_min": 0,
+    "Crowding": false,
+    "K": 1000000000000,
+    "crowding": "logistic",
+    "boundary": "drop",
+    "alpha": 0,
+    "gamma": 1
+  },
+  "seeds": [
+    {
+      "fit_seed": "seed1",
+      "config_seed": 1,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 1.3600232051658168e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed2",
+      "config_seed": 2,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.0816681711721685e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed3",
+      "config_seed": 3,
+      "reference_max_error": {
+        "ploidy": 4.418687638008123e-14,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed4",
+      "config_seed": 4,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.9567680809018384e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed5",
+      "config_seed": 5,
+      "reference_max_error": {
+        "ploidy": 2.886579864025407e-15,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed6",
+      "config_seed": 6,
+      "reference_max_error": {
+        "ploidy": 1.9539925233402755e-14,
+        "growth": 4.163336342344337e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed7",
+      "config_seed": 7,
+      "reference_max_error": {
+        "ploidy": 2.3980817331903381e-14,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed8",
+      "config_seed": 8,
+      "reference_max_error": {
+        "ploidy": 8.2822637637036678e-14,
+        "growth": 1.9706458687096529e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed9",
+      "config_seed": 9,
+      "reference_max_error": {
+        "ploidy": 7.1054273576010019e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed10",
+      "config_seed": 10,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-14,
+        "growth": 9.4368957093138306e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed11",
+      "config_seed": 11,
+      "reference_max_error": {
+        "ploidy": 6.3815619455453998e-13,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed12",
+      "config_seed": 12,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-14,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed13",
+      "config_seed": 13,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed14",
+      "config_seed": 14,
+      "reference_max_error": {
+        "ploidy": 1.5543122344752192e-14,
+        "growth": 2.1094237467877974e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed15",
+      "config_seed": 15,
+      "reference_max_error": {
+        "ploidy": 8.3932860661661834e-14,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed16",
+      "config_seed": 16,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-14,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed17",
+      "config_seed": 17,
+      "reference_max_error": {
+        "ploidy": 1.3766765505351941e-14,
+        "growth": 1.1934897514720433e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed18",
+      "config_seed": 18,
+      "reference_max_error": {
+        "ploidy": 9.1038288019262836e-15,
+        "growth": 8.3266726846886741e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed19",
+      "config_seed": 19,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 6.2450045135165055e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed20",
+      "config_seed": 20,
+      "reference_max_error": {
+        "ploidy": 1.9095836023552692e-14,
+        "growth": 4.4408920985006262e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed21",
+      "config_seed": 21,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 4.5796699765787707e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed22",
+      "config_seed": 22,
+      "reference_max_error": {
+        "ploidy": 4.929390229335695e-14,
+        "growth": 9.8532293435482643e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed23",
+      "config_seed": 23,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed24",
+      "config_seed": 24,
+      "reference_max_error": {
+        "ploidy": 1.5765166949677223e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed25",
+      "config_seed": 25,
+      "reference_max_error": {
+        "ploidy": 3.7747582837255322e-15,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed26",
+      "config_seed": 26,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-14,
+        "growth": 2.4980018054066022e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed27",
+      "config_seed": 27,
+      "reference_max_error": {
+        "ploidy": 2.2648549702353193e-14,
+        "growth": 1.0269562977782698e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed28",
+      "config_seed": 28,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 1.1102230246251565e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed29",
+      "config_seed": 29,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 3.4694469519536142e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed30",
+      "config_seed": 30,
+      "reference_max_error": {
+        "ploidy": 1.028066520802895e-13,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed31",
+      "config_seed": 31,
+      "reference_max_error": {
+        "ploidy": 1.1102230246251565e-14,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed32",
+      "config_seed": 32,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed33",
+      "config_seed": 33,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 2.9698465908722937e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed34",
+      "config_seed": 34,
+      "reference_max_error": {
+        "ploidy": 4.7295500849031669e-14,
+        "growth": 1.9984014443252818e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed35",
+      "config_seed": 35,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 2.4980018054066022e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed36",
+      "config_seed": 36,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 1.124100812432971e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed37",
+      "config_seed": 37,
+      "reference_max_error": {
+        "ploidy": 9.3258734068513149e-15,
+        "growth": 2.4147350785597155e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed38",
+      "config_seed": 38,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 9.0205620750793969e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed39",
+      "config_seed": 39,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed40",
+      "config_seed": 40,
+      "reference_max_error": {
+        "ploidy": 1.1102230246251565e-15,
+        "growth": 2.3037127760971998e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed41",
+      "config_seed": 41,
+      "reference_max_error": {
+        "ploidy": 8.4376949871511897e-15,
+        "growth": 1.5265566588595902e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed42",
+      "config_seed": 42,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed43",
+      "config_seed": 43,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed44",
+      "config_seed": 44,
+      "reference_max_error": {
+        "ploidy": 5.1070259132757201e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed45",
+      "config_seed": 45,
+      "reference_max_error": {
+        "ploidy": 1.8207657603852567e-14,
+        "growth": 1.5820678100908481e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed46",
+      "config_seed": 46,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 8.7256590841633397e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed47",
+      "config_seed": 47,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 2.7755575615628914e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed48",
+      "config_seed": 48,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 8.1878948066105295e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed49",
+      "config_seed": 49,
+      "reference_max_error": {
+        "ploidy": 8.2156503822261584e-15,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed50",
+      "config_seed": 50,
+      "reference_max_error": {
+        "ploidy": 1.7319479184152442e-14,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed51",
+      "config_seed": 51,
+      "reference_max_error": {
+        "ploidy": 1.0302869668521453e-13,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed52",
+      "config_seed": 52,
+      "reference_max_error": {
+        "ploidy": 1.532107773982716e-14,
+        "growth": 1.8041124150158794e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed53",
+      "config_seed": 53,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 6.5225602696727947e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed54",
+      "config_seed": 54,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed55",
+      "config_seed": 55,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed56",
+      "config_seed": 56,
+      "reference_max_error": {
+        "ploidy": 3.8413716652030416e-14,
+        "growth": 1.0269562977782698e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed57",
+      "config_seed": 57,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed58",
+      "config_seed": 58,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed59",
+      "config_seed": 59,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 2.2759572004815709e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed60",
+      "config_seed": 60,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.4849232954361469e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed61",
+      "config_seed": 61,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.2204460492503131e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed62",
+      "config_seed": 62,
+      "reference_max_error": {
+        "ploidy": 6.8833827526759706e-14,
+        "growth": 2.0539125955565396e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed63",
+      "config_seed": 63,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 2.2204460492503131e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed64",
+      "config_seed": 64,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed65",
+      "config_seed": 65,
+      "reference_max_error": {
+        "ploidy": 1.0436096431476471e-14,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed66",
+      "config_seed": 66,
+      "reference_max_error": {
+        "ploidy": 8.8817841970012523e-16,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed67",
+      "config_seed": 67,
+      "reference_max_error": {
+        "ploidy": 1.7252865802674933e-13,
+        "growth": 1.9984014443252818e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed68",
+      "config_seed": 68,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed69",
+      "config_seed": 69,
+      "reference_max_error": {
+        "ploidy": 9.0150109599562711e-14,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed70",
+      "config_seed": 70,
+      "reference_max_error": {
+        "ploidy": 4.0856207306205761e-14,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed71",
+      "config_seed": 71,
+      "reference_max_error": {
+        "ploidy": 3.3306690738754696e-14,
+        "growth": 1.5265566588595902e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed72",
+      "config_seed": 72,
+      "reference_max_error": {
+        "ploidy": 9.6367358537463588e-14,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed73",
+      "config_seed": 73,
+      "reference_max_error": {
+        "ploidy": 4.1078251911130792e-14,
+        "growth": 6.8001160258290838e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed74",
+      "config_seed": 74,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed75",
+      "config_seed": 75,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed76",
+      "config_seed": 76,
+      "reference_max_error": {
+        "ploidy": 9.9253938401488995e-14,
+        "growth": 3.9412917374193057e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed77",
+      "config_seed": 77,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 9.4368957093138306e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed78",
+      "config_seed": 78,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 1.5265566588595902e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed79",
+      "config_seed": 79,
+      "reference_max_error": {
+        "ploidy": 8.5931262105987116e-14,
+        "growth": 1.1934897514720433e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed80",
+      "config_seed": 80,
+      "reference_max_error": {
+        "ploidy": 6.283862319378386e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed81",
+      "config_seed": 81,
+      "reference_max_error": {
+        "ploidy": 2.5102142586774789e-12,
+        "growth": 2.7755575615628914e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed82",
+      "config_seed": 82,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 2.1510571102112408e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed83",
+      "config_seed": 83,
+      "reference_max_error": {
+        "ploidy": 5.3068660577082483e-14,
+        "growth": 1.5543122344752192e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed84",
+      "config_seed": 84,
+      "reference_max_error": {
+        "ploidy": 1.7319479184152442e-14,
+        "growth": 1.5820678100908481e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed85",
+      "config_seed": 85,
+      "reference_max_error": {
+        "ploidy": 1.6431300764452317e-14,
+        "growth": 1.7208456881689926e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed86",
+      "config_seed": 86,
+      "reference_max_error": {
+        "ploidy": 1.1546319456101628e-14,
+        "growth": 2.7755575615628914e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed87",
+      "config_seed": 87,
+      "reference_max_error": {
+        "ploidy": 1.3766765505351941e-14,
+        "growth": 1.762479051592436e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed88",
+      "config_seed": 88,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 6.6613381477509392e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed89",
+      "config_seed": 89,
+      "reference_max_error": {
+        "ploidy": 3.219646771412954e-14,
+        "growth": 1.3322676295501878e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed90",
+      "config_seed": 90,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.5265566588595902e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed91",
+      "config_seed": 91,
+      "reference_max_error": {
+        "ploidy": 1.021405182655144e-14,
+        "growth": 5.6898930012039273e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed92",
+      "config_seed": 92,
+      "reference_max_error": {
+        "ploidy": 1.3988810110276972e-14,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed93",
+      "config_seed": 93,
+      "reference_max_error": {
+        "ploidy": 1.27675647831893e-13,
+        "growth": 1.8318679906315083e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed94",
+      "config_seed": 94,
+      "reference_max_error": {
+        "ploidy": 8.4376949871511897e-15,
+        "growth": 1.1934897514720433e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed95",
+      "config_seed": 95,
+      "reference_max_error": {
+        "ploidy": 1.9095836023552692e-14,
+        "growth": 8.3266726846886741e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed96",
+      "config_seed": 96,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed97",
+      "config_seed": 97,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed98",
+      "config_seed": 98,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 3.6082248300317588e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed99",
+      "config_seed": 99,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.9984014443252818e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed100",
+      "config_seed": 100,
+      "reference_max_error": {
+        "ploidy": 2.2870594307278225e-14,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed101",
+      "config_seed": 101,
+      "reference_max_error": {
+        "ploidy": 1.2656542480726785e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed102",
+      "config_seed": 102,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 7.4940054162198066e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed103",
+      "config_seed": 103,
+      "reference_max_error": {
+        "ploidy": 1.4876988529977098e-13,
+        "growth": 3.0531133177191805e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed104",
+      "config_seed": 104,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-14,
+        "growth": 1.4432899320127035e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed105",
+      "config_seed": 105,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 3.8857805861880479e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed106",
+      "config_seed": 106,
+      "reference_max_error": {
+        "ploidy": 9.9920072216264089e-15,
+        "growth": 1.3600232051658168e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed107",
+      "config_seed": 107,
+      "reference_max_error": {
+        "ploidy": 8.2378548427186615e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed108",
+      "config_seed": 108,
+      "reference_max_error": {
+        "ploidy": 8.8817841970012523e-15,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed109",
+      "config_seed": 109,
+      "reference_max_error": {
+        "ploidy": 1.5276668818842154e-13,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed110",
+      "config_seed": 110,
+      "reference_max_error": {
+        "ploidy": 1.5099033134902129e-14,
+        "growth": 1.3877787807814457e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed111",
+      "config_seed": 111,
+      "reference_max_error": {
+        "ploidy": 8.2600593032111647e-14,
+        "growth": 2.1371793224034263e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed112",
+      "config_seed": 112,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 1.3600232051658168e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed113",
+      "config_seed": 113,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 2.7755575615628914e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed114",
+      "config_seed": 114,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 3.8857805861880479e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed115",
+      "config_seed": 115,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 4.0245584642661925e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed116",
+      "config_seed": 116,
+      "reference_max_error": {
+        "ploidy": 6.4392935428259079e-15,
+        "growth": 4.4408920985006262e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed117",
+      "config_seed": 117,
+      "reference_max_error": {
+        "ploidy": 1.1612932837579137e-13,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed118",
+      "config_seed": 118,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed119",
+      "config_seed": 119,
+      "reference_max_error": {
+        "ploidy": 1.2212453270876722e-14,
+        "growth": 9.8532293435482643e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed120",
+      "config_seed": 120,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed121",
+      "config_seed": 121,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-15,
+        "growth": 2.1926904736346842e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed122",
+      "config_seed": 122,
+      "reference_max_error": {
+        "ploidy": 8.2156503822261584e-13,
+        "growth": 4.8572257327350599e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed123",
+      "config_seed": 123,
+      "reference_max_error": {
+        "ploidy": 4.5243808699524379e-12,
+        "growth": 1.7208456881689926e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed124",
+      "config_seed": 124,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-14,
+        "growth": 5.134781488891349e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed125",
+      "config_seed": 125,
+      "reference_max_error": {
+        "ploidy": 2.0650148258027912e-14,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed126",
+      "config_seed": 126,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed127",
+      "config_seed": 127,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 8.4654505627668186e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed128",
+      "config_seed": 128,
+      "reference_max_error": {
+        "ploidy": 1.3922196728799463e-13,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed129",
+      "config_seed": 129,
+      "reference_max_error": {
+        "ploidy": 3.6859404417555197e-14,
+        "growth": 3.8857805861880479e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed130",
+      "config_seed": 130,
+      "reference_max_error": {
+        "ploidy": 1.2434497875801753e-14,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed131",
+      "config_seed": 131,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.9428902930940239e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed132",
+      "config_seed": 132,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-15,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed133",
+      "config_seed": 133,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 1.6237011735142914e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed134",
+      "config_seed": 134,
+      "reference_max_error": {
+        "ploidy": 7.9491968563161208e-14,
+        "growth": 3.0808688933348094e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed135",
+      "config_seed": 135,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed136",
+      "config_seed": 136,
+      "reference_max_error": {
+        "ploidy": 9.7699626167013776e-15,
+        "growth": 9.0205620750793969e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed137",
+      "config_seed": 137,
+      "reference_max_error": {
+        "ploidy": 1.8718360195180139e-13,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed138",
+      "config_seed": 138,
+      "reference_max_error": {
+        "ploidy": 6.616929226765933e-14,
+        "growth": 1.0547118733938987e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed139",
+      "config_seed": 139,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 2.6367796834847468e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed140",
+      "config_seed": 140,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed141",
+      "config_seed": 141,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 1.4710455076283324e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed142",
+      "config_seed": 142,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed143",
+      "config_seed": 143,
+      "reference_max_error": {
+        "ploidy": 1.1546319456101628e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed144",
+      "config_seed": 144,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 7.6327832942979512e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed145",
+      "config_seed": 145,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-14,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed146",
+      "config_seed": 146,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.0130785099704553e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed147",
+      "config_seed": 147,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.3592239273284576e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed148",
+      "config_seed": 148,
+      "reference_max_error": {
+        "ploidy": 2.2870594307278225e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed149",
+      "config_seed": 149,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-15,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed150",
+      "config_seed": 150,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 9.298117831235686e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed151",
+      "config_seed": 151,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.0130785099704553e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed152",
+      "config_seed": 152,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 7.4940054162198066e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed153",
+      "config_seed": 153,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 1.1518563880485999e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed154",
+      "config_seed": 154,
+      "reference_max_error": {
+        "ploidy": 2.6156854460168688e-13,
+        "growth": 1.5265566588595902e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed155",
+      "config_seed": 155,
+      "reference_max_error": {
+        "ploidy": 1.9095836023552692e-14,
+        "growth": 1.9984014443252818e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed156",
+      "config_seed": 156,
+      "reference_max_error": {
+        "ploidy": 1.5099033134902129e-14,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed157",
+      "config_seed": 157,
+      "reference_max_error": {
+        "ploidy": 1.7319479184152442e-13,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed158",
+      "config_seed": 158,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed159",
+      "config_seed": 159,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 1.5404344466674047e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed160",
+      "config_seed": 160,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 3.2612801348363973e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed161",
+      "config_seed": 161,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-15,
+        "growth": 7.0776717819853729e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed162",
+      "config_seed": 162,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.3877787807814457e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed163",
+      "config_seed": 163,
+      "reference_max_error": {
+        "ploidy": 8.2600593032111647e-14,
+        "growth": 4.163336342344337e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed164",
+      "config_seed": 164,
+      "reference_max_error": {
+        "ploidy": 3.7525538232330291e-14,
+        "growth": 1.5439038936193583e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed165",
+      "config_seed": 165,
+      "reference_max_error": {
+        "ploidy": 1.7452705947107461e-13,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed166",
+      "config_seed": 166,
+      "reference_max_error": {
+        "ploidy": 1.1102230246251565e-14,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed167",
+      "config_seed": 167,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 1.1102230246251565e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed168",
+      "config_seed": 168,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 1.9012569296705806e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed169",
+      "config_seed": 169,
+      "reference_max_error": {
+        "ploidy": 8.4376949871511897e-15,
+        "growth": 5.4817261840867104e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed170",
+      "config_seed": 170,
+      "reference_max_error": {
+        "ploidy": 1.3722356584366935e-13,
+        "growth": 2.3869795029440866e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed171",
+      "config_seed": 171,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed172",
+      "config_seed": 172,
+      "reference_max_error": {
+        "ploidy": 1.4210854715202004e-14,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed173",
+      "config_seed": 173,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed174",
+      "config_seed": 174,
+      "reference_max_error": {
+        "ploidy": 8.992806499463768e-14,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed175",
+      "config_seed": 175,
+      "reference_max_error": {
+        "ploidy": 3.3084646133829665e-14,
+        "growth": 1.8041124150158794e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed176",
+      "config_seed": 176,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 9.4368957093138306e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed177",
+      "config_seed": 177,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-14,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed178",
+      "config_seed": 178,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed179",
+      "config_seed": 179,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 7.6327832942979512e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed180",
+      "config_seed": 180,
+      "reference_max_error": {
+        "ploidy": 3.3084646133829665e-14,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed181",
+      "config_seed": 181,
+      "reference_max_error": {
+        "ploidy": 2.2648549702353193e-14,
+        "growth": 1.4155343563970746e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed182",
+      "config_seed": 182,
+      "reference_max_error": {
+        "ploidy": 8.7485574340462335e-14,
+        "growth": 2.55351295663786e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed183",
+      "config_seed": 183,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed184",
+      "config_seed": 184,
+      "reference_max_error": {
+        "ploidy": 3.0864200084579352e-14,
+        "growth": 3.8857805861880479e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed185",
+      "config_seed": 185,
+      "reference_max_error": {
+        "ploidy": 7.0166095156309893e-14,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed186",
+      "config_seed": 186,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed187",
+      "config_seed": 187,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 1.3739009929736312e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed188",
+      "config_seed": 188,
+      "reference_max_error": {
+        "ploidy": 4.5963233219481481e-14,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed189",
+      "config_seed": 189,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 9.298117831235686e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed190",
+      "config_seed": 190,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed191",
+      "config_seed": 191,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 3.0531133177191805e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed192",
+      "config_seed": 192,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 1.1102230246251565e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed193",
+      "config_seed": 193,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 1.4432899320127035e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed194",
+      "config_seed": 194,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed195",
+      "config_seed": 195,
+      "reference_max_error": {
+        "ploidy": 2.1538326677728037e-14,
+        "growth": 5.4123372450476381e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed196",
+      "config_seed": 196,
+      "reference_max_error": {
+        "ploidy": 1.4654943925052066e-14,
+        "growth": 3.7470027081099033e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed197",
+      "config_seed": 197,
+      "reference_max_error": {
+        "ploidy": 2.5979218776228663e-14,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed198",
+      "config_seed": 198,
+      "reference_max_error": {
+        "ploidy": 5.9952043329758453e-15,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed199",
+      "config_seed": 199,
+      "reference_max_error": {
+        "ploidy": 1.4210854715202004e-14,
+        "growth": 1.4432899320127035e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed200",
+      "config_seed": 200,
+      "reference_max_error": {
+        "ploidy": 2.4868995751603507e-14,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed201",
+      "config_seed": 201,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 7.9103390504542404e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed202",
+      "config_seed": 202,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed203",
+      "config_seed": 203,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 7.4940054162198066e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed204",
+      "config_seed": 204,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 2.3037127760971998e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed205",
+      "config_seed": 205,
+      "reference_max_error": {
+        "ploidy": 3.4461322684364859e-13,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed206",
+      "config_seed": 206,
+      "reference_max_error": {
+        "ploidy": 1.822986206434507e-13,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed207",
+      "config_seed": 207,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed208",
+      "config_seed": 208,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-16,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed209",
+      "config_seed": 209,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed210",
+      "config_seed": 210,
+      "reference_max_error": {
+        "ploidy": 1.6875389974302379e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed211",
+      "config_seed": 211,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 4.4408920985006262e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed212",
+      "config_seed": 212,
+      "reference_max_error": {
+        "ploidy": 2.9976021664879227e-14,
+        "growth": 2.2204460492503131e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed213",
+      "config_seed": 213,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed214",
+      "config_seed": 214,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed215",
+      "config_seed": 215,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed216",
+      "config_seed": 216,
+      "reference_max_error": {
+        "ploidy": 8.5487172896137054e-14,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed217",
+      "config_seed": 217,
+      "reference_max_error": {
+        "ploidy": 1.3988810110276972e-14,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed218",
+      "config_seed": 218,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 8.7430063189231078e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed219",
+      "config_seed": 219,
+      "reference_max_error": {
+        "ploidy": 1.0436096431476471e-14,
+        "growth": 1.4988010832439613e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed220",
+      "config_seed": 220,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.8041124150158794e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed221",
+      "config_seed": 221,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed222",
+      "config_seed": 222,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed223",
+      "config_seed": 223,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.3114509478384662e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed224",
+      "config_seed": 224,
+      "reference_max_error": {
+        "ploidy": 5.4001247917767614e-13,
+        "growth": 1.0547118733938987e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed225",
+      "config_seed": 225,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 2.4980018054066022e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed226",
+      "config_seed": 226,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 7.0776717819853729e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed227",
+      "config_seed": 227,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 1.1102230246251565e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed228",
+      "config_seed": 228,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed229",
+      "config_seed": 229,
+      "reference_max_error": {
+        "ploidy": 2.3536728122053319e-14,
+        "growth": 1.1102230246251565e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed230",
+      "config_seed": 230,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.5265566588595902e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed231",
+      "config_seed": 231,
+      "reference_max_error": {
+        "ploidy": 1.6875389974302379e-14,
+        "growth": 1.0130785099704553e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed232",
+      "config_seed": 232,
+      "reference_max_error": {
+        "ploidy": 9.3258734068513149e-15,
+        "growth": 5.2735593669694936e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed233",
+      "config_seed": 233,
+      "reference_max_error": {
+        "ploidy": 1.1546319456101628e-14,
+        "growth": 2.581268532253489e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed234",
+      "config_seed": 234,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed235",
+      "config_seed": 235,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed236",
+      "config_seed": 236,
+      "reference_max_error": {
+        "ploidy": 1.9984014443252818e-15,
+        "growth": 3.4694469519536142e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed237",
+      "config_seed": 237,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 9.8532293435482643e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed238",
+      "config_seed": 238,
+      "reference_max_error": {
+        "ploidy": 1.4654943925052066e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed239",
+      "config_seed": 239,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 1.5404344466674047e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed240",
+      "config_seed": 240,
+      "reference_max_error": {
+        "ploidy": 8.4376949871511897e-15,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed241",
+      "config_seed": 241,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed242",
+      "config_seed": 242,
+      "reference_max_error": {
+        "ploidy": 1.1990408665951691e-14,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed243",
+      "config_seed": 243,
+      "reference_max_error": {
+        "ploidy": 1.4188650254709501e-13,
+        "growth": 1.4432899320127035e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed244",
+      "config_seed": 244,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed245",
+      "config_seed": 245,
+      "reference_max_error": {
+        "ploidy": 4.2854608750531042e-13,
+        "growth": 3.1918911957973251e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed246",
+      "config_seed": 246,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 5.7592819402429996e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed247",
+      "config_seed": 247,
+      "reference_max_error": {
+        "ploidy": 1.2878587085651816e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed248",
+      "config_seed": 248,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 6.6613381477509392e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed249",
+      "config_seed": 249,
+      "reference_max_error": {
+        "ploidy": 2.3392399128852048e-12,
+        "growth": 2.1094237467877974e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed250",
+      "config_seed": 250,
+      "reference_max_error": {
+        "ploidy": 3.1530333899354446e-14,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed251",
+      "config_seed": 251,
+      "reference_max_error": {
+        "ploidy": 1.8207657603852567e-14,
+        "growth": 1.8318679906315083e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed252",
+      "config_seed": 252,
+      "reference_max_error": {
+        "ploidy": 6.9499961341534799e-14,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed253",
+      "config_seed": 253,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 2.3765711620882257e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed254",
+      "config_seed": 254,
+      "reference_max_error": {
+        "ploidy": 9.9920072216264089e-15,
+        "growth": 9.4368957093138306e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed255",
+      "config_seed": 255,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 2.3314683517128287e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed256",
+      "config_seed": 256,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.3322676295501878e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed257",
+      "config_seed": 257,
+      "reference_max_error": {
+        "ploidy": 6.794564910705958e-14,
+        "growth": 2.3314683517128287e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed258",
+      "config_seed": 258,
+      "reference_max_error": {
+        "ploidy": 1.6604495556293841e-12,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed259",
+      "config_seed": 259,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 1.7347234759768071e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed260",
+      "config_seed": 260,
+      "reference_max_error": {
+        "ploidy": 2.8421709430404007e-14,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed261",
+      "config_seed": 261,
+      "reference_max_error": {
+        "ploidy": 3.6282088444750116e-13,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed262",
+      "config_seed": 262,
+      "reference_max_error": {
+        "ploidy": 9.3036689463588118e-14,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed263",
+      "config_seed": 263,
+      "reference_max_error": {
+        "ploidy": 7.9269923958236177e-14,
+        "growth": 1.7763568394002505e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed264",
+      "config_seed": 264,
+      "reference_max_error": {
+        "ploidy": 4.1966430330830917e-14,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed265",
+      "config_seed": 265,
+      "reference_max_error": {
+        "ploidy": 9.9920072216264089e-15,
+        "growth": 8.7430063189231078e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed266",
+      "config_seed": 266,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-14,
+        "growth": 2.3869795029440866e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed267",
+      "config_seed": 267,
+      "reference_max_error": {
+        "ploidy": 1.2434497875801753e-13,
+        "growth": 3.5527136788005009e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed268",
+      "config_seed": 268,
+      "reference_max_error": {
+        "ploidy": 2.3958612871410878e-13,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed269",
+      "config_seed": 269,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed270",
+      "config_seed": 270,
+      "reference_max_error": {
+        "ploidy": 4.5963233219481481e-14,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed271",
+      "config_seed": 271,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 1.0547118733938987e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed272",
+      "config_seed": 272,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 4.163336342344337e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed273",
+      "config_seed": 273,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed274",
+      "config_seed": 274,
+      "reference_max_error": {
+        "ploidy": 3.1974423109204508e-14,
+        "growth": 1.0547118733938987e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed275",
+      "config_seed": 275,
+      "reference_max_error": {
+        "ploidy": 3.0642155479654321e-14,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed276",
+      "config_seed": 276,
+      "reference_max_error": {
+        "ploidy": 7.2830630415410269e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed277",
+      "config_seed": 277,
+      "reference_max_error": {
+        "ploidy": 1.8207657603852567e-14,
+        "growth": 4.9682480351975755e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed278",
+      "config_seed": 278,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 6.6613381477509392e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed279",
+      "config_seed": 279,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 8.4654505627668186e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed280",
+      "config_seed": 280,
+      "reference_max_error": {
+        "ploidy": 4.1078251911130792e-14,
+        "growth": 1.5543122344752192e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed281",
+      "config_seed": 281,
+      "reference_max_error": {
+        "ploidy": 5.5067062021407764e-14,
+        "growth": 8.7430063189231078e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed282",
+      "config_seed": 282,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 1.4016565685892601e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed283",
+      "config_seed": 283,
+      "reference_max_error": {
+        "ploidy": 8.2156503822261584e-15,
+        "growth": 1.6653345369377348e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed284",
+      "config_seed": 284,
+      "reference_max_error": {
+        "ploidy": 2.4424906541753444e-15,
+        "growth": 1.3877787807814457e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed285",
+      "config_seed": 285,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 7.4940054162198066e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed286",
+      "config_seed": 286,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 8.6042284408449632e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed287",
+      "config_seed": 287,
+      "reference_max_error": {
+        "ploidy": 1.7985612998927536e-14,
+        "growth": 9.4368957093138306e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed288",
+      "config_seed": 288,
+      "reference_max_error": {
+        "ploidy": 1.4654943925052066e-13,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed289",
+      "config_seed": 289,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 1.9428902930940239e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed290",
+      "config_seed": 290,
+      "reference_max_error": {
+        "ploidy": 2.2426505097428162e-14,
+        "growth": 1.1934897514720433e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed291",
+      "config_seed": 291,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.4641066137244252e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed292",
+      "config_seed": 292,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 1.3877787807814457e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed293",
+      "config_seed": 293,
+      "reference_max_error": {
+        "ploidy": 3.2418512319054571e-14,
+        "growth": 1.3600232051658168e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed294",
+      "config_seed": 294,
+      "reference_max_error": {
+        "ploidy": 3.8280489889075398e-13,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed295",
+      "config_seed": 295,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 8.3266726846886741e-17
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed296",
+      "config_seed": 296,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 1.9428902930940239e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed297",
+      "config_seed": 297,
+      "reference_max_error": {
+        "ploidy": 1.7985612998927536e-14,
+        "growth": 1.0269562977782698e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed298",
+      "config_seed": 298,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed299",
+      "config_seed": 299,
+      "reference_max_error": {
+        "ploidy": 2.6201263381153694e-14,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed300",
+      "config_seed": 300,
+      "reference_max_error": {
+        "ploidy": 3.9390712913700554e-13,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed301",
+      "config_seed": 301,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 5.6898930012039273e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed302",
+      "config_seed": 302,
+      "reference_max_error": {
+        "ploidy": 1.1126655152793319e-12,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed303",
+      "config_seed": 303,
+      "reference_max_error": {
+        "ploidy": 2.333688797762079e-13,
+        "growth": 1.0269562977782698e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed304",
+      "config_seed": 304,
+      "reference_max_error": {
+        "ploidy": 7.1054273576010019e-15,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed305",
+      "config_seed": 305,
+      "reference_max_error": {
+        "ploidy": 1.6875389974302379e-14,
+        "growth": 1.7763568394002505e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed306",
+      "config_seed": 306,
+      "reference_max_error": {
+        "ploidy": 2.886579864025407e-14,
+        "growth": 1.2490009027033011e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed307",
+      "config_seed": 307,
+      "reference_max_error": {
+        "ploidy": 2.042810365310288e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed308",
+      "config_seed": 308,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.1379786002407855e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed309",
+      "config_seed": 309,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 2.9143354396410359e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed310",
+      "config_seed": 310,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 4.3021142204224816e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed311",
+      "config_seed": 311,
+      "reference_max_error": {
+        "ploidy": 1.354472090042691e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed312",
+      "config_seed": 312,
+      "reference_max_error": {
+        "ploidy": 3.6193270602780103e-14,
+        "growth": 2.6367796834847468e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed313",
+      "config_seed": 313,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 8.3266726846886741e-17
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed314",
+      "config_seed": 314,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed315",
+      "config_seed": 315,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.4988010832439613e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed316",
+      "config_seed": 316,
+      "reference_max_error": {
+        "ploidy": 3.7747582837255322e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed317",
+      "config_seed": 317,
+      "reference_max_error": {
+        "ploidy": 1.9095836023552692e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed318",
+      "config_seed": 318,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.0269562977782698e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed319",
+      "config_seed": 319,
+      "reference_max_error": {
+        "ploidy": 1.7630341631047486e-13,
+        "growth": 2.1094237467877974e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed320",
+      "config_seed": 320,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 1.7763568394002505e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed321",
+      "config_seed": 321,
+      "reference_max_error": {
+        "ploidy": 1.6586731987899839e-12,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed322",
+      "config_seed": 322,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 1.5126788710517758e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed323",
+      "config_seed": 323,
+      "reference_max_error": {
+        "ploidy": 1.2434497875801753e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed324",
+      "config_seed": 324,
+      "reference_max_error": {
+        "ploidy": 3.5749181392930041e-14,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed325",
+      "config_seed": 325,
+      "reference_max_error": {
+        "ploidy": 1.5920598173124745e-13,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed326",
+      "config_seed": 326,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 4.5796699765787707e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed327",
+      "config_seed": 327,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 1.9984014443252818e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed328",
+      "config_seed": 328,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed329",
+      "config_seed": 329,
+      "reference_max_error": {
+        "ploidy": 4.5918824298496475e-13,
+        "growth": 1.4155343563970746e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed330",
+      "config_seed": 330,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.1934897514720433e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed331",
+      "config_seed": 331,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 1.0547118733938987e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed332",
+      "config_seed": 332,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 5.6898930012039273e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed333",
+      "config_seed": 333,
+      "reference_max_error": {
+        "ploidy": 9.9920072216264089e-15,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed334",
+      "config_seed": 334,
+      "reference_max_error": {
+        "ploidy": 1.9984014443252818e-15,
+        "growth": 8.3266726846886741e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed335",
+      "config_seed": 335,
+      "reference_max_error": {
+        "ploidy": 3.4194869158454821e-14,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed336",
+      "config_seed": 336,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed337",
+      "config_seed": 337,
+      "reference_max_error": {
+        "ploidy": 3.7747582837255322e-15,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed338",
+      "config_seed": 338,
+      "reference_max_error": {
+        "ploidy": 5.1070259132757201e-15,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed339",
+      "config_seed": 339,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.1518563880485999e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed340",
+      "config_seed": 340,
+      "reference_max_error": {
+        "ploidy": 1.9539925233402755e-14,
+        "growth": 9.4368957093138306e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed341",
+      "config_seed": 341,
+      "reference_max_error": {
+        "ploidy": 3.4194869158454821e-14,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed342",
+      "config_seed": 342,
+      "reference_max_error": {
+        "ploidy": 7.8914652590356127e-13,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed343",
+      "config_seed": 343,
+      "reference_max_error": {
+        "ploidy": 6.6391336872584361e-14,
+        "growth": 1.3322676295501878e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed344",
+      "config_seed": 344,
+      "reference_max_error": {
+        "ploidy": 7.1054273576010019e-15,
+        "growth": 1.9775847626135601e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed345",
+      "config_seed": 345,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.9143354396410359e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed346",
+      "config_seed": 346,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 9.298117831235686e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed347",
+      "config_seed": 347,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed348",
+      "config_seed": 348,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 3.4694469519536142e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed349",
+      "config_seed": 349,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 1.3045120539345589e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed350",
+      "config_seed": 350,
+      "reference_max_error": {
+        "ploidy": 8.8817841970012523e-15,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed351",
+      "config_seed": 351,
+      "reference_max_error": {
+        "ploidy": 2.7977620220553945e-14,
+        "growth": 2.248201624865942e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed352",
+      "config_seed": 352,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 5.2735593669694936e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed353",
+      "config_seed": 353,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.7755575615628914e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed354",
+      "config_seed": 354,
+      "reference_max_error": {
+        "ploidy": 2.092548356813495e-12,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed355",
+      "config_seed": 355,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-14,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed356",
+      "config_seed": 356,
+      "reference_max_error": {
+        "ploidy": 1.1546319456101628e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed357",
+      "config_seed": 357,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 2.248201624865942e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed358",
+      "config_seed": 358,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-14,
+        "growth": 1.5265566588595902e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed359",
+      "config_seed": 359,
+      "reference_max_error": {
+        "ploidy": 5.7287508070658077e-14,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed360",
+      "config_seed": 360,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 1.1119577481011333e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed361",
+      "config_seed": 361,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 7.9103390504542404e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed362",
+      "config_seed": 362,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 1.4710455076283324e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed363",
+      "config_seed": 363,
+      "reference_max_error": {
+        "ploidy": 3.3306690738754696e-14,
+        "growth": 8.4654505627668186e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed364",
+      "config_seed": 364,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-15,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed365",
+      "config_seed": 365,
+      "reference_max_error": {
+        "ploidy": 1.4210854715202004e-14,
+        "growth": 1.1934897514720433e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed366",
+      "config_seed": 366,
+      "reference_max_error": {
+        "ploidy": 5.1070259132757201e-15,
+        "growth": 6.6613381477509392e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed367",
+      "config_seed": 367,
+      "reference_max_error": {
+        "ploidy": 2.19824158875781e-14,
+        "growth": 2.1094237467877974e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed368",
+      "config_seed": 368,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 9.8532293435482643e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed369",
+      "config_seed": 369,
+      "reference_max_error": {
+        "ploidy": 1.5543122344752192e-14,
+        "growth": 1.0408340855860843e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed370",
+      "config_seed": 370,
+      "reference_max_error": {
+        "ploidy": 7.7715611723760958e-15,
+        "growth": 3.7331249203020889e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed371",
+      "config_seed": 371,
+      "reference_max_error": {
+        "ploidy": 1.021405182655144e-13,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed372",
+      "config_seed": 372,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 3.2612801348363973e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed373",
+      "config_seed": 373,
+      "reference_max_error": {
+        "ploidy": 5.3512749786932545e-14,
+        "growth": 6.9388939039072284e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed374",
+      "config_seed": 374,
+      "reference_max_error": {
+        "ploidy": 2.886579864025407e-14,
+        "growth": 1.3877787807814457e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed375",
+      "config_seed": 375,
+      "reference_max_error": {
+        "ploidy": 8.8817841970012523e-15,
+        "growth": 4.2327252813834093e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed376",
+      "config_seed": 376,
+      "reference_max_error": {
+        "ploidy": 1.2212453270876722e-14,
+        "growth": 2.7755575615628914e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed377",
+      "config_seed": 377,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed378",
+      "config_seed": 378,
+      "reference_max_error": {
+        "ploidy": 3.1530333899354446e-14,
+        "growth": 6.6613381477509392e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed379",
+      "config_seed": 379,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.4710455076283324e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed380",
+      "config_seed": 380,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed381",
+      "config_seed": 381,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 7.0082828429463007e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed382",
+      "config_seed": 382,
+      "reference_max_error": {
+        "ploidy": 1.4743761767022079e-13,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed383",
+      "config_seed": 383,
+      "reference_max_error": {
+        "ploidy": 5.4845017416482733e-14,
+        "growth": 1.3877787807814457e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed384",
+      "config_seed": 384,
+      "reference_max_error": {
+        "ploidy": 7.1054273576010019e-15,
+        "growth": 1.457167719820518e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed385",
+      "config_seed": 385,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed386",
+      "config_seed": 386,
+      "reference_max_error": {
+        "ploidy": 1.0880185641326534e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed387",
+      "config_seed": 387,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 1.0269562977782698e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed388",
+      "config_seed": 388,
+      "reference_max_error": {
+        "ploidy": 6.4392935428259079e-15,
+        "growth": 1.4432899320127035e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed389",
+      "config_seed": 389,
+      "reference_max_error": {
+        "ploidy": 6.794564910705958e-14,
+        "growth": 8.6042284408449632e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed390",
+      "config_seed": 390,
+      "reference_max_error": {
+        "ploidy": 9.6367358537463588e-14,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed391",
+      "config_seed": 391,
+      "reference_max_error": {
+        "ploidy": 1.1040057756872557e-12,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed392",
+      "config_seed": 392,
+      "reference_max_error": {
+        "ploidy": 1.6964207816272392e-13,
+        "growth": 4.4408920985006262e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed393",
+      "config_seed": 393,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed394",
+      "config_seed": 394,
+      "reference_max_error": {
+        "ploidy": 1.2745360322696797e-13,
+        "growth": 2.4424906541753444e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed395",
+      "config_seed": 395,
+      "reference_max_error": {
+        "ploidy": 5.1070259132757201e-15,
+        "growth": 2.9143354396410359e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed396",
+      "config_seed": 396,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed397",
+      "config_seed": 397,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed398",
+      "config_seed": 398,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 6.5225602696727947e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed399",
+      "config_seed": 399,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 3.6082248300317588e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed400",
+      "config_seed": 400,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.2351231148954867e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed401",
+      "config_seed": 401,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed402",
+      "config_seed": 402,
+      "reference_max_error": {
+        "ploidy": 4.929390229335695e-14,
+        "growth": 2.7755575615628914e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed403",
+      "config_seed": 403,
+      "reference_max_error": {
+        "ploidy": 3.1086244689504383e-15,
+        "growth": 3.3306690738754696e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed404",
+      "config_seed": 404,
+      "reference_max_error": {
+        "ploidy": 1.020961093445294e-12,
+        "growth": 1.4155343563970746e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed405",
+      "config_seed": 405,
+      "reference_max_error": {
+        "ploidy": 3.9523939676655573e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed406",
+      "config_seed": 406,
+      "reference_max_error": {
+        "ploidy": 3.8258285428582894e-13,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed407",
+      "config_seed": 407,
+      "reference_max_error": {
+        "ploidy": 9.7877261850953801e-13,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed408",
+      "config_seed": 408,
+      "reference_max_error": {
+        "ploidy": 3.0420110874729289e-14,
+        "growth": 2.1094237467877974e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed409",
+      "config_seed": 409,
+      "reference_max_error": {
+        "ploidy": 6.4837024638109142e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed410",
+      "config_seed": 410,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 1.9428902930940239e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed411",
+      "config_seed": 411,
+      "reference_max_error": {
+        "ploidy": 7.1054273576010019e-15,
+        "growth": 6.106226635438361e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed412",
+      "config_seed": 412,
+      "reference_max_error": {
+        "ploidy": 3.4727776210274897e-13,
+        "growth": 1.4432899320127035e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed413",
+      "config_seed": 413,
+      "reference_max_error": {
+        "ploidy": 4.6185277824406512e-14,
+        "growth": 2.6367796834847468e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed414",
+      "config_seed": 414,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed415",
+      "config_seed": 415,
+      "reference_max_error": {
+        "ploidy": 1.7630341631047486e-13,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed416",
+      "config_seed": 416,
+      "reference_max_error": {
+        "ploidy": 1.9539925233402755e-14,
+        "growth": 1.0824674490095276e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed417",
+      "config_seed": 417,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 7.2164496600635175e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed418",
+      "config_seed": 418,
+      "reference_max_error": {
+        "ploidy": 2.886579864025407e-15,
+        "growth": 1.27675647831893e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed419",
+      "config_seed": 419,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed420",
+      "config_seed": 420,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 8.4654505627668186e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed421",
+      "config_seed": 421,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-15,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed422",
+      "config_seed": 422,
+      "reference_max_error": {
+        "ploidy": 6.8833827526759706e-15,
+        "growth": 1.7486012637846216e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed423",
+      "config_seed": 423,
+      "reference_max_error": {
+        "ploidy": 1.2523315717771766e-13,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed424",
+      "config_seed": 424,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 1.8873791418627661e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed425",
+      "config_seed": 425,
+      "reference_max_error": {
+        "ploidy": 5.084821452783217e-14,
+        "growth": 2.2204460492503131e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed426",
+      "config_seed": 426,
+      "reference_max_error": {
+        "ploidy": 1.0147438445073931e-13,
+        "growth": 1.3322676295501878e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed427",
+      "config_seed": 427,
+      "reference_max_error": {
+        "ploidy": 5.5289106626332796e-14,
+        "growth": 8.1878948066105295e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed428",
+      "config_seed": 428,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 1.2351231148954867e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed429",
+      "config_seed": 429,
+      "reference_max_error": {
+        "ploidy": 2.2204460492503131e-15,
+        "growth": 9.2287288921966137e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed430",
+      "config_seed": 430,
+      "reference_max_error": {
+        "ploidy": 1.2434497875801753e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed431",
+      "config_seed": 431,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 7.9103390504542404e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed432",
+      "config_seed": 432,
+      "reference_max_error": {
+        "ploidy": 7.4162898044960457e-14,
+        "growth": 3.8857805861880479e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed433",
+      "config_seed": 433,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-14,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed434",
+      "config_seed": 434,
+      "reference_max_error": {
+        "ploidy": 6.6489036498751375e-12,
+        "growth": 1.2212453270876722e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed435",
+      "config_seed": 435,
+      "reference_max_error": {
+        "ploidy": 7.5495165674510645e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed436",
+      "config_seed": 436,
+      "reference_max_error": {
+        "ploidy": 2.3092638912203256e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed437",
+      "config_seed": 437,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.5126788710517758e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed438",
+      "config_seed": 438,
+      "reference_max_error": {
+        "ploidy": 2.1493917756743031e-13,
+        "growth": 5.8286708792820718e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed439",
+      "config_seed": 439,
+      "reference_max_error": {
+        "ploidy": 1.5765166949677223e-14,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed440",
+      "config_seed": 440,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed441",
+      "config_seed": 441,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 7.0776717819853729e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed442",
+      "config_seed": 442,
+      "reference_max_error": {
+        "ploidy": 1.6875389974302379e-14,
+        "growth": 9.5062846483529029e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed443",
+      "config_seed": 443,
+      "reference_max_error": {
+        "ploidy": 1.5543122344752192e-14,
+        "growth": 1.5820678100908481e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed444",
+      "config_seed": 444,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed445",
+      "config_seed": 445,
+      "reference_max_error": {
+        "ploidy": 7.1054273576010019e-15,
+        "growth": 1.2871648191747909e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed446",
+      "config_seed": 446,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 5.2735593669694936e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed447",
+      "config_seed": 447,
+      "reference_max_error": {
+        "ploidy": 3.7747582837255322e-15,
+        "growth": 1.1102230246251565e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed448",
+      "config_seed": 448,
+      "reference_max_error": {
+        "ploidy": 4.418687638008123e-14,
+        "growth": 4.4408920985006262e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed449",
+      "config_seed": 449,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 6.6613381477509392e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed450",
+      "config_seed": 450,
+      "reference_max_error": {
+        "ploidy": 9.3258734068513149e-14,
+        "growth": 8.3266726846886741e-17
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed451",
+      "config_seed": 451,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 2.0816681711721685e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed452",
+      "config_seed": 452,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 3.8857805861880479e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed453",
+      "config_seed": 453,
+      "reference_max_error": {
+        "ploidy": 2.6290081223123707e-13,
+        "growth": 1.9984014443252818e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed454",
+      "config_seed": 454,
+      "reference_max_error": {
+        "ploidy": 7.9936057773011271e-15,
+        "growth": 1.8873791418627661e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed455",
+      "config_seed": 455,
+      "reference_max_error": {
+        "ploidy": 1.3766765505351941e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed456",
+      "config_seed": 456,
+      "reference_max_error": {
+        "ploidy": 2.9309887850104133e-14,
+        "growth": 4.6143644460983069e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed457",
+      "config_seed": 457,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-14,
+        "growth": 4.9960036108132044e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed458",
+      "config_seed": 458,
+      "reference_max_error": {
+        "ploidy": 6.2172489379008766e-15,
+        "growth": 4.0245584642661925e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed459",
+      "config_seed": 459,
+      "reference_max_error": {
+        "ploidy": 1.3766765505351941e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed460",
+      "config_seed": 460,
+      "reference_max_error": {
+        "ploidy": 1.3766765505351941e-14,
+        "growth": 5.5511151231257827e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed461",
+      "config_seed": 461,
+      "reference_max_error": {
+        "ploidy": 3.1308289294429414e-14,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed462",
+      "config_seed": 462,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 7.4940054162198066e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed463",
+      "config_seed": 463,
+      "reference_max_error": {
+        "ploidy": 5.3290705182007514e-15,
+        "growth": 3.4694469519536142e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed464",
+      "config_seed": 464,
+      "reference_max_error": {
+        "ploidy": 1.3322676295501878e-14,
+        "growth": 6.3837823915946501e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed465",
+      "config_seed": 465,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 1.5265566588595902e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed466",
+      "config_seed": 466,
+      "reference_max_error": {
+        "ploidy": 9.7699626167013776e-15,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed467",
+      "config_seed": 467,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.3245294578089215e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed468",
+      "config_seed": 468,
+      "reference_max_error": {
+        "ploidy": 4.3076653355456074e-14,
+        "growth": 4.7184478546569153e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed469",
+      "config_seed": 469,
+      "reference_max_error": {
+        "ploidy": 1.9984014443252818e-15,
+        "growth": 1.609823385706477e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed470",
+      "config_seed": 470,
+      "reference_max_error": {
+        "ploidy": 2.2426505097428162e-14,
+        "growth": 4.4408920985006262e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed471",
+      "config_seed": 471,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 2.6506574712925612e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed472",
+      "config_seed": 472,
+      "reference_max_error": {
+        "ploidy": 1.4876988529977098e-14,
+        "growth": 4.163336342344337e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed473",
+      "config_seed": 473,
+      "reference_max_error": {
+        "ploidy": 3.8102854205135372e-13,
+        "growth": 8.3266726846886741e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed474",
+      "config_seed": 474,
+      "reference_max_error": {
+        "ploidy": 6.6613381477509392e-15,
+        "growth": 1.6653345369377348e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed475",
+      "config_seed": 475,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 1.2073675392798577e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed476",
+      "config_seed": 476,
+      "reference_max_error": {
+        "ploidy": 2.6645352591003757e-15,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed477",
+      "config_seed": 477,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 4.4686476741162551e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed478",
+      "config_seed": 478,
+      "reference_max_error": {
+        "ploidy": 3.1530333899354446e-14,
+        "growth": 3.0531133177191805e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed479",
+      "config_seed": 479,
+      "reference_max_error": {
+        "ploidy": 4.7295500849031669e-14,
+        "growth": 3.3306690738754696e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed480",
+      "config_seed": 480,
+      "reference_max_error": {
+        "ploidy": 4.4408920985006262e-15,
+        "growth": 5.134781488891349e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed481",
+      "config_seed": 481,
+      "reference_max_error": {
+        "ploidy": 3.9968028886505635e-15,
+        "growth": 1.1102230246251565e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed482",
+      "config_seed": 482,
+      "reference_max_error": {
+        "ploidy": 8.3932860661661834e-14,
+        "growth": 9.7144514654701197e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed483",
+      "config_seed": 483,
+      "reference_max_error": {
+        "ploidy": 5.0182080713057076e-14,
+        "growth": 1.3322676295501878e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed484",
+      "config_seed": 484,
+      "reference_max_error": {
+        "ploidy": 3.5527136788005009e-15,
+        "growth": 7.4940054162198066e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed485",
+      "config_seed": 485,
+      "reference_max_error": {
+        "ploidy": 3.3306690738754696e-15,
+        "growth": 9.1593399531575415e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed486",
+      "config_seed": 486,
+      "reference_max_error": {
+        "ploidy": 1.7763568394002505e-14,
+        "growth": 5.6898930012039273e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed487",
+      "config_seed": 487,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 6.5225602696727947e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed488",
+      "config_seed": 488,
+      "reference_max_error": {
+        "ploidy": 6.283862319378386e-14,
+        "growth": 1.1657341758564144e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed489",
+      "config_seed": 489,
+      "reference_max_error": {
+        "ploidy": 4.8849813083506888e-15,
+        "growth": 9.9920072216264089e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed490",
+      "config_seed": 490,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed491",
+      "config_seed": 491,
+      "reference_max_error": {
+        "ploidy": 5.773159728050814e-15,
+        "growth": 8.8817841970012523e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed492",
+      "config_seed": 492,
+      "reference_max_error": {
+        "ploidy": 2.708944180085382e-14,
+        "growth": 1.0810579861852965e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed493",
+      "config_seed": 493,
+      "reference_max_error": {
+        "ploidy": 1.6875389974302379e-14,
+        "growth": 2.976785484776201e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed494",
+      "config_seed": 494,
+      "reference_max_error": {
+        "ploidy": 4.2188474935755949e-15,
+        "growth": 8.4654505627668186e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed495",
+      "config_seed": 495,
+      "reference_max_error": {
+        "ploidy": 1.1324274851176597e-14,
+        "growth": 1.2073675392798577e-15
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed496",
+      "config_seed": 496,
+      "reference_max_error": {
+        "ploidy": 1.6409096303959814e-13,
+        "growth": 2.4980018054066022e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed497",
+      "config_seed": 497,
+      "reference_max_error": {
+        "ploidy": 1.1990408665951691e-14,
+        "growth": 8.0491169285323849e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed498",
+      "config_seed": 498,
+      "reference_max_error": {
+        "ploidy": 2.0961010704922955e-13,
+        "growth": 2.4980018054066022e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed499",
+      "config_seed": 499,
+      "reference_max_error": {
+        "ploidy": 1.5099033134902129e-14,
+        "growth": 7.7715611723760958e-16
+      },
+      "status": "ok"
+    },
+    {
+      "fit_seed": "seed500",
+      "config_seed": 500,
+      "reference_max_error": {
+        "ploidy": 4.6629367034256575e-15,
+        "growth": 5.2735593669694936e-16
+      },
+      "status": "ok"
+    }
+  ],
+  "reference_oxygen": [0, 2.5, 5],
+  "reference_tolerance": 1e-08
+}

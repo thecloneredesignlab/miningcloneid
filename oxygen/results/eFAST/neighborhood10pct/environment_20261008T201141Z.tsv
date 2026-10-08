@@ -1,0 +1,9 @@
+field	value
+git_commit	9e7f03fddf37c4ad829ce4e3af823cd45eac6506
+host	hpctpa3pc0028
+sif	/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif
+sif_sha256	0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad
+workers	16
+phase_repeats	5
+mode	pipeline
+started_utc	20261008T201141Z

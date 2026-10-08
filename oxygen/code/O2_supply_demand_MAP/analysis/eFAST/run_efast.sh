@@ -20,6 +20,7 @@ if [[ "$mode" == extend && ! "$extension_n" =~ ^[0-9]+$ ]]; then
 fi
 
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
+export APPTAINERENV_OMP_NUM_THREADS=1 APPTAINERENV_OPENBLAS_NUM_THREADS=1 APPTAINERENV_MKL_NUM_THREADS=1
 echo "host=$(hostname) mode=$mode workers=$workers repo=$repo_root sif=$sif"
 if [[ $(hostname -s) != hpctpa3pc0028 ]]; then
   echo "Refusing to run outside hpctpa3pc0028" >&2
@@ -48,19 +49,19 @@ if [[ "$mode" == extend ]]; then environment_file="$out_dir/environment_N${exten
 container() {
   apptainer exec --cleanenv "$sif" env \
     R_HOME= R_ENVIRON_USER=/dev/null \
-    R_LIBS_USER=/opt/R/4.4.2/lib64/R/library "$@"
+    R_LIBS_USER=/opt/R/4.4.2/lib64/R/library OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 "$@"
 }
 if [[ "$mode" == pilot ]]; then
   resolutions=(129)
-  replicates=1
+  replicates=5
   grid_flag=()
 elif [[ "$mode" == extend ]]; then
   resolutions=("$extension_n")
-  replicates=2
+  replicates=5
   grid_flag=(--full-grid)
 else
-  resolutions=(129 257)
-  replicates=2
+  resolutions=(129 257 513)
+  replicates=5
   grid_flag=(--full-grid)
 fi
 
@@ -84,6 +85,6 @@ done
 
 container python3 "$code_dir/efast.py" summarize --out-dir "$out_dir"
 if [[ "$mode" != pilot ]]; then
-  container python3 "$code_dir/efast.py" plot --out-dir "$out_dir" --figure4-dir "$figure4_dir"
+  container python3 "$code_dir/efast.py" plot --out-dir "$out_dir" --figure4-dir "$figure4_dir" --combined-only
 fi
 echo "eFAST $mode complete at $(date -Is)"

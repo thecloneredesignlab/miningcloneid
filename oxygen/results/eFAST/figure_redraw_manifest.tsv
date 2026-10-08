@@ -1,0 +1,33 @@
+field	value
+figure	efast_four_panel
+max_N	513
+replicate_summary	mean across two phase replicates
+n_parameters	14
+S1_parameter_order	buffer_beta,p_misseg,p_mis_base,lam_max,buffer_smax,alpha_o2,buffer_n_exp,mu_hp,gamma_mu,k_o_mis,O2_crit,gamma_growth,p_wgd,n_O
+ST_parameter_order	p_mis_base,n_O,buffer_smax,O2_crit,p_misseg,buffer_beta,alpha_o2,gamma_mu,mu_hp,buffer_n_exp,lam_max,p_wgd,gamma_growth,k_o_mis
+efast_o2_group_windows	Low [0,1]; High [3,5]
+efast_o2_group_classification_output	dominant_mean_ploidy
+efast_o2_group_bootstrap_unit	complete phase-repeat curve
+efast_o2_group_bootstrap_reps	5000
+efast_o2_group_bootstrap_seed	5826
+efast_o2_group_bh_scope	14 parameters separately for S1 and ST
+efast_o2_group_peak_gate	global peak strictly greater than 0.3
+oxygen_axis_scale	symlog base 10; linear threshold 0.025 percent
+oxygen_window_boundary_lines	black dashed lines at 1 and 3 percent oxygen
+colorbar_position	horizontal below each heatmap
+S1_vmin	0
+S1_ploidy_vmax	0.2995783731
+S1_growth_vmax	0.3556595222
+S1_color	#3F007D
+ST_vmin	0
+ST_ploidy_vmax	0.8311789415
+ST_growth_vmax	0.6826466307
+ST_color	#3F007D
+convergence_sha256	5b9d241db94d8d663297b16b0e214101c79fb7264ac9d3343b76136ec8c2a899
+classification_sha256	a6676dbc2d107b8304874f69c533c5b8e8c9b2816ee6956069c663e9e50d662d
+ranking_sha256	54f45efad5248211a775e13be3b37edbf57936accaebe28691a184dec75141ca
+parameter_groups_sha256	6de0e7b331fe635b82cb6782f56f12abec02f8c56ca4877e53b5724f2a725c67
+parameter_group_palette_sha256	ec531c49fa0ee0967e19c7d974d1c6668a704602b3d4fc4ab50187a9faa489f9
+efast_o2_sensitivity_classification_sha256	3bc092c9ee0432cb4a54577f0bcca6c4b6bdad224ceb8967f7a4df9114b54a56
+figure_png_sha256	d50537a4779f336174c1672e4c0d952d5663f5489fe5a673e50d4d92cb2e3cc5
+figure_pdf_sha256	3aa6c6de93185cb48ff50224cf29159a68fcb394e2f20a74f5bc5c9d50ffe065

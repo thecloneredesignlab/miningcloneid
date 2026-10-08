@@ -13,10 +13,6 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from SALib.analyze import fast
-from SALib.sample import fast_sampler
-
-salib_version = version("SALib")
 
 
 ACTIVE = (
@@ -34,6 +30,11 @@ GROUP = {
     "O2_crit": "shared_oxygen_stress", "n_O": "shared_oxygen_stress",
 }
 OUTPUTS = ("dominant_mean_ploidy", "dominant_growth_rate")
+
+
+def salib_version():
+    """Return the SALib version only for commands that require SALib."""
+    return version("SALib")
 
 
 def read_table(path, delimiter="\t"):
@@ -105,9 +106,19 @@ def oxygen_grid(figure4_dir, full_grid, subset):
 
 
 def prepare(args):
+    from SALib.sample import fast_sampler
+
     if args.n <= 4 * args.m * args.m:
         raise ValueError("FAST requires N > 4*M^2; choose N > %d" % (4 * args.m * args.m))
     fit_table, ranges = get_ranges(args.fit_root)
+    ranges_file = getattr(args, "ranges_file", None)
+    if ranges_file:
+        ranges = read_table(ranges_file)
+        for row in ranges:
+            for field in ("encoded_lower", "encoded_upper", "natural_lower", "natural_upper"):
+                row[field] = float(row[field])
+        if [row["parameter"] for row in ranges] != list(ACTIVE):
+            raise ValueError("Neighborhood bounds are not in FAST parameter order")
     oxygen, grid_path = oxygen_grid(args.figure4_dir, args.full_grid, args.oxygen)
     output_root = Path(args.out_dir)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -133,6 +144,33 @@ def prepare(args):
         run_dir = output_root / "runs" / ("N%d_R%d" % (args.n, replicate))
         run_dir.mkdir(parents=True, exist_ok=True)
         seed = args.seed + replicate - 1
+        metadata_path = run_dir / "metadata.json"
+        sample_path = run_dir / "samples.tsv.gz"
+        identity = {
+            "salib_version": salib_version(), "method": "eFAST", "M": args.m,
+            "N": args.n, "replicate": replicate, "seed": seed,
+            "n_parameters": len(ACTIVE), "n_samples": args.n * len(ACTIVE),
+            "fit_parameter_table_sha256": sha256(fit_table),
+            "figure4_grid_sha256": sha256(grid_path), "oxygen_pct": oxygen,
+        }
+        fit_seed = getattr(args, "fit_seed", "seed25")
+        if ranges_file:
+            identity.update({
+                "fit_seed": fit_seed, "scope": "neighborhood10pct",
+                "bounds_sha256": sha256(ranges_file),
+                "best_params_sha256": sha256(Path(args.fit_root) / fit_seed / "best_params.tsv"),
+                "fit_config_sha256": sha256(Path(args.fit_root) / fit_seed / "fit_config.rds"),
+            })
+        if metadata_path.exists():
+            previous = json.loads(metadata_path.read_text())
+            if any(previous.get(k) != v for k, v in identity.items()):
+                raise ValueError("Existing design metadata differs: " + str(run_dir))
+            if not sample_path.exists() or sha256(sample_path) != previous["samples_sha256"]:
+                raise ValueError("Existing design sample hash differs: " + str(run_dir))
+            print("Retained verified design " + str(run_dir), flush=True)
+            continue
+        if (run_dir / "outputs.tsv.gz").exists() or sample_path.exists():
+            raise ValueError("Orphan design files; inspect before resuming: " + str(run_dir))
         encoded = fast_sampler.sample(problem, args.n, M=args.m, seed=seed)
         natural = encoded.copy()
         for j, spec in enumerate(ranges):
@@ -143,10 +181,9 @@ def prepare(args):
                                      for j, name in enumerate(ACTIVE)})
             for i in range(len(natural))
         )
-        sample_path = run_dir / "samples.tsv.gz"
         write_table(sample_path, ["sample_id"] + list(ACTIVE), sample_rows)
         metadata = {
-            "salib_version": salib_version, "method": "eFAST", "M": args.m,
+            "salib_version": salib_version(), "method": "eFAST", "M": args.m,
             "N": args.n, "replicate": replicate, "seed": seed,
             "n_parameters": len(ACTIVE), "n_samples": len(natural),
             "fit_root": str(Path(args.fit_root).resolve()),
@@ -159,13 +196,18 @@ def prepare(args):
             "sampling": "independent uniform over fitted transformed bounds; log-uniform where log10",
             "samples_sha256": sha256(sample_path),
         }
-        with open(run_dir / "metadata.json", "w") as handle:
+        metadata.update(identity)
+        if ranges_file:
+            metadata["sampling"] = "independent natural-span +/-10% clipped bounds; inherited transforms"
+        with open(metadata_path, "w") as handle:
             json.dump(metadata, handle, indent=2, sort_keys=True)
         print("Prepared %s: %d parameter vectors x %d oxygen points" %
               (run_dir, len(natural), len(oxygen)), flush=True)
 
 
 def summarize(args):
+    from SALib.analyze import fast
+
     root = Path(args.out_dir)
     range_rows = read_table(root / "parameter_ranges.tsv")
     bounds = [[float(r["encoded_lower"]), float(r["encoded_upper"])] for r in range_rows]
@@ -255,7 +297,7 @@ def summarize(args):
         code_commit = "unavailable"
     manifest = [
         {"field": "summary_code_commit", "value": code_commit},
-        {"field": "salib_version", "value": salib_version},
+        {"field": "salib_version", "value": salib_version()},
         {"field": "indices_sha256", "value": sha256(root / "indices.tsv")},
         {"field": "convergence_sha256", "value": sha256(root / "convergence.tsv")},
         {"field": "parameter_band_summary_sha256", "value": sha256(root / "parameter_band_summary.tsv")},
@@ -267,6 +309,44 @@ def summarize(args):
          "value": sha256(root / "figure4_parameter_groups_source.tsv")},
     ]
     write_table(root / "analysis_manifest.tsv", ["field", "value"], manifest)
+    write_global_interpretation(root)
+
+
+def write_global_interpretation(root):
+    """Regenerate the narrative from completed phase summaries, never stale R1/R2 values."""
+    conv = read_table(root / "convergence.tsv")
+    top_n = max(int(r["N"]) for r in conv)
+    top = [r for r in conv if int(r["N"]) == top_n]
+    repeats = sorted({int(r["replicates"]) for r in top})
+    groups = read_table(root / "mechanism_band_summary.tsv")
+    lines = ["# Independent in-vivo fixed-oxygen eFAST", "",
+        "The global analysis varies 14 parameters independently over the original in-vivo fit bounds, using the documented identity/log10 transforms. The 201 oxygen points span 0–5% by 0.025%.", "",
+        "Highest resolution: N=%d; phase repetitions per cell: %s. S1/ST have no sign. The existing Figure 4B Spearman panel supplies direction." % (top_n, repeats), "",
+        "## Mechanism comparison", ""]
+    for output in OUTPUTS:
+        lookup = {(r["oxygen_band"], r["group"]): r for r in groups if r["output"] == output}
+        for index in ("S1", "ST"):
+            field = index + "_mean_per_parameter"
+            low = {g: float(lookup["low_0_to_1pct", g][field]) for g in set(GROUP.values())}
+            high = {g: float(lookup["high_3_to_5pct", g][field]) for g in set(GROUP.values())}
+            conditions = (low["death"] > max(v for g, v in low.items() if g != "death"),
+                          high["missegregation"] > low["missegregation"], high["buffering"] > low["buffering"])
+            lines.append("- %s, %s: low-O2 death group mean %.4f; low-O2 largest group %s (%.4f). Missegregation %.4f -> %.4f and buffering %.4f -> %.4f from low to high O2. All three proposed conditions: %s." %
+                (output, index, low["death"], max(low, key=low.get), max(low.values()),
+                 low["missegregation"], high["missegregation"], low["buffering"], high["buffering"],
+                 "met in these point estimates" if all(conditions) else "not met in these point estimates"))
+    lines += ["", "## Numerical diagnostics", ""]
+    lower_ns = sorted({int(r["N"]) for r in conv if int(r["N"]) < top_n})
+    for output in OUTPUTS:
+        for index in ("S1", "ST"):
+            repeat = np.percentile([float(r[index + "_range"]) for r in top if r["output"] == output], 90)
+            delta = np.percentile([float(r[index + "_delta_vs_max_N"]) for r in conv
+                    if lower_ns and int(r["N"]) == lower_ns[-1] and r["output"] == output], 90) if lower_ns else float("nan")
+            lines.append("- %s, %s: p90 phase range %.4f; p90 change from N=%s to N=%d %.4f." %
+                         (output, index, repeat, lower_ns[-1] if lower_ns else "NA", top_n, delta))
+    lines += ["", "Five repetitions measure phase variability; they do not establish resolution convergence. Fine ST rankings require caution wherever phase ranges or resolution changes remain large. Near-degenerate leading modes are separately recorded in spectral_gap_qc.tsv.", "",
+        "Group values are means of parameter indices, not additive group variance fractions. Total effects overlap through interactions. These indices are conditional on the chosen ranges and independent input distributions, not posterior uncertainty. The separate neighborhood10pct analysis examines robustness around each fitted endpoint.", ""]
+    (root / "interpretation.md").write_text("\n".join(lines))
 
 
 def summarize_band_replicates(root, rows):
@@ -372,11 +452,179 @@ def summarize_mechanism_bands(root, rows):
     write_table(root / "mechanism_band_summary.tsv", list(group_rows[0]), group_rows)
 
 
+def benjamini_hochberg(p_values):
+    """Benjamini-Hochberg adjusted p values in the original row order."""
+    values = np.asarray(p_values, dtype=float)
+    if values.ndim != 1 or len(values) == 0 or np.any(~np.isfinite(values)):
+        raise ValueError("BH adjustment requires finite p values")
+    order = np.argsort(values)
+    ranked = values[order]
+    adjusted_ranked = np.minimum.accumulate(
+        (ranked * len(values) / np.arange(1, len(values) + 1))[::-1]
+    )[::-1]
+    adjusted = np.empty_like(adjusted_ranked)
+    adjusted[order] = np.minimum(adjusted_ranked, 1.0)
+    return adjusted
+
+
+def normalized_trapezoid_weights(o2_values, lower, upper):
+    """Normalized trapezoid weights for one closed oxygen window."""
+    grid = np.asarray(o2_values, dtype=float)
+    selected = np.flatnonzero((grid >= lower - 1e-12) & (grid <= upper + 1e-12))
+    window_grid = grid[selected]
+    if (len(window_grid) < 2 or abs(window_grid[0] - lower) > 1e-12 or
+            abs(window_grid[-1] - upper) > 1e-12):
+        raise ValueError("The oxygen grid does not span an exact window boundary")
+    delta = np.diff(window_grid)
+    local = np.zeros(len(window_grid))
+    local[0] = delta[0] / 2
+    local[-1] = delta[-1] / 2
+    if len(window_grid) > 2:
+        local[1:-1] = (delta[:-1] + delta[1:]) / 2
+    weights = np.zeros(len(grid))
+    weights[selected] = local / (upper - lower)
+    if abs(weights.sum() - 1) > 1e-12:
+        raise ValueError("Normalized oxygen-window weights do not sum to one")
+    return weights
+
+
+def derive_efast_o2_classification(root, max_n, o2_values, parameter_order,
+                                   bootstrap_reps=5000, bootstrap_seed=5826,
+                                   minimum_peak=0.3):
+    """Classify eFAST rows with the Figure 4B oxygen-window decision rule.
+
+    The classification curve uses dominant mean ploidy only. Complete
+    phase-repeat curves are the bootstrap unit. S1 and ST are classified
+    independently; the growth heatmap follows the corresponding ploidy order.
+    """
+    raw_rows = [row for row in read_table(Path(root) / "indices.tsv")
+                if int(row["N"]) == max_n]
+    replicates = sorted({int(row["replicate"]) for row in raw_rows})
+    if len(replicates) < 2:
+        raise ValueError("eFAST oxygen classification requires at least two phase repeats")
+    if bootstrap_reps < 1000:
+        raise ValueError("At least 1000 eFAST bootstrap replicates are required")
+    low_weights = normalized_trapezoid_weights(o2_values, 0, 1)
+    high_weights = normalized_trapezoid_weights(o2_values, 3, 5)
+    o2_index = {value: index for index, value in enumerate(o2_values)}
+    parameters = list(parameter_order)
+    expected = len(replicates) * len(OUTPUTS) * len(parameters) * len(o2_values)
+    if len(raw_rows) != expected:
+        raise ValueError("Incomplete high-resolution eFAST replicate table")
+
+    raw_lookup = {}
+    for row in raw_rows:
+        key = (int(row["replicate"]), row["output"], row["parameter"],
+               float(row["O2_pct"]))
+        if key in raw_lookup:
+            raise ValueError("Duplicate high-resolution eFAST replicate row")
+        raw_lookup[key] = row
+
+    rng = np.random.default_rng(bootstrap_seed)
+    bootstrap_index = rng.integers(
+        0, len(replicates), size=(bootstrap_reps, len(replicates)))
+    group_levels = ("High O2", "Low O2", "O2-independent")
+    all_rows = []
+    for index in ("S1", "ST"):
+        provisional = []
+        for parameter in parameters:
+            phase_curves = []
+            for replicate in replicates:
+                curve = np.empty(len(o2_values))
+                for o2 in o2_values:
+                    curve[o2_index[o2]] = float(raw_lookup[
+                        (replicate, "dominant_mean_ploidy", parameter, o2)][index])
+                phase_curves.append(curve)
+            phase_curves = np.asarray(phase_curves)
+            observed_curve = phase_curves.mean(axis=0)
+            low_score = float(observed_curve @ low_weights)
+            high_score = float(observed_curve @ high_weights)
+            delta = low_score - high_score
+            peak = float(observed_curve.max())
+            bootstrap_curves = phase_curves[bootstrap_index].mean(axis=1)
+            bootstrap_delta = (bootstrap_curves @ low_weights -
+                               bootstrap_curves @ high_weights)
+            lower_tail = (np.count_nonzero(bootstrap_delta <= 0) + 1) / (
+                bootstrap_reps + 1)
+            upper_tail = (np.count_nonzero(bootstrap_delta >= 0) + 1) / (
+                bootstrap_reps + 1)
+            provisional.append({
+                "index": index,
+                "parameter": parameter,
+                "low_o2_score": low_score,
+                "high_o2_score": high_score,
+                "low_minus_high": delta,
+                "global_peak": peak,
+                "bootstrap_sign_p_value": min(1.0, 2 * min(lower_tail, upper_tail)),
+            })
+        adjusted = benjamini_hochberg(
+            [row["bootstrap_sign_p_value"] for row in provisional])
+        for row, q_value in zip(provisional, adjusted):
+            peak_passes = row["global_peak"] > minimum_peak
+            if not peak_passes:
+                group = "O2-independent"
+                rule = "Global peak <= 0.3"
+            elif q_value >= 0.05:
+                group = "O2-independent"
+                rule = "No Low-High difference at BH q < 0.05"
+            elif row["low_minus_high"] < 0:
+                group = "High O2"
+                rule = "High [3,5] exceeds Low [0,1]"
+            elif row["low_minus_high"] > 0:
+                group = "Low O2"
+                rule = "Low [0,1] exceeds High [3,5]"
+            else:
+                group = "O2-independent"
+                rule = "Zero Low-High contrast"
+            row.update({
+                "o2_sensitivity_group": group,
+                "o2_sensitivity_group_order": group_levels.index(group) + 1,
+                "bh_adjusted_p_value": float(q_value),
+                "minimum_global_peak": minimum_peak,
+                "global_peak_passes": str(peak_passes).upper(),
+                "decision_rule": rule,
+                "bootstrap_reps": bootstrap_reps,
+                "bootstrap_seed": bootstrap_seed,
+                "bootstrap_unit": "complete phase-repeat curve",
+                "n_phase_repeats": len(replicates),
+                "classification_output": "dominant_mean_ploidy",
+                "parameter_order": parameter_order[row["parameter"]],
+            })
+        provisional.sort(key=lambda row: (
+            row["o2_sensitivity_group_order"], -row["global_peak"],
+            row["parameter_order"]))
+        group_rank = {group: 0 for group in group_levels}
+        for display_order, row in enumerate(provisional, 1):
+            group_rank[row["o2_sensitivity_group"]] += 1
+            row["within_group_rank"] = group_rank[row["o2_sensitivity_group"]]
+            row["display_order"] = display_order
+            all_rows.append(row)
+
+    fields = [
+        "index", "parameter", "o2_sensitivity_group",
+        "o2_sensitivity_group_order", "display_order", "within_group_rank",
+        "low_o2_score", "high_o2_score", "low_minus_high", "global_peak",
+        "minimum_global_peak", "global_peak_passes", "bootstrap_sign_p_value",
+        "bh_adjusted_p_value", "decision_rule", "bootstrap_reps",
+        "bootstrap_seed", "bootstrap_unit", "n_phase_repeats",
+        "classification_output", "parameter_order",
+    ]
+    formatted = []
+    for row in all_rows:
+        formatted.append({
+            key: ("%.10g" % value if isinstance(value, float) else value)
+            for key, value in row.items()
+        })
+    write_table(Path(root) / "efast_o2_sensitivity_classification.tsv", fields, formatted)
+    return all_rows
+
+
 def plot(args):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.colors import TwoSlopeNorm
+    from matplotlib.colors import LinearSegmentedColormap, ListedColormap, TwoSlopeNorm
+    from matplotlib.patches import Patch
 
     root = Path(args.out_dir)
     rows = read_table(root / "convergence.tsv")
@@ -387,79 +635,342 @@ def plot(args):
         raise ValueError("Publication heatmaps require the full Figure 4 oxygen grid")
     fig_dir = root / "figures"
     fig_dir.mkdir(exist_ok=True)
-    group_rows = sorted(read_table(root / "figure4_parameter_groups_source.tsv"),
-                        key=lambda row: int(row["parameter_order"]))
-    parameters = [row["parameter"] for row in group_rows]
-    if len(parameters) != len(ACTIVE) + len(STRUCTURAL) or set(parameters) != set(ACTIVE + STRUCTURAL):
-        raise ValueError("Figure 4 parameter order does not match fixed-O2 heatmap rows")
-    group_boundaries = [i for i in range(1, len(parameters))
-                        if group_rows[i]["parameter_group"] != group_rows[i - 1]["parameter_group"]]
-    for output in OUTPUTS:
-        for index in ("S1", "ST"):
-            lookup = {(row["parameter"], float(row["O2_pct"])): float(row[index + "_mean"])
-                      for row in rows if row["output"] == output}
-            grid = np.full((len(parameters), len(o2_values)), np.nan)
-            for i, parameter in enumerate(parameters):
-                for j, o2 in enumerate(o2_values):
-                    if parameter in ACTIVE:
-                        grid[i, j] = lookup[(parameter, o2)]
+
+    # The row classifications and order are defined by the iteration5 Figure 4B
+    # window analysis. Keep local copies beside the eFAST numerical results so
+    # the figure can be reproduced without recomputing that independent analysis.
+    source_names = {
+        "continuous_ploidy_o2_window_classification.tsv":
+            "figure4b_o2_classification_source.tsv",
+        "continuous_ploidy_parameter_ranking.tsv":
+            "figure4b_parameter_ranking_source.tsv",
+        "parameter_function_groups.tsv": "figure4_parameter_groups_source.tsv",
+        "parameter_function_group_palette.tsv":
+            "figure4_parameter_group_palette_source.tsv",
+    }
+    if args.figure4_layout_dir:
+        layout_dir = Path(args.figure4_layout_dir)
+        for source_name, copy_name in source_names.items():
+            source_path = layout_dir / source_name
+            if not source_path.exists():
+                raise FileNotFoundError(source_path)
+            copy_path = root / copy_name
+            if not copy_path.exists() or sha256(copy_path) != sha256(source_path):
+                shutil.copyfile(source_path, copy_path)
+    for copy_name in source_names.values():
+        if not (root / copy_name).exists():
+            raise FileNotFoundError(
+                "%s; pass --figure4-layout-dir to copy the iteration5 Figure 4B sources" %
+                (root / copy_name))
+
+    figure4_classification = [
+        row for row in read_table(root / "figure4b_o2_classification_source.tsv")
+        if row["parameter"] in ACTIVE
+    ]
+    if (len(figure4_classification) != len(ACTIVE) or
+            {row["parameter"] for row in figure4_classification} != set(ACTIVE)):
+        raise ValueError("Figure 4B classification does not contain the 14 eFAST parameters exactly once")
+    figure4_group_by_parameter = {
+        row["parameter"]: row["o2_association_group"]
+        for row in figure4_classification
+    }
+    o2_group_levels = ("High O2", "Low O2", "O2-independent")
+    if any(group not in o2_group_levels for group in figure4_group_by_parameter.values()):
+        raise ValueError("Unexpected Figure 4B O2 association group")
+
+    function_rows = read_table(root / "figure4_parameter_groups_source.tsv")
+    function_by_parameter = {row["parameter"]: row["parameter_group"]
+                             for row in function_rows}
+    configured_parameter_order = {
+        row["parameter"]: int(row["parameter_order"])
+        for row in function_rows if row["parameter"] in ACTIVE
+    }
+    if (not set(ACTIVE).issubset(function_by_parameter) or
+            set(configured_parameter_order) != set(ACTIVE)):
+        raise ValueError("Missing parameter-function annotation")
+
+    classification_file = getattr(args, "classification_file", None)
+    efast_classification = (read_table(classification_file) if classification_file else
+        derive_efast_o2_classification(root, max_n, o2_values, configured_parameter_order))
+    efast_rows_by_index = {
+        index: sorted(
+            [row for row in efast_classification if row["index"] == index],
+            key=lambda row: int(row["display_order"]),
+        )
+        for index in ("S1", "ST")
+    }
+    panel_parameters = {
+        index: [row["parameter"] for row in efast_rows_by_index[index]]
+        for index in ("S1", "ST")
+    }
+    if any(set(panel_parameters[index]) != set(ACTIVE) for index in ("S1", "ST")):
+        raise ValueError("eFAST oxygen classification does not contain all sampled parameters")
+    efast_group_by_index = {
+        index: {row["parameter"]: row["o2_sensitivity_group"]
+                for row in efast_rows_by_index[index]}
+        for index in ("S1", "ST")
+    }
+
+    palette_rows = sorted(
+        read_table(root / "figure4_parameter_group_palette_source.tsv"),
+        key=lambda row: int(row["group_order"]),
+    )
+    function_palette = {row["parameter_group"]: row["color"] for row in palette_rows}
+    function_labels = {row["parameter_group"]: row["display_label"] for row in palette_rows}
+    if any(group not in function_palette for group in function_by_parameter.values()):
+        raise ValueError("Missing parameter-function color")
+    o2_palette = {
+        "High O2": "#B2182B",
+        "Low O2": "#2166AC",
+        "O2-independent": "#8A8A8A",
+    }
+    o2_labels = {
+        "High O2": "High O2",
+        "Low O2": "Low O2",
+        "O2-independent": "O2-independent",
+    }
+    def grid_for(output, index, parameters):
+        lookup = {(row["parameter"], float(row["O2_pct"])):
+                  float(row[index + "_" + getattr(args, "statistic", "mean")])
+                  for row in rows if row["output"] == output}
+        expected = len(parameters) * len(o2_values)
+        if len(lookup) != expected:
+            raise ValueError("Incomplete %s %s grid: %d of %d cells" %
+                             (output, index, len(lookup), expected))
+        return np.array([[lookup[(parameter, o2)] for o2 in o2_values]
+                         for parameter in parameters])
+
+    grids = {(index, output): grid_for(output, index, panel_parameters[index])
+             for index in ("S1", "ST") for output in OUTPUTS}
+    output_max = {(index, output): float(np.nanmax(grids[index, output]))
+                  for index in ("S1", "ST") for output in OUTPUTS}
+    if any(not math.isfinite(value) or value <= 0 for value in output_max.values()):
+        raise ValueError("Invalid eFAST color scale maximum")
+    oxygen_array = np.asarray(o2_values)
+    oxygen_edges = np.empty(len(oxygen_array) + 1)
+    oxygen_edges[0] = 0
+    oxygen_edges[1:-1] = (oxygen_array[:-1] + oxygen_array[1:]) / 2
+    oxygen_edges[-1] = oxygen_array[-1] + (oxygen_array[-1] - oxygen_array[-2]) / 2
+    oxygen_ticks = (0, 0.025, 0.1, 0.5, 1, 2, 5)
+    oxygen_tick_labels = ("0", ".025", ".1", ".5", "1", "2", "5")
+    oxygen_window_boundaries = (1.0, 3.0)
+
+    # Two main panels: A contains S1 for both outputs and B contains ST for
+    # both outputs. Ploidy and growth use separate data-driven color scales.
+    index_styles = {
+        "S1": {
+            "letter": "A", "title": "First-order effects (S1)",
+            "cmap": LinearSegmentedColormap.from_list(
+                "white_to_deep_purple", ["#FFFFFF", "#3F007D"]),
+            "color": "#3F007D",
+        },
+        "ST": {
+            "letter": "B", "title": "Total effects (ST)",
+            "cmap": LinearSegmentedColormap.from_list(
+                "white_to_deep_purple_st", ["#FFFFFF", "#3F007D"]),
+            "color": "#3F007D",
+        },
+    }
+    output_titles = {
+        "dominant_mean_ploidy": "Dominant mean ploidy",
+        "dominant_growth_rate": "Asymptotic net live-cell growth rate",
+    }
+
+    fig = plt.figure(figsize=(18, 13.5))
+    outer = fig.add_gridspec(2, 1, left=.19, right=.965, top=.95, bottom=.15,
+                             hspace=.30)
+    panel_title_y = {"S1": .968, "ST": .514}
+    for panel_index, index in enumerate(("S1", "ST")):
+        parameters = panel_parameters[index]
+        function_groups = [function_by_parameter[parameter] for parameter in parameters]
+        figure4_groups = [figure4_group_by_parameter[parameter] for parameter in parameters]
+        efast_groups = [efast_group_by_index[index][parameter] for parameter in parameters]
+        group_boundaries = [i for i in range(1, len(parameters))
+                            if efast_groups[i] != efast_groups[i - 1]]
+        inner = outer[panel_index].subgridspec(
+            2, 6, width_ratios=(.14, .14, .14, 3.5, .25, 3.5),
+            height_ratios=(1, .055), wspace=.055, hspace=.28)
+        function_ax = fig.add_subplot(inner[0, 0])
+        figure4_ax = fig.add_subplot(inner[0, 1], sharey=function_ax)
+        efast_ax = fig.add_subplot(inner[0, 2], sharey=function_ax)
+        heat_axes = [fig.add_subplot(inner[0, column], sharey=function_ax)
+                     for column in (3, 5)]
+        color_axes = [fig.add_subplot(inner[1, column]) for column in (3, 5)]
+
+        function_codes = np.array([
+            list(function_palette).index(group) for group in function_groups
+        ])[:, None]
+        function_cmap = ListedColormap(list(function_palette.values()))
+        function_ax.imshow(function_codes, aspect="auto", origin="upper",
+                           extent=[0, 1, len(parameters), 0], cmap=function_cmap,
+                           vmin=-.5, vmax=len(function_palette) - .5,
+                           interpolation="nearest")
+        function_ax.set_yticks(np.arange(len(parameters)) + .5, parameters)
+        function_ax.tick_params(axis="y", labelsize=9.5, length=0, pad=7)
+        function_ax.set_xticks([])
+        function_ax.set_title("1", fontsize=8.5, pad=5)
+
+        o2_cmap = ListedColormap([o2_palette[group] for group in o2_group_levels])
+        for annotation_ax, groups, title in (
+                (figure4_ax, figure4_groups, "2"),
+                (efast_ax, efast_groups, "3")):
+            codes = np.array([o2_group_levels.index(group) for group in groups])[:, None]
+            annotation_ax.imshow(
+                codes, aspect="auto", origin="upper",
+                extent=[0, 1, len(parameters), 0], cmap=o2_cmap,
+                vmin=-.5, vmax=len(o2_group_levels) - .5,
+                interpolation="nearest")
+            annotation_ax.tick_params(axis="y", labelleft=False, left=False)
+            annotation_ax.set_xticks([])
+            annotation_ax.set_title(title, fontsize=8.5, pad=5)
+
+        for output, ax, color_ax in zip(OUTPUTS, heat_axes, color_axes):
+            image = ax.pcolormesh(
+                oxygen_edges, np.arange(len(parameters) + 1), grids[index, output],
+                shading="flat", vmin=0,
+                vmax=output_max[index, output], cmap=index_styles[index]["cmap"],
+                rasterized=True,
+            )
+            ax.set_xscale("symlog", base=10, linthresh=.025, linscale=1)
+            ax.set_xlim(0, oxygen_edges[-1])
+            ax.set_ylim(len(parameters), 0)
+            ax.set_yticks(np.arange(len(parameters)) + .5)
+            ax.tick_params(axis="y", labelleft=False, left=False)
+            ax.set_xticks(oxygen_ticks, oxygen_tick_labels)
+            ax.tick_params(axis="x", labelsize=8.5)
+            ax.set_xlabel("Fixed oxygen (%)", labelpad=4)
+            ax.set_title(output_titles[output], fontsize=11, pad=8)
+            for boundary_o2 in oxygen_window_boundaries:
+                ax.axvline(
+                    boundary_o2, color="#000000", linewidth=.9,
+                    linestyle=(0, (4, 3)), zorder=3,
+                )
+            for boundary in group_boundaries:
+                ax.axhline(boundary, color="#FFFFFF", linewidth=1.1)
+            colorbar = fig.colorbar(image, cax=color_ax, orientation="horizontal")
+            colorbar_ticks = np.linspace(0, output_max[index, output], 3)
+            colorbar.set_ticks(colorbar_ticks)
+            colorbar.set_ticklabels(["%.4f" % value for value in colorbar_ticks])
+            colorbar.ax.tick_params(labelsize=8, length=2, pad=2)
+            colorbar.outline.set_linewidth(.6)
+        for annotation_ax in (function_ax, figure4_ax, efast_ax):
+            for boundary in group_boundaries:
+                annotation_ax.axhline(boundary, color="#FFFFFF", linewidth=1.1)
+            for spine in annotation_ax.spines.values():
+                spine.set_color("#444444")
+                spine.set_linewidth(.6)
+
+        fig.text(.032, panel_title_y[index], index_styles[index]["letter"],
+                 fontsize=18, fontweight="bold", va="top")
+        fig.text(.058, panel_title_y[index], index_styles[index]["title"],
+                 fontsize=13, fontweight="bold", va="top")
+
+    function_handles = [
+        Patch(facecolor=function_palette[row["parameter_group"]], edgecolor="none",
+              label=function_labels[row["parameter_group"]])
+        for row in palette_rows
+    ]
+    o2_handles = [
+        Patch(facecolor=o2_palette[group], edgecolor="none", label=o2_labels[group])
+        for group in o2_group_levels
+    ]
+    process_legend = fig.legend(
+        handles=function_handles, loc="lower left", bbox_to_anchor=(.19, .055),
+        ncol=5, frameon=False, title="1  Process", fontsize=8.5,
+        title_fontsize=9.5, handlelength=1.2, columnspacing=1.4,
+    )
+    fig.add_artist(process_legend)
+    fig.legend(
+        handles=o2_handles, loc="lower left", bbox_to_anchor=(.19, .015),
+        ncol=3, frameon=False, title="2  O2 correlation     3  Sensitivity",
+        fontsize=8.5,
+        title_fontsize=9.5, handlelength=1.2, columnspacing=1.8,
+    )
+
+    combined_png = fig_dir / "efast_four_panel.png"
+    combined_pdf = fig_dir / "efast_four_panel.pdf"
+    fig.savefig(combined_png, dpi=250, facecolor="white")
+    fig.savefig(combined_pdf, facecolor="white")
+    plt.close(fig)
+
+    figure_manifest = [
+        {"field": "figure", "value": "efast_four_panel"},
+        {"field": "max_N", "value": max_n},
+        {"field": "replicate_summary", "value": getattr(args, "summary_label", None) or
+         "mean across %s phase replicates" % rows[0]["replicates"]},
+        {"field": "n_parameters", "value": len(ACTIVE)},
+        {"field": "S1_parameter_order", "value": ",".join(panel_parameters["S1"])},
+        {"field": "ST_parameter_order", "value": ",".join(panel_parameters["ST"])},
+        {"field": "efast_o2_group_windows", "value": "Low [0,1]; High [3,5]"},
+        {"field": "efast_o2_group_classification_output",
+         "value": "dominant_mean_ploidy"},
+        {"field": "efast_o2_group_bootstrap_unit", "value": efast_classification[0]["bootstrap_unit"]},
+        {"field": "efast_o2_group_bootstrap_reps", "value": "5000"},
+        {"field": "efast_o2_group_bootstrap_seed", "value": "5826"},
+        {"field": "efast_o2_group_bh_scope", "value": "14 parameters separately for S1 and ST"},
+        {"field": "efast_o2_group_peak_gate", "value": "global peak strictly greater than 0.3"},
+        {"field": "oxygen_axis_scale", "value": "symlog base 10; linear threshold 0.025 percent"},
+        {"field": "oxygen_window_boundary_lines",
+         "value": "black dashed lines at 1 and 3 percent oxygen"},
+        {"field": "colorbar_position", "value": "horizontal below each heatmap"},
+        {"field": "S1_vmin", "value": "0"},
+        {"field": "S1_ploidy_vmax",
+         "value": "%.10g" % output_max["S1", "dominant_mean_ploidy"]},
+        {"field": "S1_growth_vmax",
+         "value": "%.10g" % output_max["S1", "dominant_growth_rate"]},
+        {"field": "S1_color", "value": index_styles["S1"]["color"]},
+        {"field": "ST_vmin", "value": "0"},
+        {"field": "ST_ploidy_vmax",
+         "value": "%.10g" % output_max["ST", "dominant_mean_ploidy"]},
+        {"field": "ST_growth_vmax",
+         "value": "%.10g" % output_max["ST", "dominant_growth_rate"]},
+        {"field": "ST_color", "value": index_styles["ST"]["color"]},
+        {"field": "convergence_sha256", "value": sha256(root / "convergence.tsv")},
+        {"field": "classification_sha256",
+         "value": sha256(root / "figure4b_o2_classification_source.tsv")},
+        {"field": "ranking_sha256",
+         "value": sha256(root / "figure4b_parameter_ranking_source.tsv")},
+        {"field": "parameter_groups_sha256",
+         "value": sha256(root / "figure4_parameter_groups_source.tsv")},
+        {"field": "parameter_group_palette_sha256",
+         "value": sha256(root / "figure4_parameter_group_palette_source.tsv")},
+        {"field": "efast_o2_sensitivity_classification_sha256",
+         "value": sha256(root / "efast_o2_sensitivity_classification.tsv")},
+        {"field": "figure_png_sha256", "value": sha256(combined_png)},
+        {"field": "figure_pdf_sha256", "value": sha256(combined_pdf)},
+    ]
+    write_table(root / "figure_redraw_manifest.tsv", ["field", "value"], figure_manifest)
+
+    if args.combined_only:
+        return
+
+    for index in ("S1", "ST"):
+        parameters = panel_parameters[index]
+        efast_groups = [efast_group_by_index[index][parameter] for parameter in parameters]
+        group_boundaries = [i for i in range(1, len(parameters))
+                            if efast_groups[i] != efast_groups[i - 1]]
+        for output in OUTPUTS:
             fig, ax = plt.subplots(figsize=(12, 6.5), constrained_layout=True)
-            cmap = plt.colormaps["viridis"].copy()
-            cmap.set_bad("#dddddd")
-            im = ax.imshow(grid, aspect="auto", origin="upper", extent=[0, 5, len(parameters), 0],
-                           vmin=0, vmax=1, cmap=cmap, interpolation="nearest")
+            im = ax.pcolormesh(
+                oxygen_edges, np.arange(len(parameters) + 1), grids[index, output],
+                shading="flat", vmin=0, vmax=output_max[index, output],
+                cmap=index_styles[index]["cmap"], rasterized=True)
+            ax.set_xscale("symlog", base=10, linthresh=.025, linscale=1)
+            ax.set_xlim(0, oxygen_edges[-1])
+            ax.set_ylim(len(parameters), 0)
             ax.set_yticks(np.arange(len(parameters)) + .5, parameters)
-            ax.set_xticks(np.arange(0, 5.1, .5))
+            ax.set_xticks(oxygen_ticks, oxygen_tick_labels)
             ax.set_xlabel("Fixed oxygen (%)")
             ax.set_title("%s | %s | eFAST N=%d, mean across replicates" %
-                         ("Dominant mean ploidy" if output == OUTPUTS[0] else "Asymptotic net live growth (day$^{-1}$)",
-                          "First order S1" if index == "S1" else "Total effect ST", max_n))
+                         (output_titles[output], index_styles[index]["title"], max_n))
             for boundary in group_boundaries:
                 ax.axhline(boundary, color="white", linewidth=1)
-            for row_index, parameter in enumerate(parameters):
-                if parameter in STRUCTURAL:
-                    ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
-                            va="center", fontsize=8, color="#555555")
-            fig.colorbar(im, ax=ax, label=index + " variance fraction")
+            fig.colorbar(im, ax=ax, orientation="horizontal", pad=.14,
+                         label=index + " variance fraction")
             stem = "%s_%s" % (output, index)
             fig.savefig(fig_dir / (stem + ".png"), dpi=250)
             fig.savefig(fig_dir / (stem + ".pdf"))
             plt.close(fig)
-
-    fig, axes = plt.subplots(2, 2, figsize=(19, 12), sharex=True, sharey=True,
-                             constrained_layout=True)
-    for i, output in enumerate(OUTPUTS):
-        for j, index in enumerate(("S1", "ST")):
-            ax = axes[i, j]
-            lookup = {(row["parameter"], float(row["O2_pct"])): float(row[index + "_mean"])
-                      for row in rows if row["output"] == output}
-            grid = np.full((len(parameters), len(o2_values)), np.nan)
-            for pi, parameter in enumerate(parameters):
-                if parameter in ACTIVE:
-                    for oi, o2 in enumerate(o2_values):
-                        grid[pi, oi] = lookup[(parameter, o2)]
-            cmap = plt.colormaps["viridis"].copy()
-            cmap.set_bad("#dddddd")
-            im = ax.imshow(grid, aspect="auto", origin="upper",
-                           extent=[0, 5, len(parameters), 0], vmin=0, vmax=1,
-                           cmap=cmap, interpolation="nearest")
-            for boundary in group_boundaries:
-                ax.axhline(boundary, color="white", linewidth=1)
-            ax.set_yticks(np.arange(len(parameters)) + .5, parameters)
-            ax.tick_params(axis="y", labelleft=(j == 0))
-            ax.set_xticks(np.arange(0, 5.1, .5))
-            ax.set_title(("Ploidy" if i == 0 else "Net live growth") + " | " + index)
-            if i == 1:
-                ax.set_xlabel("Fixed oxygen (%)")
-            for row_index, parameter in enumerate(parameters):
-                if parameter in STRUCTURAL:
-                    ax.text(2.5, row_index + .5, "N/A for fixed oxygen", ha="center",
-                            va="center", fontsize=7, color="#555555")
-    fig.colorbar(im, ax=axes.ravel().tolist(), label="eFAST variance fraction", shrink=.86)
-    fig.suptitle("Independent in-vivo eFAST | N=%d | mean across phase replicates" % max_n)
-    fig.savefig(fig_dir / "efast_four_panel.png", dpi=250)
-    fig.savefig(fig_dir / "efast_four_panel.pdf")
-    plt.close(fig)
 
     # Existing Figure 4B correlations retain the sign that FAST indices omit.
     correlation = read_table(root / "figure4b_spearman_source.tsv")
@@ -468,6 +979,8 @@ def plot(args):
             raise ValueError("Missing Figure 4 correlation column " + name)
     lookup = {(row["parameter"], float(row["O2_pct"])): float(row["spearman_rho"])
               for row in correlation}
+    parameters = [row["parameter"] for row in sorted(
+        figure4_classification, key=lambda row: int(row["display_order"]))]
     grid = np.array([[lookup[(p, o2)] for o2 in o2_values] for p in parameters])
     fig, ax = plt.subplots(figsize=(12, 6.5), constrained_layout=True)
     im = ax.imshow(grid, aspect="auto", origin="upper", extent=[0, 5, len(parameters), 0],
@@ -490,7 +1003,9 @@ def main():
     p.add_argument("--figure4-dir", required=True)
     p.add_argument("--out-dir", required=True)
     p.add_argument("--n", type=int, required=True)
-    p.add_argument("--replicates", type=int, default=2)
+    p.add_argument("--replicates", type=int, default=5)
+    p.add_argument("--ranges-file", help="Audited per-fit-seed neighborhood bounds")
+    p.add_argument("--fit-seed", default="seed25")
     p.add_argument("--seed", type=int, default=20260923)
     p.add_argument("--m", type=int, default=4)
     p.add_argument("--oxygen", default="0,0.5,2.5,5")
@@ -500,6 +1015,13 @@ def main():
     f = sub.add_parser("plot")
     f.add_argument("--out-dir", required=True)
     f.add_argument("--figure4-dir", required=True)
+    f.add_argument("--figure4-layout-dir",
+                   help="iteration5 Figure 4 directory containing classification/order sources")
+    f.add_argument("--combined-only", action="store_true",
+                   help="redraw only efast_four_panel.pdf/png")
+    f.add_argument("--classification-file", help="Precomputed neighborhood oxygen classification")
+    f.add_argument("--statistic", choices=("mean", "median"), default="mean")
+    f.add_argument("--summary-label")
     args = parser.parse_args()
     if args.command == "prepare":
         prepare(args)

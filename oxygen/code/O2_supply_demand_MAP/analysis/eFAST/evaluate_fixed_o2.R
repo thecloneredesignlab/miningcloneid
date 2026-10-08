@@ -37,7 +37,15 @@ if (!is.finite(workers) || workers < 1L) stop("workers must be positive")
 workers <- min(workers, nrow(samples))
 if (workers > 1L && .Platform$OS.type != "unix") stop("Parallel evaluation requires Unix")
 
-seed_dir <- file.path(opt$fit_root, "seed25")
+fit_seed <- metadata$fit_seed %||% "seed25"
+if (!grepl("^seed[0-9]+$", fit_seed)) stop("Invalid fit seed")
+seed_dir <- file.path(opt$fit_root, fit_seed)
+hash_file <- function(path) strsplit(system2("sha256sum", shQuote(path), stdout = TRUE), " ")[[1L]][[1L]]
+if (!is.null(metadata$best_params_sha256) &&
+    hash_file(file.path(seed_dir, "best_params.tsv")) != metadata$best_params_sha256) stop("Best parameters changed")
+if (!is.null(metadata$fit_config_sha256) &&
+    hash_file(file.path(seed_dir, "fit_config.rds")) != metadata$fit_config_sha256) stop("Fit configuration changed")
+if (hash_file(opt$samples) != metadata$samples_sha256) stop("FAST sample hash mismatch")
 cfg_raw <- readRDS(file.path(seed_dir, "fit_config.rds"))
 fit_params <- read.delim(file.path(seed_dir, "best_params.tsv"), check.names = FALSE)
 base_params <- as.list(stats::setNames(as.numeric(fit_params$value), fit_params$parameter))
@@ -69,8 +77,8 @@ if (identical(opt$validate, "TRUE")) {
                                     "fixed_o2_dominant_ploidy_201grid.tsv"))
   rp <- prepare_run_params(base_params, "invivo", cfg, 0)
   for (o2 in c(0, 2.5, 5)) {
-    actual <- fixo2_dominant_attractor_one("seed25", rp, model_env, cfg, o2)
-    expected <- reference[reference$seed_id == "seed25" & abs(reference$O2_pct - o2) < 1e-12, ]
+    actual <- fixo2_dominant_attractor_one(fit_seed, rp, model_env, cfg, o2)
+    expected <- reference[reference$seed_id == fit_seed & abs(reference$O2_pct - o2) < 1e-12, ]
     if (nrow(expected) != 1L || actual$status != "ok" ||
         abs(actual$dominant_mean_ploidy - expected$dominant_mean_ploidy) > 1e-8 ||
         abs(actual$dominant_growth_rate - expected$dominant_growth_rate) > 1e-8) {
@@ -85,15 +93,21 @@ start <- Sys.time()
 indices <- split(seq_len(nrow(samples)), rep(seq_len(workers), length.out = nrow(samples)))
 part_paths <- sprintf("%s.part%02d.gz", opt$out, seq_along(indices))
 worker <- function(part) {
-  results <- lapply(indices[[part]], evaluate_one)
-  table <- do.call(rbind, results)
   con <- gzfile(part_paths[[part]], "wt")
   on.exit(close(con))
-  utils::write.table(table, con, sep = "\t", quote = FALSE, row.names = FALSE,
-                     col.names = part == 1L, na = "NA")
-  c(rows = nrow(table), failures = sum(table$status != "ok" |
-                                     is.na(table$eigenvector_nonnegative) |
-                                     !table$eigenvector_nonnegative))
+  totals <- c(rows = 0L, failures = 0L)
+  chunks <- split(indices[[part]], ceiling(seq_along(indices[[part]]) / 32L))
+  for (chunk_id in seq_along(chunks)) {
+    table <- do.call(rbind, lapply(chunks[[chunk_id]], evaluate_one))
+    utils::write.table(table, con, sep = "\t", quote = FALSE, row.names = FALSE,
+                       col.names = part == 1L && chunk_id == 1L, na = "NA")
+    totals <- totals + c(rows = nrow(table), failures = sum(table$status != "ok" |
+                          is.na(table$eigenvector_nonnegative) | !table$eigenvector_nonnegative |
+                          !is.finite(table$dominant_mean_ploidy) | !is.finite(table$dominant_growth_rate)))
+    if (part == 1L && chunk_id %% 10L == 0L) message("Progress ", fit_seed, ": worker 1, ",
+        min(chunk_id * 32L, length(indices[[part]])), "/", length(indices[[part]]), " vectors")
+  }
+  totals
 }
 counts <- if (workers == 1L) list(worker(1L)) else
   parallel::mclapply(seq_along(indices), worker, mc.cores = workers, mc.preschedule = FALSE)
@@ -110,5 +124,11 @@ if (length(part_paths) > 1L && !all(file.append(combined_path, part_paths[-1L]))
 }
 if (!file.rename(combined_path, opt$out)) stop("Cannot finalize output")
 unlink(part_paths)
+jsonlite::write_json(list(fit_seed = fit_seed, n_rows = unname(totals[["rows"]]),
+  metadata_sha256 = hash_file(opt$metadata), samples_sha256 = hash_file(opt$samples),
+  outputs_sha256 = hash_file(opt$out), evaluator_sha256 = hash_file(sub("^--file=", "", script_arg)),
+  elapsed_seconds = as.numeric(difftime(Sys.time(), start, units = "secs")),
+  workers = workers, completed_at = format(Sys.time(), tz = "UTC", usetz = TRUE)),
+  paste0(opt$out, ".receipt.json"), auto_unbox = TRUE, pretty = TRUE)
 message("Evaluated ", totals[["rows"]], " fixed-O2 operators in ",
         round(as.numeric(difftime(Sys.time(), start, units = "secs")), 1), " seconds")

@@ -123,7 +123,11 @@ The kernel lock prevents two neighborhood controllers from sharing an output roo
 ### Slurm trajectory arrays
 
 ```bash
+# Compile a private template using the same SIF on a compute node.
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/build_neighborhood_rcpp_template.sh
 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_neighborhood_slurm.sh
+# Retry only missing/failed tasks after the preceding Slurm attempt has terminated.
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_neighborhood_slurm.sh --retry
 python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/test_neighborhood_slurm.py
 ```
 
@@ -142,6 +146,12 @@ Submission validates the immutable SIF once, hashes inputs/code and writes
 `slurm/submission_plan.json`, `task_manifest.tsv`, `submission_jobs.tsv` and
 `execution_backend.json`. Workers recheck the recorded code/input hashes and
 SIF size/mtime. Per-seed preparation and per-trajectory locks prevent races.
+The SIF defaults to forced C++ recompilation, so the array worker explicitly
+sets `MININGCLONEID_RCPP_REBUILD=FALSE` and binds a unique node-local Rcpp cache
+over the model's cache path. Each cache is populated from a source/image-hashed
+template built with the same SIF. Cached wrappers validate the required backend;
+any compilation fallback is confined to that task. This avoids a shared
+sourceCpp lock across thousands of jobs. Local caches are removed on task exit.
 Completed pilot phases are copied and reused after receipt validation.
 Raw trajectory outputs are assembled in original FAST row order, with hashes
 and complete row counts, before averaging five phases within each seed.
@@ -152,6 +162,9 @@ Incomplete seeds/final collections fail explicitly; partial data never become
 a completed full analysis. Task receipts and `slurm/status.json` identify
 failed/missing task IDs for targeted resubmission. The direct pilot can finish;
 its next serial full stage sees the backend marker and hands over to Slurm.
+`--retry` archives the previous submission plan, appends new job IDs and keeps
+completed full-phase reuse receipts. Existing valid raw trajectory outputs
+are reanalyzed rather than reevaluated if their analysis cache version changes.
 
 Checks cover natural/log bounds, clipping, five reproducible phase seeds,
 agreement with SALib point estimators and a known additive model, rejection of

@@ -87,8 +87,15 @@ def prepare(args):
     directory.mkdir(exist_ok=True)
     tasks = list(task_rows())
     efast.write_table(directory / "task_manifest.tsv", list(tasks[0]), tasks)
+    template_path = directory / "rcpp_template_manifest.json"
+    template = json.loads(template_path.read_text())
+    if template["sif_sha256"] != SIF_SHA256 or template["model_cpp_sha256"] != efast.sha256(HERE / "../../model/model_O2_supply_demand_MAP.cpp"):
+        raise ValueError("Rcpp template source/image mismatch")
+    if efast.sha256(directory / "rcpp_template.tar.gz") != template["archive_sha256"]:
+        raise ValueError("Rcpp template archive changed")
     names = ("neighborhood_slurm.py", "neighborhood.py", "efast.py", "evaluate_fixed_o2.R",
-             "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R")
+             "run_neighborhood_array.sbatch", "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R",
+             "../../model/model_O2_supply_demand_MAP.R", "../../model/model_O2_supply_demand_MAP.cpp")
     plan = dict(n_tasks=35000, n_fit_seeds=500, N=N, M=M, n_phases=5,
         granularity="fit seed x phase x one complete 513-vector FAST trajectory; 201 oxygen points",
         fit_root=str(Path(args.fit_root).resolve()), figure4_dir=str(Path(args.figure4_dir).resolve()),
@@ -102,12 +109,18 @@ def prepare(args):
         prepared_utc=now(), qos="xxlarge", time="12:00:00", task_cpus=1, task_mem="4G",
         array_concurrency_limit=None, specified_compute_node=None,
         convergence_policy="diagnostic_only")
+    plan["rcpp_template"] = template
     previous = directory / "submission_plan.json"
     if previous.exists():
         old = json.loads(previous.read_text())
-        if any(old[k] != v for k, v in plan.items() if k != "prepared_utc"):
-            raise ValueError("Existing Slurm plan differs; inspect before overwriting")
-        plan = old
+        if any(old.get(k) != v for k, v in plan.items() if k != "prepared_utc"):
+            if not args.replace_plan:
+                raise ValueError("Existing Slurm plan differs; inspect before overwriting")
+            archived = directory / ("submission_plan_before_" + old["git_commit"][:12] + ".json")
+            if not archived.exists():
+                shutil.copyfile(previous, archived)
+        else:
+            plan = old
     nh.atomic_json(previous, plan)
     nh.atomic_json(directory / "execution_backend.json", dict(backend="slurm", recorded_utc=now(),
         submission_plan_sha256=efast.sha256(previous), explanation="Full arrays may start before the direct pilot finishes; the serial full stage hands over without evaluating."))
@@ -127,6 +140,10 @@ def context(root):
     sif = Path(plan["sif"])
     if sif.stat().st_size != plan["sif_bytes"] or sif.stat().st_mtime_ns != plan["sif_mtime_ns"]:
         raise ValueError("Validated immutable SIF changed")
+    archive = root / "slurm" / "rcpp_template.tar.gz"
+    template = plan["rcpp_template"]
+    if archive.stat().st_size != template["archive_bytes"] or archive.stat().st_mtime_ns != template["archive_mtime_ns"]:
+        raise ValueError("Validated Rcpp template archive changed")
     return plan
 
 
@@ -393,16 +410,45 @@ def finalize(root):
                  total_designs=2500, completed_tasks=35000, n_fit_seeds=500)
 
 
+def retry_spec(root):
+    """Reuse valid full phases; reanalyze any completed old-version trajectory."""
+    ids, old_rows = [], []
+    for task_id in range(1, 35001):
+        path = root / "slurm" / "task_receipts" / ("task_%05d.json" % task_id)
+        previous = json.loads(path.read_text()) if path.exists() else {}
+        if previous.get("status") == "complete" and previous.get("reused_full_phase"):
+            continue
+        ids.append(task_id)
+        old_rows.append(dict(task_id=task_id, previous_status=previous.get("status", "missing_or_cancelled"),
+                             previous_job_id=previous.get("slurm_job_id", ""), previous_error=previous.get("error", "")))
+    if not ids:
+        raise ValueError("No trajectory tasks require a retry")
+    efast.write_table(root / "slurm" / "retry_task_manifest.tsv", list(old_rows[0]), old_rows)
+    groups, start, end = [], ids[0], ids[0]
+    for value in ids[1:]:
+        if value == end + 1:
+            end = value
+        else:
+            groups.append(str(start) if start == end else "%d-%d" % (start, end))
+            start = end = value
+    groups.append(str(start) if start == end else "%d-%d" % (start, end))
+    nh.atomic_json(root / "slurm" / "retry_request.json", dict(recorded_utc=now(),
+        n_tasks=len(ids), n_preserved_tasks=35000-len(ids), array_spec=",".join(groups),
+        reason="Initial shared sourceCpp lock contention; reuse valid results and isolate the Rcpp cache per task."))
+    print(",".join(groups))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "worker", "seed-summary", "status", "finalize"):
+    for name in ("prepare", "worker", "seed-summary", "status", "finalize", "retry-spec"):
         p = sub.add_parser(name)
         p.add_argument("--out-dir", required=True)
         if name == "prepare":
             p.add_argument("--fit-root", required=True)
             p.add_argument("--figure4-dir", required=True)
             p.add_argument("--sif", required=True)
+            p.add_argument("--replace-plan", action="store_true")
         elif name == "worker":
             p.add_argument("--task-id", type=int, required=True)
         elif name == "seed-summary":
@@ -413,6 +459,7 @@ def main():
     elif args.command == "worker": worker(root, args.task_id)
     elif args.command == "seed-summary": seed_summary(root, args.seed_number)
     elif args.command == "status": status(root)
+    elif args.command == "retry-spec": retry_spec(root)
     else: finalize(root)
 
 

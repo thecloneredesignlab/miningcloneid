@@ -98,8 +98,9 @@ come from the validated SIF rather than an incompatible HPC home library.
 of all 500 in-vivo endpoints. Natural bounds are `best +/- 0.10*(U-L)`, clipped
 to the original bounds; the original log10/identity distribution is retained.
 Every endpoint has its own FAST trajectories and five phase repeats. The
-runner performs a runtime pilot and a resolution pilot before allowing the
-N=513 full run. See [the neighborhood protocol](../../../../results/eFAST/neighborhood10pct/README.md)
+runner performs a runtime pilot and a resolution pilot before the
+N=513 full run. Convergence checks are diagnostic only and do not block any of
+the 500 audited endpoints. See [the neighborhood protocol](../../../../results/eFAST/neighborhood10pct/README.md)
 for selection, convergence tolerances, output axes and interpretation limits.
 
 ```bash
@@ -110,8 +111,11 @@ python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/test_neighborhood.py
 ```
 
 The pipeline audits all endpoint parameter tables/configs and checks 1,500
-original Figure 4 reference outputs. A failing pilot gate saves diagnostics
-and stops before the 500-endpoint full run. Completed designs are reused only
+original Figure 4 reference outputs. The pilot saves convergence diagnostics
+and continues to the 500-endpoint full run regardless of convergence status.
+Full execution retains input integrity and free-disk checks. Per-endpoint
+diagnostic tables distinguish five-phase stability from resolution stability;
+resolution is untested outside the multi-N pilot. Completed designs are reused only
 when their completion receipts, metadata and output hashes match. Each design
 is evaluated in bounded chunks; an interrupted design is recomputed in full.
 The kernel lock prevents two neighborhood controllers from sharing an output root.

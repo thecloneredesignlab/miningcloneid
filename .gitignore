@@ -38,6 +38,7 @@
 !/oxygen/results/eFAST/neighborhood10pct/neighborhood_bounds.tsv
 !/oxygen/results/eFAST/neighborhood10pct/parameter_ranges.tsv
 !/oxygen/results/eFAST/neighborhood10pct/input_manifest.json
+!/oxygen/results/eFAST/neighborhood10pct/execution_policy.json
 !/oxygen/results/eFAST/neighborhood10pct/operator_input_audit.json
 !/oxygen/results/eFAST/neighborhood10pct/environment_*.tsv
 !/oxygen/results/eFAST/neighborhood10pct/figure*_source.tsv

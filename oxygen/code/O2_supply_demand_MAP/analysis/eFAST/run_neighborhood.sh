@@ -33,6 +33,7 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
   printf 'sif\t%s\n' "$sif"
   printf 'sif_sha256\t%s\n' "$sif_hash"
   printf 'workers\t%s\n' "$workers"
+  printf 'convergence_policy\tdiagnostic_only\n'
   printf 'phase_repeats\t5\nmode\t%s\nstarted_utc\t%s\n' "$mode" "$stamp"
 } > "$out/environment_${stamp}.tsv"
 audit() { container python3 "$code/neighborhood.py" audit --fit-root "$fit" --figure4-dir "$figure" --out-dir "$out"; }
@@ -46,7 +47,7 @@ elif [[ "$mode" == pipeline ]]; then
   # Extend the global design to five phases, preserving verified R1/R2 designs.
   EFAST_WORKERS="$workers" bash "$code/run_efast.sh" full
   run convergence
-  # The Python runner checks the convergence gate and refuses full evaluation if it fails.
+  # Convergence is diagnostic only: always continue to all 500 audited endpoints.
   run full
 else
   [[ -s "$out/input_manifest.json" ]] || audit

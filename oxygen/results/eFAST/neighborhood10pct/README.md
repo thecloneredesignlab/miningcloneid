@@ -15,7 +15,7 @@ Log10 parameters are log-uniform within these natural bounds; other parameters
 are uniform. Parameters are varied independently and no local refitting is done.
 Fourteen parameters affect the fixed-oxygen operator. The oxygen grid is the
 same 201 points, 0–5% by 0.025%, as Figure 4. Each endpoint uses N=513, M=4
-and **five independent phase repetitions** if the pilot convergence gate passes.
+and **five independent phase repetitions**, regardless of pilot convergence.
 
 ## Completed checks on 2026-10-08
 
@@ -45,7 +45,15 @@ R3–R5 extension, followed by the ten-endpoint resolution pilot. The full
 has **not** been established. Controller PID: 1148713; log on HPC:
 `oxygen/results/eFAST/neighborhood10pct/logs/pipeline_20261008.log`.
 
-## Execution and gates
+## Execution and diagnostic policy
+
+On 2026-10-08 the user changed convergence from an execution gate to a
+diagnostic. After the ongoing ten-endpoint pilot, the pipeline continues to
+all 500 endpoints at N=513 with five phases regardless of the pilot result.
+Unstable endpoints remain in the full analysis. The existing controller can
+finish its loaded pilot code; its next, separate full-stage Python process
+loads the updated diagnostic-only policy. `execution_policy.json` records
+this policy, the input hash and the pilot result used at full-stage startup.
 
 `run_neighborhood.sh pipeline` audits 500 endpoints and validates their original
 operators at 0, 2.5 and 5% oxygen. It runs three representative endpoints at
@@ -55,13 +63,23 @@ endpoints at N=129,257,513 on the full oxygen grid, five phases each.
 The pilot covers the best/worst fitting endpoints, clipped neighborhoods,
 seed25, and farthest points in normalized transformed parameter space.
 
-Full execution requires every pilot output/index/endpoint to have all cells
-defined, a p90 five-phase index range <=0.10, and a p90 absolute change from
-the N=257 mean to N=513 mean <=0.05. These are declared practical tolerances
-in variance-fraction units, not mathematical guarantees. Full execution also
-requires at least 200 GiB free disk space. A failed gate saves
-`pilot/convergence_gate.json` with `needs_review`; it does not launch all 500.
-Increasing N changes computational cost and requires reviewing that diagnostic.
+The pilot records whether every output/index/endpoint has all cells defined,
+a p90 five-phase index range <=0.10, and a p90 absolute change from the N=257
+mean to N=513 mean <=0.05. These are declared practical tolerances in
+variance-fraction units, not mathematical guarantees. The historical filename
+`pilot/convergence_gate.json` is retained, but `needs_review` no longer blocks
+full execution. Full execution still requires valid audited inputs and at
+least 200 GiB free disk space.
+
+After each full endpoint finishes, the runner updates
+`summaries/seed_convergence_diagnostics.tsv` (endpoint/output/index checks)
+and `summaries/seed_convergence_status.tsv` (one status per completed endpoint).
+`repeat_status` describes the five-phase range. `resolution_status` describes
+the N=257-to-513 change only for pilot endpoints; the other endpoints are
+explicitly `not_tested`. Overall `convergence_status` is `passed` only when
+both checks pass, `not_passed` when a check fails or is undefined, and
+`resolution_not_tested` when repeats pass but resolution was not tested.
+These statuses never remove an endpoint from the analysis.
 
 No Slurm submission is used. The runner enforces hpctpa3pc0028 and the validated
 SALib 1.5.2 SIF checksum. Only one neighborhood controller may run per root;
@@ -74,6 +92,9 @@ SALib 1.5.2 SIF checksum. Only one neighborhood controller may run per root;
 - `bounds/seed*.tsv`: per-endpoint bounds on HPC.
 - `pilot/runtime_projection.json`, `pilot/convergence_diagnostics.tsv`,
   `pilot/convergence_gate.json`: measured costs and convergence checks.
+- `execution_policy.json`: diagnostic-only full-run policy and input provenance.
+- `summaries/seed_convergence_status.tsv`, `seed_convergence_diagnostics.tsv`:
+  incrementally updated per-endpoint status and per-output/index diagnostics.
 - `runs/seed*/runs/N513_R*/`: ordered samples, raw outputs, indices and completion
   receipts on HPC. A complete design is reused only after its hashes match.
   Partial designs are recomputed; completed designs and completed endpoint

@@ -18,6 +18,8 @@ import efast
 HERE = Path(__file__).resolve().parent
 REPEATS = 5
 INDICES = ("S1", "ST")
+REPEAT_TOLERANCE = .10
+RESOLUTION_TOLERANCE = .05
 SOURCES = ("figure4b_spearman_source.tsv", "figure4b_o2_classification_source.tsv",
            "figure4b_parameter_ranking_source.tsv", "figure4_parameter_groups_source.tsv",
            "figure4_parameter_group_palette_source.tsv")
@@ -282,6 +284,88 @@ def state(root, **kwargs):
     print(json.dumps(kwargs, sort_keys=True), flush=True)
 
 
+def convergence_diagnostic_rows(seed, rows, resolution_rows=None):
+    """Report repeat stability separately from resolution checks; never gate runs."""
+    reports = []
+    for output in efast.OUTPUTS:
+        high = [r for r in rows if int(r["N"]) == 513 and r["output"] == output]
+        if not high:
+            raise ValueError("Missing N513 diagnostic rows: " + seed + "/" + output)
+        mid = {(r["parameter"], float(r["O2_pct"])): r for r in (resolution_rows or [])
+               if int(r["N"]) == 257 and r["output"] == output}
+        for index in INDICES:
+            ranges = np.array([float(r[index + "_range"]) for r in high])
+            valid = np.isfinite(ranges)
+            repeat_p90 = float(np.percentile(ranges[valid], 90)) if valid.any() else np.nan
+            repeat_status = ("undefined" if not valid.all() else
+                             "passed" if repeat_p90 <= REPEAT_TOLERANCE else "not_passed")
+            delta_p90, n_delta = np.nan, 0
+            resolution_status = "not_tested"
+            if resolution_rows is not None:
+                deltas = np.array([float(mid.get((r["parameter"], float(r["O2_pct"])), {}).get(
+                    index + "_delta_vs_max_N", np.nan)) for r in high])
+                delta_valid = np.isfinite(deltas)
+                n_delta = int(delta_valid.sum())
+                delta_p90 = float(np.percentile(deltas[delta_valid], 90)) if delta_valid.any() else np.nan
+                resolution_status = ("undefined" if not delta_valid.all() else
+                    "passed" if delta_p90 <= RESOLUTION_TOLERANCE else "not_passed")
+            status = ("not_passed" if repeat_status != "passed" or
+                      resolution_status in ("not_passed", "undefined") else
+                      "resolution_not_tested" if resolution_status == "not_tested" else "passed")
+            reports.append(dict(fit_seed=seed, output=output, index=index, N=513,
+                n_cells=len(high), n_valid_repeat_cells=int(valid.sum()),
+                repeat_range_p90=repeat_p90, repeat_range_tolerance=REPEAT_TOLERANCE,
+                repeat_status=repeat_status, n_valid_resolution_cells=n_delta,
+                resolution_delta_p90=delta_p90, resolution_delta_tolerance=RESOLUTION_TOLERANCE,
+                resolution_status=resolution_status, convergence_status=status,
+                diagnostic_only="TRUE", included_in_full_analysis="TRUE"))
+    return reports
+
+
+def write_full_diagnostics(root, seed, rows):
+    pilot = root / "pilot" / "convergence" / "runs" / seed / "convergence.tsv.gz"
+    reports = convergence_diagnostic_rows(seed, rows, efast.read_table(pilot) if pilot.exists() else None)
+    efast.write_table(root / "runs" / seed / "convergence_diagnostics.tsv", list(reports[0]), reports)
+    combined, status_rows = [], []
+    for path in sorted((root / "runs").glob("*/convergence_diagnostics.tsv"),
+                       key=lambda p: int(p.parent.name[4:])):
+        entries = efast.read_table(path)
+        combined.extend(entries)
+        statuses = [r["convergence_status"] for r in entries]
+        status_rows.append(dict(fit_seed=path.parent.name,
+            n_output_index_checks=len(entries),
+            n_repeat_checks_passed=sum(r["repeat_status"] == "passed" for r in entries),
+            n_resolution_checks_tested=sum(r["resolution_status"] != "not_tested" for r in entries),
+            n_resolution_checks_passed=sum(r["resolution_status"] == "passed" for r in entries),
+            convergence_status="not_passed" if "not_passed" in statuses else
+                "resolution_not_tested" if "resolution_not_tested" in statuses else "passed",
+            included_in_full_analysis="TRUE"))
+    for name, table in (("seed_convergence_diagnostics.tsv", combined),
+                        ("seed_convergence_status.tsv", status_rows)):
+        path = root / "summaries" / name
+        temporary = path.with_name(path.name + ".tmp")
+        efast.write_table(temporary, list(table[0]), table)
+        temporary.replace(path)
+
+
+def record_full_execution_policy(root):
+    """Record the user-approved policy without requiring a passing pilot."""
+    report = root / "pilot" / "convergence_gate.json"
+    previous = json.loads(report.read_text()) if report.exists() else None
+    if previous is not None and previous["input_manifest_sha256"] != efast.sha256(root / "input_manifest.json"):
+        raise ValueError("Pilot diagnostic inputs differ from the audited full-run inputs")
+    policy = dict(policy="diagnostic_only", require_convergence_pass=False,
+        n_fit_seeds=500, N=513, phase_repeats=REPEATS,
+        runner_sha256=efast.sha256(HERE / "neighborhood.py"),
+        recorded_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        input_manifest_sha256=efast.sha256(root / "input_manifest.json"),
+        pilot_status=previous["status"] if previous else "not_available",
+        pilot_report_sha256=efast.sha256(report) if report.exists() else None,
+        explanation="Run all 500 endpoints regardless of convergence status; retain unstable endpoints and report diagnostics. Resolution stability is untested outside the multi-N pilot.")
+    atomic_json(root / "execution_policy.json", policy)
+    print(json.dumps(policy, sort_keys=True), flush=True)
+
+
 def run(args):
     root = Path(args.out_dir)
     manifest = efast.read_table(root / "seed_manifest.tsv")
@@ -289,11 +373,9 @@ def run(args):
     if efast.sha256(root / "seed_manifest.tsv") != inputs["seed_manifest_sha256"]:
         raise ValueError("Seed manifest changed after audit")
     if args.stage == "full":
-        gate = json.loads((root / "pilot" / "convergence_gate.json").read_text())
-        if gate["status"] != "passed" or gate["input_manifest_sha256"] != efast.sha256(root / "input_manifest.json"):
-            raise ValueError("Full run requires a passing pilot convergence gate for these inputs")
         if shutil.disk_usage(root).free < 200 * 1024 ** 3:
             raise ValueError("Full run requires 200 GiB free for raw outputs, pilot and summaries")
+        record_full_execution_policy(root)
         seeds, resolutions, target = manifest, [513], root
     else:
         seeds = sorted([x for x in manifest if x["pilot_order"]], key=lambda x: int(x["pilot_order"]))
@@ -334,7 +416,9 @@ def run(args):
                         raise ValueError("Missing evaluation completion receipt")
                 analyze_design(design)
                 done += 1
-        seed_summary(seed_root, resolutions)
+        rows = seed_summary(seed_root, resolutions)
+        if args.stage == "full":
+            write_full_diagnostics(root, seed, rows)
     if args.stage == "smoke":
         timing_report(root, seeds, target)
     elif args.stage == "convergence":
@@ -364,28 +448,17 @@ def convergence_gate(root, seeds, target):
     for endpoint in seeds:
         seed = endpoint["fit_seed"]
         conv = efast.read_table(target / "runs" / seed / "convergence.tsv.gz")
-        for output in efast.OUTPUTS:
-            for index in INDICES:
-                high = [r for r in conv if int(r["N"]) == 513 and r["output"] == output]
-                mid = [r for r in conv if int(r["N"]) == 257 and r["output"] == output]
-                ranges = np.array([float(r[index + "_range"]) for r in high])
-                deltas = np.array([float(r[index + "_delta_vs_max_N"]) for r in mid])
-                valid = np.isfinite(ranges) & np.isfinite(deltas)
-                # Practical, predeclared tolerances in absolute variance-fraction units.
-                p90_range = float(np.percentile(ranges[valid], 90)) if valid.any() else 1.0
-                p90_delta = float(np.percentile(deltas[valid], 90)) if valid.any() else 1.0
-                rows.append(dict(fit_seed=seed, output=output, index=index,
-                    n_cells=len(valid), n_valid_cells=int(valid.sum()),
-                    repeat_range_p90=p90_range, resolution_delta_p90=p90_delta,
-                    repeat_range_tolerance=.10, resolution_delta_tolerance=.05,
-                    passed=str(valid.all() and p90_range <= .10 and p90_delta <= .05).upper()))
+        for row in convergence_diagnostic_rows(seed, conv, conv):
+            row["passed"] = str(row["convergence_status"] == "passed").upper()
+            rows.append(row)
     efast.write_table(root / "pilot" / "convergence_diagnostics.tsv", list(rows[0]), rows)
     passed = len(seeds) >= 3 and all(r["passed"] == "TRUE" for r in rows)
     atomic_json(root / "pilot" / "convergence_gate.json", dict(status="passed" if passed else "needs_review",
         n_fit_seeds=len(seeds), n_phase_repeats=REPEATS, N=[129, 257, 513],
         input_manifest_sha256=efast.sha256(root / "input_manifest.json"),
         diagnostics_sha256=efast.sha256(root / "pilot" / "convergence_diagnostics.tsv"),
-        explanation="Require each pilot seed/output/index p90 repeat range <=0.10 and N257-to-513 delta <=0.05; all cells defined. Practical thresholds, not a theorem."))
+        diagnostic_only=True, blocks_full_run=False,
+        explanation="Diagnostic thresholds: each pilot seed/output/index p90 repeat range <=0.10 and N257-to-513 delta <=0.05; all cells defined. Practical thresholds, not a theorem. Full execution proceeds regardless of this status."))
 
 
 def summarize(root, manifest):
@@ -451,6 +524,8 @@ def summarize(root, manifest):
     efast.write_table(root / "raw_output_inventory.tsv", list(inventory[0]), inventory)
     files = [root / "convergence.tsv", root / "raw_output_inventory.tsv",
              root / "efast_o2_sensitivity_classification.tsv", root / "figures" / "efast_four_panel.pdf"]
+    if (root / "execution_policy.json").exists():
+        files.append(root / "execution_policy.json")
     files.extend(sorted(summary_dir.glob("*")))
     if any(p.stat().st_size >= 95 * 1024 ** 2 for p in files):
         raise ValueError("A source artifact exceeds the Git size budget; split it before collection")
@@ -559,6 +634,7 @@ def mechanism_summary(root, means, oxygen, manifest):
         "Indices are computed separately for every neighborhood and phase. Five phase indices are averaged within each fit seed; the heatmaps show medians across fit seeds. Source tables also report means, IQR and valid-seed counts. Raw outputs from different neighborhoods are never pooled into one FAST analysis.", "",
         "The bootstrap resamples complete fitted-seed sensitivity curves with their five-phase means retained. Optimizer endpoints are not independent posterior draws; bootstrap classifications describe repeatability across these endpoints and are not posterior significance claims.", "",
         "Mechanism comparisons use group means of parameter indices. Total effects overlap through interactions; these means are not additive group variance fractions. The original Figure 4B correlation annotation supplies directional context.", "",
+        "All 500 endpoints are retained regardless of convergence diagnostics. summaries/seed_convergence_status.tsv and seed_convergence_diagnostics.tsv report repeat and resolution checks separately. Resolution stability is tested only for the multi-N pilot endpoints; a stable five-phase range alone does not establish resolution convergence.", "",
         "## Fraction of evaluable fit seeds supporting the proposed shift", ""]
     for row in support_rows:
         if row["criterion"] == "all_three_conditions":

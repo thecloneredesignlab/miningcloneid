@@ -102,6 +102,59 @@ class NeighborhoodChecks(unittest.TestCase):
             self.assertAlmostEqual(affected["ST_mean"], .3)
             self.assertAlmostEqual(affected["ST_range"], .4)
 
+    def test_diagnostics_distinguish_failed_passed_and_untested_resolution(self):
+        rows = [dict(N=n, output=output, parameter=parameter, O2_pct=o,
+                     S1_range=.08, ST_range=.08, S1_delta_vs_max_N=.02, ST_delta_vs_max_N=.02)
+                for n in (257, 513) for output in efast.OUTPUTS
+                for parameter in efast.ACTIVE for o in (0, 5)]
+        reports = nh.convergence_diagnostic_rows("seed1", rows, rows)
+        self.assertTrue(all(r["convergence_status"] == "passed" for r in reports))
+        untested = nh.convergence_diagnostic_rows("seed1", rows)
+        self.assertTrue(all(r["convergence_status"] == "resolution_not_tested" for r in untested))
+        self.assertTrue(all(np.isnan(r["resolution_delta_p90"]) for r in untested))
+        for row in rows:
+            row["ST_range"] = .5
+            row["S1_delta_vs_max_N"] = .2
+        reports = nh.convergence_diagnostic_rows("seed1", rows, rows)
+        self.assertTrue(all(r["convergence_status"] == "not_passed" for r in reports))
+        self.assertTrue(all(r["included_in_full_analysis"] == "TRUE" for r in reports))
+        for row in rows:
+            row["S1_range"] = np.nan
+        reports = nh.convergence_diagnostic_rows("seed1", rows)
+        self.assertTrue(all(r["repeat_status"] == "undefined" for r in reports if r["index"] == "S1"))
+
+    def test_full_policy_accepts_failing_or_absent_pilot_but_checks_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "input_manifest.json").write_text('{}\n')
+            nh.record_full_execution_policy(root)
+            policy = json.loads((root / "execution_policy.json").read_text())
+            self.assertFalse(policy["require_convergence_pass"])
+            self.assertEqual(policy["pilot_status"], "not_available")
+            report = root / "pilot" / "convergence_gate.json"
+            nh.atomic_json(report, dict(status="needs_review",
+                input_manifest_sha256=efast.sha256(root / "input_manifest.json")))
+            nh.record_full_execution_policy(root)
+            self.assertEqual(json.loads((root / "execution_policy.json").read_text())["pilot_status"], "needs_review")
+            (root / "input_manifest.json").write_text('{"changed":true}\n')
+            with self.assertRaisesRegex(ValueError, "inputs differ"):
+                nh.record_full_execution_policy(root)
+
+    def test_incremental_diagnostics_keep_all_completed_endpoints(self):
+        rows = [dict(N=513, output=output, parameter=parameter, O2_pct=o,
+                     S1_range=.08, ST_range=.5)
+                for output in efast.OUTPUTS for parameter in efast.ACTIVE for o in (0, 5)]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for seed in ("seed10", "seed2"):
+                nh.write_full_diagnostics(root, seed, rows)
+            statuses = efast.read_table(root / "summaries" / "seed_convergence_status.tsv")
+            self.assertEqual([r["fit_seed"] for r in statuses], ["seed2", "seed10"])
+            self.assertTrue(all(r["convergence_status"] == "not_passed" and
+                                r["included_in_full_analysis"] == "TRUE" for r in statuses))
+            diagnostics = efast.read_table(root / "summaries" / "seed_convergence_diagnostics.tsv")
+            self.assertEqual(len(diagnostics), 8)
+
 
 if __name__ == "__main__":
     unittest.main()

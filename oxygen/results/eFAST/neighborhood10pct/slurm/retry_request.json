@@ -1,0 +1,7 @@
+{
+  "array_spec": "1-70,141-1680,1751-4550,4621-35000",
+  "n_preserved_tasks": 210,
+  "n_tasks": 34790,
+  "reason": "Initial shared sourceCpp lock contention; reuse valid results and isolate the Rcpp cache per task.",
+  "recorded_utc": "2026-10-09T18:11:56.131968+00:00"
+}

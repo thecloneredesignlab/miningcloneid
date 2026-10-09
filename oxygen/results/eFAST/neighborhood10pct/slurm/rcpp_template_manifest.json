@@ -1,0 +1,12 @@
+{
+  "created_utc": "2026-10-09T18:07:18.444099+00:00",
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "model_cpp_sha256": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+  "model_r_sha256": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+  "archive_sha256": "abef1512ec14ea81474faead226c9601c9e0e7b8eb830bb2521d5a7c12323307",
+  "archive_bytes": 2853302,
+  "archive_mtime_ns": 1791569238200248000,
+  "logical_bind_target": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/code/O2_supply_demand_MAP/model/.rcpp_cache_o2_supply_demand_map",
+  "runtime_rebuild": false,
+  "cache_scope": "unique node-local directory per Slurm task"
+}

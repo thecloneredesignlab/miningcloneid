@@ -49,6 +49,42 @@ has **not** been established. Controller PID: 1148713; log on HPC:
 
 ### Slurm execution approved on 2026-10-09
 
+#### Current attempt: private Rcpp caches, submitted at 14:11 EDT
+
+The first attempt encountered 2,949 shared sourceCpp lock timeouts because
+the SIF defaults to forced backend recompilation. Its three jobs below were
+stopped; **210 valid completed full-phase reuse tasks were preserved**.
+This was a runtime initialization failure, not a convergence exclusion.
+`slurm/initial_launch_failure.json` preserves the diagnosis and original logs
+remain on HPC. The original plan is archived separately.
+
+The correction builds a source/image-hashed backend template using the same
+SIF, binds a distinct node-local cache into each task, and sets
+`MININGCLONEID_RCPP_REBUILD=FALSE`. Four concurrent, independent private-cache
+probes evaluated 4,104 operators and exactly reproduced the original S1/ST.
+See `slurm/rcpp_parallel_validation.json` and `rcpp_template_manifest.json`.
+
+| Current role | Job ID | Tasks | CPUs / memory per task | QoS / limit |
+| --- | --- | --- | --- | --- |
+| Unfinished trajectories | 20775728 | 34,790 | 1 / 4G | xxlarge / 12h |
+| All seed summaries | 20775729 | 500 | 1 / 8G | xxlarge / 12h |
+| Final tables and figures | 20775730 | 1 | 4 / 32G | xxlarge / 12h |
+
+At **14:17 EDT**, 3,000 corrected trajectory tasks were running. Sampled
+workers passed all three original model reference checks and entered model
+evaluation, resolving the compiler-lock issue. Six tasks were completing
+node Prolog failure handling; Slurm recorded automatic requeue (`Requeue=1`,
+`Restarts=1`). No node restriction or `%N` concurrency throttle was added.
+`slurm/retry_launch_snapshot.json` contains the reference logs, queue counts
+and a node Prolog example. Missing results still prevent final aggregation.
+The corrected execution code is commit `123c18516a700b303b5954749e0040c3122e3be2`.
+`retry_task_manifest.tsv` preserves prior task states/errors and the targeted
+resubmission mapping. Completed raw outputs and scientific sampling remain
+unchanged. The cache archive stays on HPC and can be rebuilt with the tracked
+`build_neighborhood_rcpp_template.sh` script.
+
+#### Historical first launch
+
 Submitted at **2026-10-09 13:46 EDT**, without waiting for the direct pilot:
 
 | Role | Job ID | Array | CPUs / memory per task | QoS / limit |

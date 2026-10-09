@@ -1,0 +1,15 @@
+{
+  "recorded_utc": "2026-10-09T18:03:34.124410+00:00",
+  "stopped_job_ids": [
+    20769503,
+    20769504,
+    20769505
+  ],
+  "receipt_states": {
+    "failed": 2949,
+    "complete": 210
+  },
+  "cause": "Shared sourceCpp lock contention: image MININGCLONEID_RCPP_REBUILD=TRUE; thousands of workers tried to compile through one shared cache.",
+  "fix": "Per-task node-local Rcpp cache, compiled template from the same immutable SIF, MININGCLONEID_RCPP_REBUILD=FALSE with validated cache.",
+  "original_traceback_path": "slurm/logs/trajectory_20769503_2.err"
+}

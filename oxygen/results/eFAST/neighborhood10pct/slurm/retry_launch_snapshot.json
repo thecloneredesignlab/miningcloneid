@@ -1,0 +1,69 @@
+{
+  "checked_utc": "2026-10-09T18:17:19.339218+00:00",
+  "job_ids": [
+    20775728,
+    20775729,
+    20775730
+  ],
+  "queue_counts": [
+    {
+      "job_id": "20775728",
+      "state": "COMPLETING",
+      "count": 6
+    },
+    {
+      "job_id": "20775728",
+      "state": "PENDING",
+      "count": 31784
+    },
+    {
+      "job_id": "20775728",
+      "state": "RUNNING",
+      "count": 3000
+    },
+    {
+      "job_id": "20775729",
+      "state": "PENDING",
+      "count": 500
+    },
+    {
+      "job_id": "20775730",
+      "state": "PENDING",
+      "count": 1
+    }
+  ],
+  "model_reference_log_examples": [
+    {
+      "task_id": 1,
+      "text": "Reference matched at O2=0: ploidy=1.9664795, growth=-0.027391918\nReference matched at O2=2.5: ploidy=2.7038954, growth=0.12690125\nReference matched at O2=5: ploidy=2.8946766, growth=0.15271972\n"
+    },
+    {
+      "task_id": 2,
+      "text": "Reference matched at O2=0: ploidy=1.9664795, growth=-0.027391918\nReference matched at O2=2.5: ploidy=2.7038954, growth=0.12690125\nReference matched at O2=5: ploidy=2.8946766, growth=0.15271972\n"
+    },
+    {
+      "task_id": 672,
+      "text": "Reference matched at O2=0: ploidy=1.5724539, growth=-0.19654223\nReference matched at O2=2.5: ploidy=1.0013628, growth=0.19638893\nReference matched at O2=5: ploidy=1.005662, growth=0.22028646\n"
+    }
+  ],
+  "n_preserved_complete_tasks": 210,
+  "n_resubmitted_tasks": 34790,
+  "cpp_cache_isolation_validation": "rcpp_parallel_validation.json",
+  "node_prolog_example": {
+    "JobId": "20777200",
+    "ArrayTaskId": "1540",
+    "JobState": "COMPLETING",
+    "Reason": "Prolog",
+    "FailedNode": "hpctpa3pc0008",
+    "Requeue": "1",
+    "Restarts": "1",
+    "ReqNodeList": "(null)"
+  },
+  "running_examples": [
+    "20775728_3142|RUNNING|hpctpa3pc0027|hpctpa3pc0027",
+    "20775728_3143|RUNNING|hpctpa3pc0027|hpctpa3pc0027",
+    "20775728_3144|RUNNING|hpctpa3pc0027|hpctpa3pc0027",
+    "20775728_3145|RUNNING|hpctpa3pc0027|hpctpa3pc0027",
+    "20775728_3146|RUNNING|hpctpa3pc0027|hpctpa3pc0027"
+  ]
+}

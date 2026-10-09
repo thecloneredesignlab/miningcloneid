@@ -1,0 +1,45 @@
+{
+  "checked_utc": "2026-10-09T17:48:25.332661+00:00",
+  "queue_counts": [
+    {
+      "job_id": "20769503",
+      "state": "PENDING",
+      "count": 31860
+    },
+    {
+      "job_id": "20769503",
+      "state": "RUNNING",
+      "count": 3000
+    },
+    {
+      "job_id": "20769504",
+      "state": "PENDING",
+      "count": 500
+    },
+    {
+      "job_id": "20769505",
+      "state": "PENDING",
+      "count": 1
+    }
+  ],
+  "running_examples": [
+    "20769503_3102|RUNNING|hpctpa3pc0002|hpctpa3pc0002",
+    "20769503_3103|RUNNING|hpctpa3pc0002|hpctpa3pc0002",
+    "20769503_3104|RUNNING|hpctpa3pc0002|hpctpa3pc0002",
+    "20769503_3105|RUNNING|hpctpa3pc0002|hpctpa3pc0002",
+    "20769503_3106|RUNNING|hpctpa3pc0012|hpctpa3pc0012"
+  ],
+  "task_receipt_counts": {
+    "complete": 140
+  },
+  "trajectory_request": {
+    "QOS": "xxlarge",
+    "TimeLimit": "12:00:00",
+    "NumCPUs": "1",
+    "NumTasks": "1",
+    "ReqNodeList": "(null)",
+    "ArrayTaskThrottle": null,
+    "TRES": null
+  },
+  "code_commit": "eb6ebe38f3791e1e1d3693c404818811ca1e37d9"
+}

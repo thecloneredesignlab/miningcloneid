@@ -1,0 +1,13 @@
+{
+  "N": 513,
+  "explanation": "Run all 500 endpoints regardless of convergence status; retain unstable endpoints and report diagnostics. Resolution stability is untested outside the multi-N pilot.",
+  "input_manifest_sha256": "8064b46a84c51ea2e531296f2e44312c8d556164fbc36332b31ed74481dbd6a9",
+  "n_fit_seeds": 500,
+  "phase_repeats": 5,
+  "pilot_report_sha256": null,
+  "pilot_status": "not_available",
+  "policy": "diagnostic_only",
+  "recorded_utc": "2026-10-09T17:46:26Z",
+  "require_convergence_pass": false,
+  "runner_sha256": "6ae8e61ff7525f6fbc0f39c6bbd42255a774b83d9b65cef3923a22588a166517"
+}

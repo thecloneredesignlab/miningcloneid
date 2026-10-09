@@ -49,6 +49,30 @@ has **not** been established. Controller PID: 1148713; log on HPC:
 
 ### Slurm execution approved on 2026-10-09
 
+Submitted at **2026-10-09 13:46 EDT**, without waiting for the direct pilot:
+
+| Role | Job ID | Array | CPUs / memory per task | QoS / limit |
+| --- | --- | --- | --- | --- |
+| FAST trajectory | 20769503 | 1–35000 | 1 / 4G | xxlarge / 12h |
+| Per-seed assembly and summary | 20769504 | 1–500 | 1 / 8G | xxlarge / 12h |
+| Final tables, interpretation and plots | 20769505 | single job | 4 / 32G | xxlarge / 12h |
+
+At the **13:48 EDT launch snapshot**, 3,000 trajectory tasks were running,
+140 had completed with valid receipts, and 31,860 remained pending. No task
+receipt reported failure at that snapshot. The two downstream stages were
+pending on their dependencies. The scheduler chose multiple nodes; no node
+was requested and no array concurrency throttle was set. xxlarge imposes
+the account CPU limit of 3,000. These counts are a dated snapshot, not live
+status; inspect Slurm and `slurm/task_receipts/` for updates.
+
+All twelve regression tests passed locally and in the specified SIF. A
+real-model probe evaluated 1,026 operators (seed25/R1/mu_hp trajectory,
+N=513, O2=0 and 5%) and reproduced the original S1/ST exactly (maximum
+absolute difference 0, tolerance 1e-12). Source evidence is in
+`slurm/trajectory_validation.json`. `slurm/launch_snapshot.json` records the
+verified resource request and initial queue/receipt counts. The submitted
+analysis code is commit `eb6ebe38f3791e1e1d3693c404818811ca1e37d9`.
+
 Full execution uses a 35,000-task Slurm array: one fitted seed, one phase and
 one complete FAST frequency trajectory (513 vectors x 201 O2 values) per task.
 Every vector retains all 14 parameter columns. Each trajectory requests one

@@ -1,0 +1,20 @@
+{
+  "N": 513,
+  "absolute_tolerance": 1e-12,
+  "checked_utc": "2026-10-09T17:45:37.055148+00:00",
+  "evaluator_sha256": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+  "fit_seed": "seed25",
+  "focal_parameter": "mu_hp",
+  "host": "hpctpa3pc0028",
+  "max_absolute_index_difference": 0.0,
+  "n_operator_evaluations": 1026,
+  "oxygen_pct": [
+    0.0,
+    5.0
+  ],
+  "replicate": 1,
+  "slurm_analyzer_sha256": "64aa2adb9946c4c7d178b0feb653f36c18dafa42d09b44744a2bfdd9e19c02bb",
+  "source_metadata_sha256": "ecb8ab015878c26f441211e899a96f50c3bf066caea2c3cd207ea3c3d5ac8566",
+  "status": "passed",
+  "trajectory_receipt_sha256": "8a697ececc23c706f49d90fc186b75f52ee8aaeb95942684e6cfddaa55ca5d57"
+}

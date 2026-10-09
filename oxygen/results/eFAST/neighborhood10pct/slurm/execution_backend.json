@@ -1,0 +1,6 @@
+{
+  "backend": "slurm",
+  "explanation": "Full arrays may start before the direct pilot finishes; the serial full stage hands over without evaluating.",
+  "recorded_utc": "2026-10-09T17:46:26.516735+00:00",
+  "submission_plan_sha256": "4f7103f1af6a0176303fbd9dec62ddfe64c54dc7d2f4927b77a49057196214c9"
+}

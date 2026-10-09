@@ -120,6 +120,39 @@ when their completion receipts, metadata and output hashes match. Each design
 is evaluated in bounded chunks; an interrupted design is recomputed in full.
 The kernel lock prevents two neighborhood controllers from sharing an output root.
 
+### Slurm trajectory arrays
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_neighborhood_slurm.sh
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/test_neighborhood_slurm.py
+```
+
+The Slurm workflow starts independently of the direct convergence pilot.
+It submits 35,000 trajectory tasks (500 fit seeds x five phases x 14 focal
+parameters), a dependent 500-task seed-summary array, and a final aggregation
+job. Every trajectory contains all 14 simultaneously varied parameter
+columns, N=513 ordered vectors and all 201 oxygen points; its focal parameter
+identifies the FAST frequency block. Sampling and indices are unchanged.
+Trajectory tasks request one CPU, 4G and 12 hours; seed summaries request one
+CPU and 8G; final aggregation requests four CPUs and 32G. All use xxlarge and
+12 hours, with no specified compute node and no `%N` array concurrency limit.
+The scheduler's account/QoS limits still apply.
+
+Submission validates the immutable SIF once, hashes inputs/code and writes
+`slurm/submission_plan.json`, `task_manifest.tsv`, `submission_jobs.tsv` and
+`execution_backend.json`. Workers recheck the recorded code/input hashes and
+SIF size/mtime. Per-seed preparation and per-trajectory locks prevent races.
+Completed pilot phases are copied and reused after receipt validation.
+Raw trajectory outputs are assembled in original FAST row order, with hashes
+and complete row counts, before averaging five phases within each seed.
+No shared summary tables are written by concurrent array workers.
+
+`afterany` dependencies allow downstream jobs to diagnose missing tasks.
+Incomplete seeds/final collections fail explicitly; partial data never become
+a completed full analysis. Task receipts and `slurm/status.json` identify
+failed/missing task IDs for targeted resubmission. The direct pilot can finish;
+its next serial full stage sees the backend marker and hands over to Slurm.
+
 Checks cover natural/log bounds, clipping, five reproducible phase seeds,
 agreement with SALib point estimators and a known additive model, rejection of
 incomplete trajectories, and retention of undefined indices in phase summaries.

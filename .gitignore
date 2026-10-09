@@ -60,6 +60,10 @@
 !/oxygen/results/eFAST/neighborhood10pct/pilot/*.tsv
 !/oxygen/results/eFAST/neighborhood10pct/pilot/*.tsv.gz
 !/oxygen/results/eFAST/neighborhood10pct/pilot/*.npz
+!/oxygen/results/eFAST/neighborhood10pct/slurm/
+/oxygen/results/eFAST/neighborhood10pct/slurm/*
+!/oxygen/results/eFAST/neighborhood10pct/slurm/*.tsv
+!/oxygen/results/eFAST/neighborhood10pct/slurm/*.json
 /oxygen/code/.rcpp_cache/
 /oxygen/code/.rcpp_cache_o2_invivo/
 /oxygen/code/O2_supply_demand_MAP/analysis/eFAST/__pycache__/

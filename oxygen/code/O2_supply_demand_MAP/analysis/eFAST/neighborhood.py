@@ -322,10 +322,16 @@ def convergence_diagnostic_rows(seed, rows, resolution_rows=None):
     return reports
 
 
-def write_full_diagnostics(root, seed, rows):
+def write_full_diagnostics(root, seed, rows, aggregate=True):
     pilot = root / "pilot" / "convergence" / "runs" / seed / "convergence.tsv.gz"
     reports = convergence_diagnostic_rows(seed, rows, efast.read_table(pilot) if pilot.exists() else None)
     efast.write_table(root / "runs" / seed / "convergence_diagnostics.tsv", list(reports[0]), reports)
+    if aggregate:
+        collect_full_diagnostics(root)
+
+
+def collect_full_diagnostics(root):
+    """One collector writes shared tables; array workers only write their seed."""
     combined, status_rows = [], []
     for path in sorted((root / "runs").glob("*/convergence_diagnostics.tsv"),
                        key=lambda p: int(p.parent.name[4:])):
@@ -373,6 +379,11 @@ def run(args):
     if efast.sha256(root / "seed_manifest.tsv") != inputs["seed_manifest_sha256"]:
         raise ValueError("Seed manifest changed after audit")
     if args.stage == "full":
+        backend = root / "slurm" / "execution_backend.json"
+        if backend.exists() and json.loads(backend.read_text()).get("backend") == "slurm":
+            state(root, stage="full", status="handed_to_slurm",
+                  explanation="The full 500-seed analysis is managed by Slurm; no serial full run is started.")
+            return
         if shutil.disk_usage(root).free < 200 * 1024 ** 3:
             raise ValueError("Full run requires 200 GiB free for raw outputs, pilot and summaries")
         record_full_execution_policy(root)

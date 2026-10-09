@@ -155,6 +155,17 @@ class NeighborhoodChecks(unittest.TestCase):
             diagnostics = efast.read_table(root / "summaries" / "seed_convergence_diagnostics.tsv")
             self.assertEqual(len(diagnostics), 8)
 
+    def test_serial_full_stage_hands_over_without_model_evaluation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            efast.write_table(root / "seed_manifest.tsv", ["fit_seed"], [])
+            nh.atomic_json(root / "input_manifest.json", dict(
+                seed_manifest_sha256=efast.sha256(root / "seed_manifest.tsv")))
+            nh.atomic_json(root / "slurm" / "execution_backend.json", dict(backend="slurm"))
+            with patch.object(nh.subprocess, "run", side_effect=AssertionError("must not evaluate")):
+                nh.run(SimpleNamespace(out_dir=str(root), stage="full"))
+            self.assertEqual(json.loads((root / "status.json").read_text())["status"], "handed_to_slurm")
+
 
 if __name__ == "__main__":
     unittest.main()

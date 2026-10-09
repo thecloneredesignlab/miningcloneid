@@ -47,6 +47,25 @@ has **not** been established. Controller PID: 1148713; log on HPC:
 
 ## Execution and diagnostic policy
 
+### Slurm execution approved on 2026-10-09
+
+Full execution uses a 35,000-task Slurm array: one fitted seed, one phase and
+one complete FAST frequency trajectory (513 vectors x 201 O2 values) per task.
+Every vector retains all 14 parameter columns. Each trajectory requests one
+CPU, 4G, xxlarge and 12 hours, without a specified node or `%N` concurrency
+limit. A dependent 500-task array assembles each endpoint's five phases; a
+final job validates complete coverage and builds the tables/plots.
+
+The arrays can start before the existing direct convergence pilot finishes.
+`slurm/execution_backend.json` causes that controller's next serial full stage
+to hand over without evaluating. The current direct pilot's results remain
+available for resolution diagnostics. Completed valid pilot N=513 phases
+are reused. `slurm/task_manifest.tsv`, `submission_plan.json` and
+`submission_jobs.tsv` record the mapping, code/input/image provenance and
+actual job IDs. `slurm/task_receipts/` and `slurm/logs/` stay on HPC.
+Per-trajectory outputs additionally live under each phase's `trajectories/`;
+assembled full-phase outputs preserve the existing schema and receipt checks.
+
 On 2026-10-08 the user changed convergence from an execution gate to a
 diagnostic. After the ongoing ten-endpoint pilot, the pipeline continues to
 all 500 endpoints at N=513 with five phases regardless of the pilot result.

@@ -1,0 +1,11 @@
+{
+  "fit_seed": "seed25",
+  "n_rows": 723198,
+  "metadata_sha256": "512686b15dbd234af9ed5d0393d347319c70c58f8f8bd417c98ffe4deaec1cd2",
+  "samples_sha256": "fd9f7c92385f71cbf4eea2192811669a73d8a84c15768af86baeb93922fc615c",
+  "outputs_sha256": "1ed632bd984ebd42f9472c98aa792c5f0222ce00e7c5c71d579020694a5215f2",
+  "evaluator_sha256": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+  "elapsed_seconds": 487.4424,
+  "workers": 16,
+  "completed_at": "2026-10-08 20:45:46 UTC"
+}

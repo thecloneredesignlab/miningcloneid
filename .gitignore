@@ -31,6 +31,7 @@
 !/oxygen/results/eFAST/runs/*/metadata.json
 !/oxygen/results/eFAST/runs/*/samples.tsv.gz
 !/oxygen/results/eFAST/runs/*/outputs.tsv.gz
+!/oxygen/results/eFAST/runs/*/outputs.tsv.gz.receipt.json
 !/oxygen/results/eFAST/neighborhood10pct/
 !/oxygen/results/eFAST/artifact_collection_manifest.tsv
 /oxygen/results/eFAST/neighborhood10pct/*

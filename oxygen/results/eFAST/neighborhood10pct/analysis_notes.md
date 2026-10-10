@@ -51,7 +51,8 @@ analysis is in the parent folder and uses a different sampling domain.
   of its own displayed data. Compare numerical colorbar values when comparing
   outputs or S1 with ST. Darker color indicates greater sensitivity, without
   indicating whether increasing a parameter increases or decreases the output.
-  The retained correlation panel is `../figures/figure4b_spearman_direction.pdf`.
+  The retained Figure 4B correlation panel supplies directional context for
+  ploidy: `../figures/figure4b_spearman_direction.pdf`.
 - **Three row annotations:** 1 is the Figure 4 process annotation; 2 preserves
   the iteration5 Figure 4B O2 correlation group; 3 is the new sensitivity group.
   Each panel's row order follows its own ploidy S1/ST sensitivity group and then

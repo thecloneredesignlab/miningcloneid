@@ -1,0 +1,17 @@
+index	output	criterion	n_fit_seeds	n_valid_seeds	n_supporting_seeds	fraction_supporting_valid_seeds	group_statistic
+S1	dominant_mean_ploidy	death_largest_group_mean_at_low_o2	500	500	64	0.128	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_mean_ploidy	missegregation_increases_at_high_o2	500	500	270	0.54	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_mean_ploidy	buffering_increases_at_high_o2	500	500	291	0.582	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_mean_ploidy	all_three_conditions	500	500	38	0.076	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_growth_rate	death_largest_group_mean_at_low_o2	500	500	114	0.228	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_growth_rate	missegregation_increases_at_high_o2	500	500	319	0.638	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_growth_rate	buffering_increases_at_high_o2	500	500	180	0.36	mean of per-parameter normalized AUC; ST overlaps, not group variance
+S1	dominant_growth_rate	all_three_conditions	500	500	26	0.052	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_mean_ploidy	death_largest_group_mean_at_low_o2	500	500	56	0.112	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_mean_ploidy	missegregation_increases_at_high_o2	500	500	254	0.508	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_mean_ploidy	buffering_increases_at_high_o2	500	500	277	0.554	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_mean_ploidy	all_three_conditions	500	500	33	0.066	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_growth_rate	death_largest_group_mean_at_low_o2	500	500	105	0.21	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_growth_rate	missegregation_increases_at_high_o2	500	500	332	0.664	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_growth_rate	buffering_increases_at_high_o2	500	500	201	0.402	mean of per-parameter normalized AUC; ST overlaps, not group variance
+ST	dominant_growth_rate	all_three_conditions	500	500	28	0.056	mean of per-parameter normalized AUC; ST overlaps, not group variance

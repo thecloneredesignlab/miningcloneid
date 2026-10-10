@@ -1,0 +1,10 @@
+{
+  "completed_designs": 2500,
+  "completed_tasks": 35000,
+  "n_fit_seeds": 500,
+  "pid": 4176873,
+  "stage": "full_slurm",
+  "status": "complete",
+  "total_designs": 2500,
+  "updated_at": "2026-10-10T03:10:23Z"
+}

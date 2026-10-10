@@ -1,0 +1,37 @@
+{
+  "recorded_utc": "2026-10-10T03:19:26.108268Z",
+  "job_state_counts": {
+    "20811552": {
+      "COMPLETED": 429,
+      "FAILED": 26
+    },
+    "20812022": {
+      "COMPLETED": 26
+    },
+    "20811553": {
+      "COMPLETED": 76
+    },
+    "20811554": {
+      "COMPLETED": 1
+    },
+    "20812123": {
+      "COMPLETED": 1
+    },
+    "20812131": {
+      "COMPLETED": 1
+    }
+  },
+  "current_internal_status": {
+    "checked_utc": "2026-10-10T03:00:22.759688+00:00",
+    "completed_seed_summaries": 500,
+    "completed_tasks": 35000,
+    "convergence_policy": "diagnostic_only",
+    "failed_task_ids": [],
+    "failed_tasks": 0,
+    "missing_or_running_tasks": 0,
+    "missing_task_ids": [],
+    "total_tasks": 35000
+  },
+  "collection_status": "compact artifacts copied to local and SHA256 verified",
+  "historical_failures_preserved": true
+}

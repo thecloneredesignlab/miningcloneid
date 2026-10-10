@@ -1,0 +1,33 @@
+field	value
+figure	efast_four_panel
+max_N	513
+replicate_summary	median across 500 fit seeds of five-phase means
+n_parameters	14
+S1_parameter_order	buffer_beta,buffer_smax,p_mis_base,mu_hp,O2_crit,p_misseg,k_o_mis,n_O,gamma_mu,lam_max,alpha_o2,gamma_growth,buffer_n_exp,p_wgd
+ST_parameter_order	buffer_smax,p_mis_base,buffer_beta,mu_hp,O2_crit,k_o_mis,n_O,p_misseg,gamma_mu,alpha_o2,buffer_n_exp,gamma_growth,p_wgd,lam_max
+efast_o2_group_windows	Low [0,1]; High [3,5]
+efast_o2_group_classification_output	dominant_mean_ploidy
+efast_o2_group_bootstrap_unit	complete fit-seed curve of five-phase mean indices
+efast_o2_group_bootstrap_reps	5000
+efast_o2_group_bootstrap_seed	5826
+efast_o2_group_bh_scope	14 parameters separately for S1 and ST
+efast_o2_group_peak_gate	global peak strictly greater than 0.3
+oxygen_axis_scale	symlog base 10; linear threshold 0.025 percent
+oxygen_window_boundary_lines	black dashed lines at 1 and 3 percent oxygen
+colorbar_position	horizontal below each heatmap
+S1_vmin	0
+S1_ploidy_vmax	0.2665427514
+S1_growth_vmax	0.2454763948
+S1_color	#3F007D
+ST_vmin	0
+ST_ploidy_vmax	0.5964067126
+ST_growth_vmax	0.2595397057
+ST_color	#E6550D
+convergence_sha256	61465b0d881ef20bc54265f98fdf24048ca6a4714d501f133b30ae452cc67e4e
+classification_sha256	a6676dbc2d107b8304874f69c533c5b8e8c9b2816ee6956069c663e9e50d662d
+ranking_sha256	54f45efad5248211a775e13be3b37edbf57936accaebe28691a184dec75141ca
+parameter_groups_sha256	6de0e7b331fe635b82cb6782f56f12abec02f8c56ca4877e53b5724f2a725c67
+parameter_group_palette_sha256	ec531c49fa0ee0967e19c7d974d1c6668a704602b3d4fc4ab50187a9faa489f9
+efast_o2_sensitivity_classification_sha256	5c4a0b3304f58a2da1542f98e4c4ed11679935dfdffdf2080a6318342433cc2a
+figure_png_sha256	a498bf653821b769f4f7adc8e9c8625a3b41da8f417c696b95f83daae0641d90
+figure_pdf_sha256	e3d14d269136b87926a773e98123a9bb012aa71d024a2072065b371ecb9a68ab

@@ -1,0 +1,21 @@
+{
+  "recorded_utc": "2026-10-10T03:12:18.777186+00:00",
+  "calculation_git_commit": "8d4a9912e5b823bca7cebcf7d6504b96c3ad7424",
+  "rendering_git_commit": "91186238a1ce0bfa2a7fcb0ce58866ee20d1308b",
+  "calculation_submission_plan_sha256": "fb6cb84f8ac8699419796fef62824458efc05c838aa29dcaee0d4ae29ae53a6e",
+  "rendering_efast_sha256": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+  "rendering_script_sha256": "eb54f9cd7aaf1c011cf63aa8ccb7621cd005b0171a187bee00a3c6051ff0ff02",
+  "source_sha256": {
+    "convergence.tsv": "61465b0d881ef20bc54265f98fdf24048ca6a4714d501f133b30ae452cc67e4e",
+    "efast_o2_sensitivity_classification.tsv": "5c4a0b3304f58a2da1542f98e4c4ed11679935dfdffdf2080a6318342433cc2a"
+  },
+  "S1_palette": [
+    "#FFFFFF",
+    "#3F007D"
+  ],
+  "ST_palette": [
+    "#FFFFFF",
+    "#E6550D"
+  ],
+  "statistical_results_changed": false
+}

@@ -1,0 +1,40 @@
+{
+  "checked_utc": "2026-10-10T03:10:27.868207+00:00",
+  "completed_seed_summaries": 500,
+  "completed_tasks": 35000,
+  "index_impact": [
+    {
+      "index": "S1",
+      "max_absolute_index_difference": 7.752198993848936e-09,
+      "output": "dominant_mean_ploidy"
+    },
+    {
+      "index": "S1",
+      "max_absolute_index_difference": 4.665157149474908e-13,
+      "output": "dominant_growth_rate"
+    },
+    {
+      "index": "ST",
+      "max_absolute_index_difference": 1.4692695726736815e-08,
+      "output": "dominant_mean_ploidy"
+    },
+    {
+      "index": "ST",
+      "max_absolute_index_difference": 8.04800670550776e-13,
+      "output": "dominant_growth_rate"
+    }
+  ],
+  "max_absolute_growth_change": 6.490707971096299e-11,
+  "max_absolute_ploidy_change": 5.296307559632396e-06,
+  "max_double_residual": 6.938893903907228e-18,
+  "max_growth_precision_difference": 0,
+  "max_leading_root_bound_width": 1.2543240369189635e-25,
+  "max_ploidy_precision_difference": 0,
+  "model_and_samples_changed": false,
+  "n_index_undefined_pattern_changes": 0,
+  "n_patched_trajectories": 454,
+  "n_recomputed_points": 590,
+  "n_recovery_task_ids": 456,
+  "spectral_gap_source": "original canonical double-precision diagnostic",
+  "status": "passed"
+}

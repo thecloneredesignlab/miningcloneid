@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-10T03:18:06.727405+00:00",
+  "n_fit_seeds": 500,
+  "n_phase_repeats": 5,
+  "n_parameters": 14,
+  "n_oxygen_points": 201,
+  "summary_rows": 5628,
+  "statistics_checked": 45024,
+  "max_absolute_source_summary_difference": 8.881784197001252e-16,
+  "every_endpoint_output_index_cell_defined": true,
+  "aggregation": "five-phase mean within endpoint; equal-weight endpoint summaries"
+}

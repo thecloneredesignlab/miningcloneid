@@ -1,0 +1,11 @@
+{
+  "checked_utc": "2026-10-10T03:00:22.759688+00:00",
+  "completed_seed_summaries": 500,
+  "completed_tasks": 35000,
+  "convergence_policy": "diagnostic_only",
+  "failed_task_ids": [],
+  "failed_tasks": 0,
+  "missing_or_running_tasks": 0,
+  "missing_task_ids": [],
+  "total_tasks": 35000
+}

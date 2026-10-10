@@ -3,6 +3,37 @@
 This folder contains a separate sensitivity analysis around each of the 500
 independent **in-vivo** optimizer endpoints. It does not use in-vitro or joint-fit bounds.
 
+## Completed analysis: 2026-10-09
+
+All **35,000 trajectories, 2,500 phase designs and 500 endpoint summaries**
+completed successfully. Final aggregation job `20811554` completed at 23:10 EDT
+with exit `0:0`; numerical audit job `20812123` also completed with exit `0:0`.
+`status.json`, `slurm/status.json` and the job ledgers record the final coverage.
+No endpoint was excluded for convergence. The dated checkpoints below are
+historical execution records, not the current status.
+
+The complete neighborhood mechanism shift has limited support: ploidy meets
+all three declared criteria in 38/500 endpoints for S1 and 33/500 for ST;
+growth meets them in 26/500 and 28/500, respectively. Read
+[analysis_notes.md](analysis_notes.md) for interpretation and figure-reading
+instructions, and [interpretation.md](interpretation.md) for the automatically
+generated support fractions. These results describe the chosen independent
+parameter neighborhoods; they are not posterior probabilities.
+
+The diagnostic-only convergence table reports 411 endpoints with at least one
+failed check, 87 with stable repeats but untested resolution, and two with all
+checks passed. Ploidy ST repeat stability is the principal limitation:
+410/500 fail its declared p90 repeat-range threshold. All 500 pass the ploidy
+S1 repeat check. Resolution comparisons are available for eight endpoints.
+
+Numerical recovery preserved all valid original rows and corrected only 590
+invalid points in 454 trajectories, using 50/100-digit agreement for the
+unchanged model matrices. The largest S1/ST change is `1.4692695726736815e-08`;
+no undefined-index pattern changed. Two separate container-launch failures
+were evaluated normally. See `slurm/numerical_recovery_audit.json`,
+`numerical_recovery_points.tsv` and `numerical_recovery_index_impact.tsv`.
+Both recovery versions and their original source hashes are retained.
+
 For parameter j and endpoint s, with the original natural bounds L and U:
 
 ```
@@ -17,7 +48,7 @@ Fourteen parameters affect the fixed-oxygen operator. The oxygen grid is the
 same 201 points, 0–5% by 0.025%, as Figure 4. Each endpoint uses N=513, M=4
 and **five independent phase repetitions**, regardless of pilot convergence.
 
-## Completed checks on 2026-10-08
+## Historical checks on 2026-10-08
 
 - All 500 endpoints and 7,000 neighborhood bounds passed the input audit.
   All 1,500 reference comparisons passed (maximum absolute error
@@ -49,7 +80,7 @@ has **not** been established. Controller PID: 1148713; log on HPC:
 
 ### Slurm execution approved on 2026-10-09
 
-#### Current attempt: private Rcpp caches, submitted at 14:11 EDT
+#### Historical main attempt: private Rcpp caches, submitted at 14:11 EDT
 
 The first attempt encountered 2,949 shared sourceCpp lock timeouts because
 the SIF defaults to forced backend recompilation. Its three jobs below were
@@ -160,9 +191,11 @@ both checks pass, `not_passed` when a check fails or is undefined, and
 `resolution_not_tested` when repeats pass but resolution was not tested.
 These statuses never remove an endpoint from the analysis.
 
-No Slurm submission is used. The runner enforces hpctpa3pc0028 and the validated
-SALib 1.5.2 SIF checksum. Only one neighborhood controller may run per root;
-`EFAST_WORKERS` controls fork workers and defaults to 16.
+The original direct pilot runner enforces hpctpa3pc0028 and the validated
+SALib 1.5.2 SIF checksum. The completed full analysis uses the subsequently
+approved Slurm arrays with no requested node, xxlarge, 12 hours and no array
+concurrency cap. Only one direct neighborhood controller may run per root;
+`EFAST_WORKERS` controls its fork workers and defaults to 16.
 
 ## Outputs and interpretation
 

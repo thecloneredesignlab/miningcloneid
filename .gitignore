@@ -47,6 +47,11 @@
 !/oxygen/results/eFAST/neighborhood10pct/collection_manifest.tsv
 !/oxygen/results/eFAST/neighborhood10pct/raw_output_inventory.tsv
 !/oxygen/results/eFAST/neighborhood10pct/interpretation.md
+!/oxygen/results/eFAST/neighborhood10pct/analysis_notes.md
+!/oxygen/results/eFAST/neighborhood10pct/status.json
+!/oxygen/results/eFAST/neighborhood10pct/figure_redraw_manifest.tsv
+!/oxygen/results/eFAST/neighborhood10pct/figure_rendering_receipt.json
+!/oxygen/results/eFAST/neighborhood10pct/artifact_collection_manifest.tsv
 !/oxygen/results/eFAST/neighborhood10pct/summaries/
 !/oxygen/results/eFAST/neighborhood10pct/summaries/*.tsv
 !/oxygen/results/eFAST/neighborhood10pct/summaries/*.tsv.gz

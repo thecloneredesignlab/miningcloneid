@@ -72,9 +72,9 @@ ploidy ST-derived group and peak. The growth heatmaps follow these ploidy-based
 orders and do not affect classification. The bootstrap unit is one complete
 phase-repeat curve. The original figure used two repeats; the extended runner
 uses five. This classification remains a repeat-consistency diagnostic rather
-than a high-precision uncertainty estimate. All four heatmaps use the same white-to-deep-purple palette, while
-ploidy and growth each use their own data-driven color maximum and horizontal
-colorbar. The oxygen axis uses a base-10 symmetric-log scale with a 0.025%
+than a high-precision uncertainty estimate. S1 uses white to deep purple;
+ST uses white to orange. Ploidy and growth each use their own data-driven
+color maximum and horizontal colorbar. The oxygen axis uses a base-10 symmetric-log scale with a 0.025%
 linear threshold so the observed 0% point remains visible. Black dashed
 vertical lines at 1% and 3% oxygen mark the low-window upper boundary and the
 high-window lower boundary, respectively.
@@ -239,3 +239,23 @@ their successful receipts can still be verified. The M-matrix factorization
 property is described by [Plemmons (1981)](https://doi.org/10.1016/0024-3795(81)90091-4).
 `audit_numerical_recovery.py` collects point corrections and S1/ST changes from
 both versions into compact, hash-checked source tables.
+
+After final aggregation and the numerical audit have completed, redraw the
+neighborhood figure and collect its compact source data:
+
+```bash
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/redraw_neighborhood.py \
+  --out-dir oxygen/results/eFAST/neighborhood10pct
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/collect_neighborhood_results.py \
+  --out-dir oxygen/results/eFAST/neighborhood10pct --archive /tmp/efast_deliverables.tar
+```
+
+Run scientific postprocessing inside the specified SALib 1.5.2 SIF. The redraw
+requires a completed collection, preserves the sensitivity source-table hashes,
+updates figure hashes, and records `figure_rendering_receipt.json`. The original
+calculation's checksummed submission plan remains unchanged. Its source commit
+and the later rendering commit are recorded separately, so a palette change
+does not imply that the model evaluations were recomputed. The collector
+requires all 35,000 tasks, all 500 seed summaries and a passed numerical audit;
+it checks every collection-manifest hash before archiving. Raw trajectories,
+matrix proof artifacts, compiled caches and execution logs remain on HPC.

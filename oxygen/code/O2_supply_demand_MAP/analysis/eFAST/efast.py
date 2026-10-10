@@ -767,8 +767,8 @@ def plot(args):
         "ST": {
             "letter": "B", "title": "Total effects (ST)",
             "cmap": LinearSegmentedColormap.from_list(
-                "white_to_deep_purple_st", ["#FFFFFF", "#3F007D"]),
-            "color": "#3F007D",
+                "white_to_orange_st", ["#FFFFFF", "#E6550D"]),
+            "color": "#E6550D",
         },
     }
     output_titles = {

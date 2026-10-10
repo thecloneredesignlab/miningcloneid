@@ -228,3 +228,14 @@ included; convergence remains diagnostic only. A compiled Perron template is
 copied into a private node-local cache for each task. Large raw outputs and
 matrix proof artifacts remain on HPC; compact source tables, manifests, figures
 and reproducible scripts are collected into this branch.
+
+The versioned `*_safe` recovery files handle points where row-pivoted linear
+solves lose positivity at finite precision. For the shifted nonsingular
+M-matrix, they use Gaussian elimination without row exchanges and a larger
+shift safeguard (`1e-25` times the matrix scale). The original matrix stays
+unchanged. The same 50/100-digit agreement, nonnegativity, leading-root bound
+and residual checks apply. Original recovery source files remain immutable so
+their successful receipts can still be verified. The M-matrix factorization
+property is described by [Plemmons (1981)](https://doi.org/10.1016/0024-3795(81)90091-4).
+`audit_numerical_recovery.py` collects point corrections and S1/ST changes from
+both versions into compact, hash-checked source tables.

@@ -32,6 +32,7 @@
 !/oxygen/results/eFAST/runs/*/samples.tsv.gz
 !/oxygen/results/eFAST/runs/*/outputs.tsv.gz
 !/oxygen/results/eFAST/neighborhood10pct/
+!/oxygen/results/eFAST/artifact_collection_manifest.tsv
 /oxygen/results/eFAST/neighborhood10pct/*
 !/oxygen/results/eFAST/neighborhood10pct/README.md
 !/oxygen/results/eFAST/neighborhood10pct/seed_manifest.tsv

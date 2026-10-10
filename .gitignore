@@ -67,6 +67,7 @@
 /oxygen/code/.rcpp_cache/
 /oxygen/code/.rcpp_cache_o2_invivo/
 /oxygen/code/O2_supply_demand_MAP/analysis/eFAST/__pycache__/
+/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/.rcpp_cache_perron/
 data/InVivoData_Gemcitabine/~$dt_Gem_VT_20260209_v5.xlsx
 /oxygen/code/O2_dynamic_simplify/.rcpp_cache_o2_invivo
 /oxygen/code/O2_dynamic_simplify/.rcpp_cache_o2_dynamic_simplify

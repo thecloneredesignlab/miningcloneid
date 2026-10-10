@@ -192,3 +192,39 @@ S1 and ST are variance contributions without a sign; the correlation panel retai
 direction. S1/ST are conditional on these chosen input ranges/distributions,
 not a posterior uncertainty decomposition. Summing ST across parameters
 double counts shared interactions.
+## Numerical recovery of failed neighborhood points
+
+`recover_eigen.py`, `repair_eigen_points.R`, and `perron_high_precision.cpp`
+recover invalid fixed-O2 evaluations without changing the FAST design or the
+model matrix. The C++ solver uses the SIF's existing Rcpp and BH headers;
+no additional Python environment or package installation is required.
+
+For a failed trajectory, preserve the original partial gzip output and every
+valid row. Rebuild only its invalid points' original canonical matrices, then
+use positivity-preserving Noda inverse iteration at 50 and 100 decimal digits.
+Accept a point only when both precisions agree, the vector is nonnegative and
+normalized, the original-matrix residual is small, and the leading-root upper
+bound meets the recorded tolerance. No matrix rates or graph edges are
+regularized. The spectral-gap diagnostic retains the canonical double-precision
+spectrum; ploidy and the leading eigenvalue use the certified recovered pair.
+
+The method follows the matrix form of Noda iteration described in
+[Jia, Lin and Liu](https://arxiv.org/abs/1309.3926).
+Each `recovery/numerical_recovery.json` records source hashes, matrix artifacts,
+unchanged-row counts, original/corrected values and the effect on SALib S1/ST.
+Unchecked pre-recovery indices are used only for this numerical impact check.
+Successful scientific results always pass the standard validity checks.
+
+After validation in the required SIF and a complete-trajectory pilot, run:
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_eigen_recovery.sh
+```
+
+This submits only failed/missing absolute task IDs, then only missing seed
+summaries and the final aggregate. All use `qos=xxlarge`, 12 hours, no requested
+compute node, and no array concurrency cap. All 500 fit endpoints remain
+included; convergence remains diagnostic only. A compiled Perron template is
+copied into a private node-local cache for each task. Large raw outputs and
+matrix proof artifacts remain on HPC; compact source tables, manifests, figures
+and reproducible scripts are collected into this branch.

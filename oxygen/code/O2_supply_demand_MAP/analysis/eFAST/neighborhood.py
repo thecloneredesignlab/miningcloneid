@@ -167,6 +167,19 @@ def verify_completion(run_dir):
                 "n_rows": metadata["n_samples"] * len(metadata["oxygen_pct"])}
     if any(receipt.get(k) != v for k, v in expected.items()):
         raise ValueError("Completion receipt mismatch: " + str(run_dir))
+    if "recovery_manifest_sha256" in receipt:
+        proof_path = run_dir / "recovery" / "numerical_recovery.json"
+        if efast.sha256(proof_path) != receipt["recovery_manifest_sha256"]:
+            raise ValueError("Numerical recovery proof changed: " + str(run_dir))
+        proof = json.loads(proof_path.read_text())
+        if proof["status"] != "passed" or proof["outputs_sha256"] != expected["outputs_sha256"]:
+            raise ValueError("Numerical recovery output/proof mismatch")
+        for name, signature in proof["code_sha256"].items():
+            if efast.sha256(HERE / name) != signature:
+                raise ValueError("Numerical recovery code changed: " + name)
+        for name, signature in proof["artifact_sha256"].items():
+            if efast.sha256(run_dir / "recovery" / name) != signature:
+                raise ValueError("Numerical recovery source artifact changed: " + name)
     return True
 
 

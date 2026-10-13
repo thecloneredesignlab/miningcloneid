@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "cases_checked": 501,
+  "oxygen_points": 201,
+  "common_configuration_maximum_tolerance": 1e-08,
+  "numerical_tests": "test_sobol.py and test_full.py passed in bootstrap",
+  "measured_N16_bytes_per_point_p50": 15.990982587064677,
+  "float64_outputs_and_flags_uncompressed_GiB": 979.566764831543,
+  "free_bytes_at_gate": 2313954000896,
+  "convergence_policy": "diagnostic_only",
+  "validated_utc": "2026-10-13T22:58:00.557025+00:00"
+}

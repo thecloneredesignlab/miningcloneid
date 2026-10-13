@@ -1,0 +1,136 @@
+{
+  "recorded_utc": "2026-10-13T23:03:35.595051+00:00",
+  "status": "submitted_and_running",
+  "source_code_git_commit": "471f6a84afbf2363078a9cefce12a75cd0ee691f",
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "N": 4096,
+  "n_global_domains": 1,
+  "n_neighborhoods": 500,
+  "n_repeats": 5,
+  "oxygen_points": 201,
+  "n_pairs": 91,
+  "n_evaluation_tasks": 75150,
+  "n_operator_evaluations": 61870694400,
+  "convergence_policy": "diagnostic_only",
+  "jobs": [
+    {
+      "role": "bootstrap",
+      "job_id": "20839420",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "validate",
+      "job_id": "20839421",
+      "array_spec": "1-501",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "afterok:20839420",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "gate",
+      "job_id": "20839422",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "afterany:20839421",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "evaluate",
+      "job_id": "20839423",
+      "array_spec": "1-75150",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "afterok:20839422",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "summarize",
+      "job_id": "20839424",
+      "array_spec": "1-501",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "16G",
+      "dependency": "afterany:20839423",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "aggregate",
+      "job_id": "20839425",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "16G",
+      "dependency": "afterany:20839424",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "response",
+      "job_id": "20839426",
+      "array_spec": "1-54",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "afterok:20839425",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    },
+    {
+      "role": "finish",
+      "job_id": "20839427",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "8G",
+      "dependency": "afterany:20839426",
+      "submitted_utc": "2026-10-13T22:50:42Z"
+    }
+  ],
+  "runtime_validation": {
+    "status": "passed",
+    "cases_checked": 501,
+    "oxygen_points": 201,
+    "common_configuration_maximum_tolerance": 1e-08,
+    "numerical_tests": "test_sobol.py and test_full.py passed in bootstrap",
+    "measured_N16_bytes_per_point_p50": 15.990982587064677,
+    "float64_outputs_and_flags_uncompressed_GiB": 979.566764831543,
+    "free_bytes_at_gate": 2313954000896,
+    "convergence_policy": "diagnostic_only",
+    "validated_utc": "2026-10-13T22:58:00.557025+00:00"
+  },
+  "observed_launch": {
+    "recorded_utc": "2026-10-13T23:01:09.207004Z",
+    "evaluate_job": "20839423",
+    "queue_counts": {
+      "PENDING": 72166,
+      "RUNNING": 2984
+    },
+    "failed_evaluations": [],
+    "bootstrap_accounting": "COMPLETED|0:0",
+    "validation_completed": 501,
+    "configuration_gate": "passed",
+    "source_code_git_commit": "471f6a84afbf2363078a9cefce12a75cd0ee691f",
+    "analysis_complete": false
+  },
+  "local_math_tests": 15,
+  "local_shell_syntax": "passed",
+  "synthetic_201_column_layout": "inspected; no scientific results claimed",
+  "analysis_complete": false,
+  "parameter_boundary_policy": "optimum +/- 10% of full natural span, clipped"
+}

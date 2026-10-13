@@ -1,0 +1,8 @@
+{
+  "status": "validated_ready_for_full_array",
+  "n_cases": 501,
+  "n_tasks": 75150,
+  "all_seeds_included": true,
+  "convergence_policy": "diagnostic_only",
+  "updated_utc": "2026-10-13T22:58:00.562553+00:00"
+}

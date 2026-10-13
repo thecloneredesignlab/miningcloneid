@@ -1,0 +1,14 @@
+{
+  "recorded_utc": "2026-10-13T23:01:09.207004Z",
+  "evaluate_job": "20839423",
+  "queue_counts": {
+    "PENDING": 72166,
+    "RUNNING": 2984
+  },
+  "failed_evaluations": [],
+  "bootstrap_accounting": "COMPLETED|0:0",
+  "validation_completed": 501,
+  "configuration_gate": "passed",
+  "source_code_git_commit": "471f6a84afbf2363078a9cefce12a75cd0ee691f",
+  "analysis_complete": false
+}

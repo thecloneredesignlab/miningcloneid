@@ -1,0 +1,100 @@
+{
+  "recorded_utc": "2026-10-13T21:32:21.385185+00:00",
+  "stage": "submitted_and_running",
+  "runtime_validation": "passed",
+  "n_numerical_tests": 9,
+  "n_configuration_checks": 9,
+  "incremental_direct_comparisons": "passed_exactly_for_all_nine_cases",
+  "code_git_commit": "42dc4c08b46e09ebb8b204bc09c0b76786238c8c",
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "jobs": [
+    {
+      "role": "validate",
+      "job_id": "20837613",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "",
+      "submitted_utc": "2026-10-13T21:29:57Z"
+    },
+    {
+      "role": "evaluate",
+      "job_id": "20837614",
+      "array_spec": "1-1350",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "afterok:20837613",
+      "submitted_utc": "2026-10-13T21:29:57Z"
+    },
+    {
+      "role": "summarize",
+      "job_id": "20837615",
+      "array_spec": "1-9",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "8G",
+      "dependency": "afterany:20837614",
+      "submitted_utc": "2026-10-13T21:29:57Z"
+    },
+    {
+      "role": "finalize",
+      "job_id": "20837616",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "8G",
+      "dependency": "afterany:20837615",
+      "submitted_utc": "2026-10-13T21:29:57Z"
+    },
+    {
+      "role": "response",
+      "job_id": "20837617",
+      "array_spec": "1-54",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "4G",
+      "dependency": "afterok:20837616",
+      "submitted_utc": "2026-10-13T21:29:57Z"
+    },
+    {
+      "role": "finish",
+      "job_id": "20837618",
+      "array_spec": "",
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "mem": "8G",
+      "dependency": "afterany:20837617",
+      "submitted_utc": "2026-10-13T21:29:57Z"
+    }
+  ],
+  "last_observed_validation_accounting": {
+    "job_id": "20837613",
+    "state": "COMPLETED",
+    "exit_code": "0:0",
+    "elapsed": "00:01:20"
+  },
+  "last_observed_evaluation_array": {
+    "job_id": "20837614",
+    "running": 100,
+    "pending": 1250
+  },
+  "local_copied_inputs_verified": [
+    "inputs/source_audit.json",
+    "inputs/representative_seeds.tsv",
+    "inputs/global_bounds.tsv",
+    "inputs/reuse_source_audit.json",
+    "slurm/task_manifest.tsv",
+    "slurm/case_manifest.tsv"
+  ],
+  "remote_output_root": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/resolution_pilot/N2048_N4096",
+  "complete_analysis": false,
+  "all_500_neighborhoods_run": false
+}

@@ -1,0 +1,9 @@
+{
+  "status": "prepared",
+  "n_evaluation_tasks": 1350,
+  "n_cases": 9,
+  "n_pairs": 91,
+  "repeats": 5,
+  "global_and_neighborhood_separate": true,
+  "prepared_utc": "2026-10-13T21:29:56.924514+00:00"
+}

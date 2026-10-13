@@ -1,0 +1,306 @@
+{
+  "recorded_utc": "2026-10-13T23:12:46.787399+00:00",
+  "evaluate_job": "20839423",
+  "queue_counts": {
+    "COMPLETING": 23,
+    "PENDING": 72150,
+    "RUNNING": 2977
+  },
+  "accounting_unsuccessful_attempts": [
+    {
+      "job_id": "20839423_868",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0013",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:05:21",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0013"
+      }
+    },
+    {
+      "job_id": "20839423_1162",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0018",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:06:51",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0018"
+      }
+    },
+    {
+      "job_id": "20839423_1166",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0018",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:06:51",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0018"
+      }
+    },
+    {
+      "job_id": "20839423_1167",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0018",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:06:51",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0018"
+      }
+    },
+    {
+      "job_id": "20839423_1168",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0018",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:06:51",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0018"
+      }
+    },
+    {
+      "job_id": "20839423_1172",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0018",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:06:51",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0018"
+      }
+    },
+    {
+      "job_id": "20839423_1226",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0019",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:06:51",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0019"
+      }
+    },
+    {
+      "job_id": "20839423_1699",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0041",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0041"
+      }
+    },
+    {
+      "job_id": "20839423_1715",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0041",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0041"
+      }
+    },
+    {
+      "job_id": "20839423_1717",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0041",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0041"
+      }
+    },
+    {
+      "job_id": "20839423_1842",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0037",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0037"
+      }
+    },
+    {
+      "job_id": "20839423_1893",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0038",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0038"
+      }
+    },
+    {
+      "job_id": "20839423_1902",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0038",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0038"
+      }
+    },
+    {
+      "job_id": "20839423_1904",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0038",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0038"
+      }
+    },
+    {
+      "job_id": "20839423_1905",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0038",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0038"
+      }
+    },
+    {
+      "job_id": "20839423_1907",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0038",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:31",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0038"
+      }
+    },
+    {
+      "job_id": "20839423_2286",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0044",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:30",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0044"
+      }
+    },
+    {
+      "job_id": "20839423_2536",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0047",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:30",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0047"
+      }
+    },
+    {
+      "job_id": "20839423_2593",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0048",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:08:30",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0048"
+      }
+    },
+    {
+      "job_id": "20839423_2644",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0049",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:10:10",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0049"
+      }
+    },
+    {
+      "job_id": "20839423_2660",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0049",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:10:10",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0049"
+      }
+    },
+    {
+      "job_id": "20839423_2662",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0049",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:10:10",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0049"
+      }
+    },
+    {
+      "job_id": "20839423_2664",
+      "accounting_state": "NODE_FAIL",
+      "exit_code": "1:0",
+      "node": "hpctpa3pc0049",
+      "accounting_reason": "Dependency",
+      "elapsed": "00:10:10",
+      "current_queue": {
+        "state": "COMPLETING",
+        "reason_or_node": "hpctpa3pc0049"
+      }
+    }
+  ],
+  "representative_job_controls": [
+    {
+      "job_id": "20839423_868",
+      "scontrol": "JobId=20840795 ArrayJobId=20839423 ArrayTaskId=868 JobName=sobol_full_evaluate\n   UserId=4482173(107865) GroupId=g_4482173(107865) MCS_label=N/A\n   Priority=10142 Nice=0 Account=tao.li2 QOS=xxlarge WCKey=*4482173\n   JobState=COMPLETING Reason=Prolog FailedNode=hpctpa3pc0013 Dependency=(null)\n   Requeue=1 Restarts=1 BatchFlag=2 Reboot=0 ExitCode=0:0\n   RunTime=00:00:00 TimeLimit=12:00:00 TimeMin=N/A\n   SubmitTime=2026-10-13T18:50:42 EligibleTime=2026-10-13T18:58:01\n   AccrueTime=2026-10-13T18:58:01\n   StartTime=Unknown EndTime=Unknown Deadline=N/A\n   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-10-13T18:58:38 Scheduler=Main\n   Partition=red AllocNode:Sid=hpctpa3pl0001:147406\n   ReqNodeList=(null) ExcNodeList=(null)\n   NodeList=hpctpa3pc0013\n   BatchHost=hpctpa3pc0013\n   NumNodes=1 NumCPUs=1 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*\n   ReqTRES=cpu=1,mem=4G,node=1,billing=1\n   AllocTRES=cpu=1,mem=4G,node=1,billing=1\n   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*\n   MinCPUsNode=1 MinMemoryNode=4G MinTmpDiskNode=0\n   Features=(null) DelayBoot=00:00:00\n   OverSubscribe=OK Contiguous=0 Licenses=(null) LicensesAlloc=(null) Network=(null)\n   Command=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/code_snapshot/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run_full_array.sbatch\n   WorkDir=/share/lab_crd/taoli/Project/soft_couping_eFAST\n   StdErr=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/logs/evaluate_20839423_868.err\n   StdIn=/dev/null\n   StdOut=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/logs/evaluate_20839423_868.out\n   TresPerTask=cpu=1\n   \n\n"
+    },
+    {
+      "job_id": "20839423_2644",
+      "scontrol": "JobId=20842571 ArrayJobId=20839423 ArrayTaskId=2644 JobName=sobol_full_evaluate\n   UserId=4482173(107865) GroupId=g_4482173(107865) MCS_label=N/A\n   Priority=10135 Nice=0 Account=tao.li2 QOS=xxlarge WCKey=*4482173\n   JobState=COMPLETING Reason=Prolog FailedNode=hpctpa3pc0049 Dependency=(null)\n   Requeue=1 Restarts=1 BatchFlag=2 Reboot=0 ExitCode=0:0\n   RunTime=00:00:00 TimeLimit=12:00:00 TimeMin=N/A\n   SubmitTime=2026-10-13T18:50:42 EligibleTime=2026-10-13T18:58:01\n   AccrueTime=2026-10-13T18:58:01\n   StartTime=Unknown EndTime=Unknown Deadline=N/A\n   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-10-13T18:58:49 Scheduler=Main\n   Partition=red AllocNode:Sid=hpctpa3pl0001:147406\n   ReqNodeList=(null) ExcNodeList=(null)\n   NodeList=hpctpa3pc0049\n   BatchHost=hpctpa3pc0049\n   NumNodes=1 NumCPUs=1 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*\n   ReqTRES=cpu=1,mem=4G,node=1,billing=1\n   AllocTRES=cpu=1,mem=4G,node=1,billing=1\n   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*\n   MinCPUsNode=1 MinMemoryNode=4G MinTmpDiskNode=0\n   Features=(null) DelayBoot=00:00:00\n   OverSubscribe=OK Contiguous=0 Licenses=(null) LicensesAlloc=(null) Network=(null)\n   Command=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/code_snapshot/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run_full_array.sbatch\n   WorkDir=/share/lab_crd/taoli/Project/soft_couping_eFAST\n   StdErr=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/logs/evaluate_20839423_2644.err\n   StdIn=/dev/null\n   StdOut=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/logs/evaluate_20839423_2644.out\n   TresPerTask=cpu=1\n   \n\n"
+    },
+    {
+      "job_id": "20839424",
+      "scontrol": "JobId=20839424 ArrayJobId=20839424 ArrayTaskId=1-501 JobName=sobol_full_summarize\n   UserId=4482173(107865) GroupId=g_4482173(107865) MCS_label=N/A\n   Priority=10135 Nice=0 Account=tao.li2 QOS=xxlarge WCKey=*4482173\n   JobState=PENDING Reason=Dependency Dependency=afterany:20839423_*(unfulfilled)\n   Requeue=1 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0\n   RunTime=00:00:00 TimeLimit=12:00:00 TimeMin=N/A\n   SubmitTime=2026-10-13T18:50:42 EligibleTime=Unknown\n   AccrueTime=Unknown\n   StartTime=Unknown EndTime=Unknown Deadline=N/A\n   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-10-13T18:50:42 Scheduler=Main\n   Partition=red AllocNode:Sid=hpctpa3pl0001:147406\n   ReqNodeList=(null) ExcNodeList=(null)\n   NodeList=\n   NumNodes=1 NumCPUs=1 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*\n   ReqTRES=cpu=1,mem=16G,node=1,billing=1\n   AllocTRES=(null)\n   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*\n   MinCPUsNode=1 MinMemoryNode=16G MinTmpDiskNode=0\n   Features=(null) DelayBoot=00:00:00\n   OverSubscribe=OK Contiguous=0 Licenses=(null) LicensesAlloc=(null) Network=(null)\n   Command=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/code_snapshot/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run_full_array.sbatch\n   WorkDir=/share/lab_crd/taoli/Project/soft_couping_eFAST\n   StdErr=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/logs/summarize_20839424_4294967294.err\n   StdIn=/dev/null\n   StdOut=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/logs/summarize_20839424_4294967294.out\n   TresPerTask=cpu=1\n   \n\n"
+    }
+  ],
+  "scheduler_diagnosis": "Prolog failure before batch script start; Slurm Requeue=1 Restarts=1. Accounting NODE_FAIL is an attempt record; jobs still in COMPLETING during automatic requeue. No duplicate array was submitted.",
+  "manually_resubmitted_tasks": [],
+  "convergence_policy": "diagnostic_only",
+  "analysis_complete": false,
+  "completed_tasks_may_not_appear_in_squeue": true
+}

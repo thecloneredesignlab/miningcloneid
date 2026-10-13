@@ -30,6 +30,11 @@ Code commit: `471f6a84afbf2363078a9cefce12a75cd0ee691f`.
 
 Scheduling dependencies and submission timestamps are in `slurm/submission_jobs.tsv`.
 Bootstrap and the 501-domain validation concern correctness/storage, not convergence.
+The later `slurm/scheduler_requeue_status.json` records 23 node-initialization
+(`Prolog`) failures and their current `COMPLETING` state during Slurm automatic
+requeue. Representative jobs have `Requeue=1` and `Restarts=1`; no duplicate
+array was submitted. Accounting attempt failures are kept distinct from the
+current queue state and from numerical convergence diagnostics.
 Results are complete only after `status.json` says complete and the final report
 job is COMPLETED with exit 0:0. This README records submission, not analysis completion.
 

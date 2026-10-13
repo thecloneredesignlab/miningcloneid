@@ -21,7 +21,7 @@ case ${SOBOL_ROLE:?} in
 esac
 cd "$repo"
 echo "role=$SOBOL_ROLE host=$(hostname -s) job=$SLURM_JOB_ID task=${SLURM_ARRAY_TASK_ID:-none} start=$(date -Is)"
-apptainer exec --cleanenv --bind "$scratch/model_cache:$model_cache" "$sif" \
+apptainer exec --cleanenv --bind "$scratch:$scratch,$scratch/model_cache:$model_cache" "$sif" \
   env R_HOME= R_ENVIRON_USER=/dev/null R_LIBS_USER=/opt/R/4.4.2/lib64/R/library \
   OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 MPLCONFIGDIR="$scratch/matplotlib" \
   MININGCLONEID_RCPP_REBUILD=FALSE SOBOL_PERRON_CACHE="$scratch/perron_cache" \

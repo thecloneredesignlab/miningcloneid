@@ -9,6 +9,8 @@ import core as c
 
 
 def summarize_rows(rows, plan):
+    resolutions=plan.get('resolutions',c.RESOLUTIONS)
+    lower,highest_n=resolutions[-2:]
     groups=defaultdict(list)
     fields=('scope','case_id','fit_seed','N','O2_pct','output','index','parameter_i','parameter_j')
     for row in rows: groups[tuple(row[k] for k in fields)].append(row)
@@ -19,8 +21,8 @@ def summarize_rows(rows, plan):
             raise ValueError('Require five distinct scrambles for every index')
         values=np.array([r['value'] for r in rr]); widths=np.array([r['bootstrap_half_width'] for r in rr])
         valid=bool(np.isfinite(values).all()); repeat_range=float(np.ptp(values)) if valid else np.nan
-        k=list(key); k[3]=512; mid=means.get(tuple(k),np.nan)
-        k[3]=1024; highest=means.get(tuple(k),np.nan)
+        k=list(key); k[3]=lower; mid=means.get(tuple(k),np.nan)
+        k[3]=highest_n; highest=means.get(tuple(k),np.nan)
         delta=abs(highest-mid)
         status='undefined' if not valid or not np.isfinite(delta) else (
             'passed' if repeat_range<=plan['repeat_range_tolerance'] and delta<=plan['resolution_delta_tolerance'] else 'not_passed')
@@ -28,13 +30,14 @@ def summarize_rows(rows, plan):
             repeat_min=float(np.min(values)),repeat_max=float(np.max(values)),repeat_range=repeat_range,
             n_valid_repeats=int(np.isfinite(values).sum()),bootstrap_half_width_median=float(np.median(widths)),
             n_bootstrap_intervals_above_zero=sum(r['bootstrap_lower']>0 for r in rr),
-            delta_N512_N1024=delta,output_variance_mean=float(np.mean([r['output_variance'] for r in rr])),
-            convergence_status=status,retained='TRUE'))
+            resolution_low=lower,resolution_high=highest_n,resolution_delta=delta,
+            output_variance_mean=float(np.mean([r['output_variance'] for r in rr])),
+            convergence_status=status,retained='TRUE',**{'delta_N%d_N%d'%(lower,highest_n):delta}))
     return result
 
 
 def scope_summary(case_summaries, scope):
-    selected=[r for rr in case_summaries for r in rr if r['scope']==scope and int(r['N'])==1024]
+    selected=[r for rr in case_summaries for r in rr if r['scope']==scope and int(r['N'])==max(c.RESOLUTIONS)]
     if scope=='global': return selected
     groups=defaultdict(list)
     for r in selected: groups[(r['O2_pct'],r['output'],r['index'],r['parameter_i'],r['parameter_j'])].append(r)
@@ -44,7 +47,7 @@ def scope_summary(case_summaries, scope):
         values=np.array([float(r['value_mean']) for r in rr]); finite=np.isfinite(values)
         # Undefined endpoints are retained; an incomplete eight-endpoint median is undefined.
         median=float(np.median(values)) if finite.all() else np.nan
-        result.append(dict(scope=scope,case_id='representative8_median',fit_seed='representative8',N=1024,
+        result.append(dict(scope=scope,case_id='representative8_median',fit_seed='representative8',N=max(c.RESOLUTIONS),
             O2_pct=key[0],output=key[1],index=key[2],parameter_i=key[3],parameter_j=key[4],
             value_mean=median,value_median=median,n_endpoints=8,n_defined_endpoints=int(finite.sum()),
             endpoint_q25=float(np.quantile(values,.25)) if finite.all() else np.nan,
@@ -60,7 +63,7 @@ def plot_pair_heatmap(rows, path, title):
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
-    lookup={(r['output'],r['parameter_i'],r['parameter_j'],float(r['O2_pct'])):r for r in rows if r['index']=='S2' and int(r['N'])==1024}
+    lookup={(r['output'],r['parameter_i'],r['parameter_j'],float(r['O2_pct'])):r for r in rows if r['index']=='S2' and int(r['N'])==max(c.RESOLUTIONS)}
     fig,axes=plt.subplots(1,2,figsize=(10,23),sharey=True,layout='constrained')
     for ax,output in zip(axes,c.OUTPUTS):
         data=np.array([[float(lookup[(output,c.ACTIVE[i],c.ACTIVE[j],o)]['value_mean']) for o in c.OXYGEN] for i,j in c.PAIRS])
@@ -85,7 +88,7 @@ def plot_pair_heatmap(rows, path, title):
             xx,yy=zip(*unstable); ax.scatter(xx,yy,s=6,c='#555555',marker='x',linewidths=.5)
         bar=fig.colorbar(im,ax=ax,orientation='horizontal',fraction=.025,pad=.025,label='S2 (raw estimates; negative values retained)')
         if vmin<0: bar.set_ticks([vmin,0,vmax/2,vmax])
-    fig.suptitle(title+'\n× = diagnostic not passed/undefined; gray cells = undefined',fontsize=11)
+    fig.suptitle(title+'; N='+str(max(c.RESOLUTIONS))+'\n× = diagnostic not passed/undefined; gray cells = undefined',fontsize=11)
     path.parent.mkdir(parents=True,exist_ok=True)
     fig.savefig(path.with_suffix('.pdf')); fig.savefig(path.with_suffix('.png'),dpi=120); plt.close(fig)
 
@@ -168,6 +171,43 @@ def finalize_indices(root,plan):
     for case,rows in zip(plan['cases'],all_summaries):
         if case['scope']=='neighborhood10pct':
             plot_pair_heatmap(rows,c.case_directory(root,case)/'figures/s2_pair_by_oxygen',case['case_id']+': neighborhood, mean of five scrambles')
+    comparison=[]
+    fields=('scope','case_id','fit_seed','O2_pct','output','index','parameter_i','parameter_j')
+    groups=defaultdict(dict)
+    for rows in all_summaries:
+        for row in rows: groups[tuple(row[f] for f in fields)][int(row['N'])]=row
+    for key,by_n in groups.items():
+        if set(by_n)!=set(c.RESOLUTIONS): raise ValueError('Incomplete resolution comparison')
+        record=dict(zip(fields,key))
+        for n in c.RESOLUTIONS:
+            record.update({'value_N%d'%n:by_n[n]['value_mean'],
+                           'repeat_range_N%d'%n:by_n[n]['repeat_range'],
+                           'diagnostic_N%d'%n:by_n[n]['convergence_status']})
+        record.update(resolution_low=c.RESOLUTIONS[-2],resolution_high=c.RESOLUTIONS[-1],
+                      resolution_delta=by_n[c.RESOLUTIONS[-1]]['resolution_delta'])
+        comparison.append(record)
+    c.table(root/'resolution_comparison.tsv',comparison)
+    if plan.get('reuse_source'):
+        # Same N1024 vectors and outputs must reproduce the old indices exactly.
+        source=Path(plan['reuse_source']); checks=[]
+        audit=c.load_json(root/'inputs/reuse_source_audit.json')
+        for name,expected in audit['summary_sha256'].items():
+            if c.sha(name)!=expected: raise ValueError('Reuse summary changed after submission: '+name)
+        for case,rows in zip(plan['cases'],all_summaries):
+            old=c.read(c.case_directory(source,case)/'indices_summary.tsv')
+            lookup={tuple(r[f] for f in fields):r for r in old if int(r['N'])==plan['reuse_source_N']}
+            maximum=0.; count=0
+            for row in rows:
+                if int(row['N'])!=plan['reuse_source_N']: continue
+                prior=lookup[tuple(row[f] for f in fields)]
+                a,b=float(row['value_mean']),float(prior['value_mean'])
+                if np.isnan(a) and np.isnan(b): count+=1; continue
+                if not np.isfinite([a,b]).all() or a!=b:
+                    raise ValueError('Reused N indices differ: '+case['case_id'])
+                maximum=max(maximum,abs(a-b)); count+=1
+            if count!=len(lookup): raise ValueError('Missing source-N index comparison')
+            checks.append(dict(**case,n_indices=count,maximum_absolute_difference=maximum,status='passed'))
+        c.save_json(root/'reused_indices_validation.json',dict(status='passed',N=plan['reuse_source_N'],cases=checks))
     keys=choose_pairs(scope_rows)
     c.table(root/'key_pairs.tsv',keys)
     tasks=[]
@@ -275,13 +315,13 @@ def finish_report(root,plan):
         lines=['# '+scope+' second-order Sobol pilot','',
             'Scope: '+('full independent in-vivo bounds; five randomized Sobol scrambles.' if scope=='global' else
             'eight representative fitted endpoints; natural-span ±10% clipped neighborhoods; five scrambles per endpoint. This is not a 500-endpoint result.'),'',
-            'Oxygen: 0, 0.5, 2.5 and 5%; 14 parameters, all 91 pairs; N=256,512,1024.',
+            'Oxygen: '+', '.join(map(str,c.OXYGEN))+'%; 14 parameters, all 91 pairs; N='+','.join(map(str,c.RESOLUTIONS))+'.',
             'Each neighborhood is averaged over five scrambles before taking the median across eight endpoints.',
             'Input distributions retain the original independent uniform/log-uniform choices.',
             'Indices describe relative variance within this scope; output variances are retained for comparison.',
             'Raw negative estimates and undefined/unstable cells are retained. A negative estimate is sampling error, not antagonism.',
             'SALib 95% bootstrap intervals are estimator diagnostics; randomized-QMC repeat/resolution checks are reported separately.',
-            'Diagnostic tolerances: five-repeat range <=0.05 and mean change N512 to N1024 <=0.02. These are operational checks, not a proof of convergence.',
+            'Diagnostic tolerances: five-repeat range <=0.05 and mean change N'+str(c.RESOLUTIONS[-2])+' to N'+str(c.RESOLUTIONS[-1])+' <=0.02. These are operational checks, not a proof of convergence.',
             'Conditional surfaces hold the other 12 parameters at the indicated optimum. Their nonadditive contrast is not the marginalized Sobol S2.',
             'Pairwise S2 excludes third- and higher-order interactions. S2/ST estimates do not give biological effect direction.',
             '',f'S2 cells passing all applicable checks: {passed}/{len(pairs)}.',
@@ -308,7 +348,8 @@ def finish_report(root,plan):
         estimated_compressed_output_GiB=bytes_per_evaluation*full_evaluations/1024**3,
         limitation='Linear pilot extrapolation; no queue wait, compilation, analysis or storage overhead; target N needs review of convergence diagnostics.')
     c.save_json(root/'full_scale_projection.json',projection)
-    c.save_json(root/'status.json',dict(status='complete',stage='representative_pilot',n_global_designs=1,n_neighborhoods=8,
+    c.save_json(root/'status.json',dict(status='complete',stage=plan['stage'],resolutions=c.RESOLUTIONS,
+        n_global_designs=1,n_neighborhoods=8,
         n_pairs=91,n_repeats=5,n_response_surfaces=len(tasks),completed_utc=c.now(),
         convergence_policy='diagnostic_only',all_500_neighborhoods_run=False))
     paths=[]

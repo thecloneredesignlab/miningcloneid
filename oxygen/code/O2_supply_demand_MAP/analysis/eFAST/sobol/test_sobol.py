@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 import core as c
 import report
+import refine
 
 
 def unit_ranges():
@@ -28,6 +29,8 @@ class SobolChecks(unittest.TestCase):
         for n in (256,512): np.testing.assert_array_equal(c.prefix(xx[0],n),c.samples(rr,n,100))
         self.assertEqual(xx[0].shape,(30*1024,14))
         self.assertTrue(np.all((xx[0][:,0]>=1e-6)&(xx[0][:,0]<=.1)))
+        larger=c.samples(rr,4096,100)
+        for n in (1024,2048): np.testing.assert_array_equal(c.prefix(larger,n),c.samples(rr,n,100))
 
     def test_split_and_reassemble_matches_interleaved_salib_design(self):
         x=c.samples(unit_ranges(),128,19)
@@ -86,6 +89,40 @@ class SobolChecks(unittest.TestCase):
         product=gi[:,None]*gj[None,:]
         np.testing.assert_allclose(report.interaction_contrast(product,ai,aj),
             (gi-.173)[:,None]*(gj-.381)[None,:],atol=2e-14)
+
+    def test_refined_resolution_diagnostics_use_actual_ladder(self):
+        rr=[]
+        for n,value in ((1024,.9),(2048,.1),(4096,.11)):
+            for repeat in range(1,6):
+                rr.append(dict(scope='global',case_id='global',fit_seed='seed25',N=n,O2_pct=0,output=c.OUTPUTS[0],
+                    index='S2',parameter_i=c.ACTIVE[0],parameter_j=c.ACTIVE[1],repeat=repeat,
+                    value=value,bootstrap_half_width=.01,bootstrap_lower=value-.01,output_variance=1.))
+        plan=dict(resolutions=[1024,2048,4096],repeat_range_tolerance=.05,resolution_delta_tolerance=.02)
+        rows=report.summarize_rows(rr,plan)
+        self.assertEqual(rows[-1]['resolution_low'],2048)
+        self.assertEqual(rows[-1]['resolution_high'],4096)
+        self.assertAlmostEqual(rows[-1]['delta_N2048_N4096'],.01)
+        self.assertEqual(rows[-1]['convergence_status'],'passed')
+        self.assertNotIn('delta_N512_N1024',rows[-1])
+
+    def test_refinement_prefix_fusion_restores_order_and_rejects_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); paths=[root/name for name in ('old.tsv.gz','tail.tsv.gz','combined.tsv.gz')]
+            def row(i,o,value):
+                return dict(sample_id=i,O2_pct=o,dominant_mean_ploidy=value,dominant_growth_rate=.1,
+                    spectral_gap=.01,eigen_residual=1e-14,eigenvector_nonnegative='TRUE',status='ok',solver='double')
+            old=[row(i,o,i) for i in (1,2) for o in (0,5)]
+            tail=[row(i,o,i+2) for i in (1,2,3,4) for o in (0,5)]
+            c.table(paths[0],old); c.table(paths[1],tail)
+            refine.fuse_outputs(*paths,2,4,[0,5])
+            values,qc=c.output_array(paths[2],6,[0,5])
+            np.testing.assert_array_equal(values[:,0,0],np.arange(1,7))
+            self.assertEqual(qc['n_points'],12)
+            c.table(paths[1],tail[:-1])
+            with self.assertRaisesRegex(ValueError,'Incomplete'):
+                refine.fuse_outputs(*paths,2,4,[0,5])
+            unchanged,_=c.output_array(paths[2],6,[0,5])
+            np.testing.assert_array_equal(values,unchanged)
 
 
 if __name__=='__main__': unittest.main()

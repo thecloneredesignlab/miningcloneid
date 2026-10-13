@@ -149,3 +149,13 @@ def prefix(natural, n):
 def complete(path):
     receipt = Path(str(path) + '.receipt.json')
     return Path(path).is_file() and receipt.is_file() and load_json(receipt)['outputs_sha256'] == sha(path)
+
+
+def configure(plan):
+    """Use the submitted resolution ladder rather than a plotting default."""
+    global RESOLUTIONS, OXYGEN
+    ns = list(map(int, plan['resolutions']))
+    if len(ns) < 2 or ns != sorted(set(ns)) or any(n < 2 or n & (n-1) for n in ns):
+        raise ValueError('Require at least two increasing power-of-two resolutions')
+    RESOLUTIONS = ns
+    OXYGEN = list(map(float, plan['oxygen_pct']))

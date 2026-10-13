@@ -118,3 +118,45 @@ For the initial surface-boundary correction, `resume_postprocessing.sh`
 archives the original plan, verifies all nine original index receipts, records
 the changed plotting/test sources, and submits only the remaining downstream
 stages. Existing evaluated response surfaces require a separate audit.
+
+## Resolution refinement: N2048 and N4096
+
+The separate follow-up run keeps the same eight endpoints, four oxygen values,
+14 parameters, 91 pairs and five scrambled repeats. It analyzes N=1024,2048,4096,
+using N2048→N4096 for the resolution diagnostic and retaining every endpoint.
+The earlier pilot remains under its original output root.
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_resolution_pilot.sh
+```
+
+Output defaults to `oxygen/results/eFAST/sobol/resolution_pilot/N2048_N4096`.
+`SOBOL_REUSE_FROM` points to the completed N1024 pilot. Preparation checks all
+model/helper and SIF hashes, case/input receipts and the exact nested parameter
+prefix for each case and repeat. Workers recheck each source output, receipt
+and parameter prefix, evaluate only the new 3072 vectors per matrix block,
+then restore the complete N4096 output with explicit sample-ID offsets.
+Recovery matrices for incremental points keep local IDs; add the recorded
+`incremental_sample_id_offset` (1024) to map them to the complete design.
+
+The design contains 22,118,400 operator evaluations, of which 5,529,600 are
+verified N1024 results and 16,588,800 are new. Both outputs come from each
+operator. There are still 1350 evaluation tasks; each evaluates 12,288 new
+sample×oxygen points. xxlarge,12h, no specified node or array concurrency cap.
+Nine case summaries, updated 91-pair heatmaps, 54 newly selected conditional
+surfaces and a final report run after the evaluation array.
+
+`resolution_comparison.tsv` aligns S1/ST/S2 values and repeat ranges across all
+three resolutions. `reused_indices_validation.json` requires exact reproduction
+of the old N1024 S1/ST/S2 means before response surfaces are launched. Per-cell
+diagnostics use the actual N2048/N4096 ladder; raw negative values and undefined
+cells remain visible. This is a representative resolution pilot, not the full
+500-neighborhood or 201-oxygen analysis.
+
+After the final report reaches COMPLETED/0:0, collect with the explicit roots:
+
+```bash
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/collect_pilot.py \
+  --remote-dir /share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/resolution_pilot/N2048_N4096 \
+  --local-dir oxygen/results/eFAST/sobol/resolution_pilot/N2048_N4096
+```

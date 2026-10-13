@@ -39,6 +39,7 @@ def context(root):
         p = Path(plan[name]['path'])
         if p.stat().st_size != plan[name]['bytes'] or p.stat().st_mtime_ns != plan[name]['mtime_ns']:
             raise ValueError('Verified immutable runtime changed: ' + name)
+    c.configure(plan)
     return plan
 
 
@@ -46,6 +47,7 @@ def prepare(args):
     if version('SALib') != '1.5.2':
         raise ValueError('Production workflow requires SALib 1.5.2')
     root = Path(args.out_dir).resolve()
+    c.configure(dict(resolutions=args.resolutions, oxygen_pct=c.OXYGEN))
     if (root / 'slurm/submission_jobs.tsv').exists():
         raise ValueError('Submission already recorded; inspect before preparing another attempt')
     old = Path(args.efast_root).resolve() / 'neighborhood10pct'
@@ -98,6 +100,12 @@ def prepare(args):
               if r['transform']=='log10' else (r['encoded_lower']+r['encoded_upper'])/2) for r in ranges}
     cases = [dict(scope='global',case_id='global',fit_seed='seed25')]
     cases += [dict(scope='neighborhood10pct',case_id=s,fit_seed=s) for s in c.PILOT_SEEDS]
+    reuse = None
+    if args.reuse_from:
+        from refine import audit_source
+        reuse = audit_source(Path(args.reuse_from).resolve(), file_hashes(), cases, c.OXYGEN,
+                             c.RESOLUTIONS)
+        c.save_json(inputs/'reuse_source_audit.json',reuse)
     tasks = []
     for case_index, case in enumerate(cases):
         case_root = c.case_directory(root,case); case_root.mkdir(parents=True,exist_ok=True)
@@ -113,6 +121,9 @@ def prepare(args):
             for n in c.RESOLUTIONS[:-1]:
                 if not np.array_equal(c.prefix(x,n), c.samples(bounds,n,scramble_seed)):
                     raise ValueError('Nested Sobol prefix differs from direct sampling')
+            if reuse:
+                from refine import check_design_prefix
+                check_design_prefix(Path(reuse['root']), case, repeat, x, bounds, scramble_seed)
             design = case_root/'runs'/('R%02d'%repeat)
             design.mkdir(parents=True,exist_ok=True)
             np.savez_compressed(design/'ordered_samples.npz',natural=x,parameters=np.array(c.ACTIVE))
@@ -125,13 +136,18 @@ def prepare(args):
                 part = design/'blocks'/block; part.mkdir(parents=True,exist_ok=True)
                 c.table(part/'samples.tsv.gz',[dict(sample_id=i+1,**dict(zip(c.ACTIVE,map(float,row))))
                       for i,row in enumerate(x[b::c.STEP])])
-                c.save_json(part/'metadata.json',dict(method='Sobol_second_order',**case,
+                meta = dict(method='Sobol_second_order',**case,
                     repeat=repeat,scramble_seed=scramble_seed,block=block,block_index=b,
                     parent_stride=c.STEP,parent_sample_id_first=b+1,N=max(c.RESOLUTIONS),
                     n_samples=max(c.RESOLUTIONS),parameters=list(c.ACTIVE),oxygen_pct=c.OXYGEN,
                     samples_sha256=c.sha(part/'samples.tsv.gz'),
                     best_params_sha256=endpoint['best_params_sha256'],fit_config_sha256=endpoint['fit_config_sha256'],
-                    validate_reference=b==0,common_reference_params=common))
+                    validate_reference=b==0,common_reference_params=common)
+                if reuse:
+                    from refine import source_block
+                    meta['reuse'] = source_block(Path(reuse['root']), part.relative_to(root),
+                                                 reuse['source_N'])
+                c.save_json(part/'metadata.json',meta)
                 tasks.append(dict(task_id=len(tasks)+1,case_index=case_index,scope=case['scope'],
                     case_id=case['case_id'],fit_seed=case['fit_seed'],repeat=repeat,block=block,
                     block_index=b,part=str(part.relative_to(root)),
@@ -158,6 +174,10 @@ def prepare(args):
         prepared_utc=c.now(),qos='xxlarge',time='12:00:00',array_concurrency_limit=None,specified_compute_node=None,
         sif=dict(path=str(sif),sha256=c.SIF_SHA256,bytes=sif.stat().st_size,mtime_ns=sif.stat().st_mtime_ns),
         template=dict(path=str(template),sha256=c.sha(template),bytes=template.stat().st_size,mtime_ns=template.stat().st_mtime_ns))
+    if reuse:
+        plan.update(stage='resolution_pilot',reuse_source=reuse['root'],reuse_source_N=reuse['source_N'],
+                    n_reused_operator_evaluations=len(cases)*5*reuse['source_N']*c.STEP*len(c.OXYGEN))
+        plan['n_new_operator_evaluations']=plan['n_operator_evaluations']-plan['n_reused_operator_evaluations']
     c.save_json(root/'slurm/submission_plan.json',plan)
     from structure import write_structure
     write_structure(root/'model_structure')
@@ -176,8 +196,13 @@ def evaluate(root, part, plan):
             if receipt['metadata_sha256']!=c.sha(part/'metadata.json') or receipt['samples_sha256']!=c.sha(part/'samples.tsv.gz'):
                 raise ValueError('Completion provenance changed')
             return
-        subprocess.run(['Rscript','--vanilla',str(HERE/'evaluate.R'),str(part),plan['fit_root'],
-                         str(root/'inputs/fixed_o2_dominant_ploidy_201grid.tsv')],check=True)
+        meta=c.load_json(part/'metadata.json')
+        if 'reuse' in meta:
+            from refine import evaluate_increment
+            evaluate_increment(root,part,plan,HERE/'evaluate.R')
+        else:
+            subprocess.run(['Rscript','--vanilla',str(HERE/'evaluate.R'),str(part),plan['fit_root'],
+                             str(root/'inputs/fixed_o2_dominant_ploidy_201grid.tsv')],check=True)
         if not c.complete(output):
             raise ValueError('Model output completion unconfirmed')
 
@@ -203,13 +228,41 @@ def validate(args):
         source=c.case_directory(root,case)/'runs/R01/blocks/A'
         part=target/(case['scope']+'_'+case['case_id']); part.mkdir(parents=True,exist_ok=True)
         meta=c.load_json(source/'metadata.json')
-        c.table(part/'samples.tsv.gz',c.read(source/'samples.tsv.gz')[:1])
+        meta.pop('reuse',None)
+        original_rows=c.read(source/'samples.tsv.gz')
+        c.table(part/'samples.tsv.gz',original_rows[:1])
         meta.update(n_samples=1,samples_sha256=c.sha(part/'samples.tsv.gz'))
         c.save_json(part/'metadata.json',meta)
         evaluate(root,part,plan)
         _,qc=c.output_array(part/'outputs.tsv.gz',1,c.OXYGEN)
         receipt=c.load_json(str(part/'outputs.tsv.gz')+'.receipt.json')
-        checks.append(dict(**case,**qc,reference_checks=receipt['reference_checks'],common_reference=receipt['common_reference']))
+        incremental_check=None
+        if plan.get('reuse_source'):
+            # Exercise the real R increment and ID restoration before the array.
+            probe=target/(case['scope']+'_'+case['case_id']+'_increment')
+            probe.mkdir(exist_ok=True)
+            c.table(probe/'samples.tsv.gz',[original_rows[0],dict(original_rows[plan['reuse_source_N']],sample_id=2)])
+            probe_meta=dict(meta,n_samples=2,samples_sha256=c.sha(probe/'samples.tsv.gz'),reuse=dict(
+                part=str(part),N=1,receipt_sha256=c.sha(str(part/'outputs.tsv.gz')+'.receipt.json'),
+                outputs_sha256=c.sha(part/'outputs.tsv.gz'),metadata_sha256=c.sha(part/'metadata.json'),
+                samples_sha256=c.sha(part/'samples.tsv.gz')))
+            c.save_json(probe/'metadata.json',probe_meta)
+            evaluate(root,probe,plan)
+            restored,probe_qc=c.output_array(probe/'outputs.tsv.gz',2,c.OXYGEN)
+            prefix,_=c.output_array(part/'outputs.tsv.gz',1,c.OXYGEN)
+            np.testing.assert_array_equal(restored[:1],prefix)
+            direct=target/(case['scope']+'_'+case['case_id']+'_direct_tail')
+            direct.mkdir(exist_ok=True)
+            c.table(direct/'samples.tsv.gz',[dict(original_rows[plan['reuse_source_N']],sample_id=1)])
+            direct_meta=dict(meta,validate_reference=False,samples_sha256=c.sha(direct/'samples.tsv.gz'))
+            c.save_json(direct/'metadata.json',direct_meta)
+            evaluate(root,direct,plan)
+            expected,_=c.output_array(direct/'outputs.tsv.gz',1,c.OXYGEN)
+            np.testing.assert_array_equal(restored[1:],expected)
+            incremental_check=dict(status='passed',n_points=probe_qc['n_points'],
+                                   maximum_absolute_difference=0.,prefix_sample_id=1,increment_sample_id=2)
+        checks.append(dict(**case,**qc,reference_checks=receipt['reference_checks'],
+                           common_reference=receipt['common_reference'],incremental_check=incremental_check))
     reference={}
     for case in checks:
         for r in case['common_reference']:
@@ -217,8 +270,11 @@ def validate(args):
             if key in reference and np.max(abs(value-reference[key]))>1e-8:
                 raise ValueError('Different fixed-oxygen configurations in the common-vector audit')
             reference[key]=value
+    import unittest
+    from test_sobol import SobolChecks
     c.save_json(root/'runtime_validation.json',dict(status='passed',validated_utc=c.now(),
-        numerical_tests=7,case_checks=checks,git_commit=plan['git_commit'],sif_sha256=c.SIF_SHA256,
+        numerical_tests=unittest.defaultTestLoader.loadTestsFromTestCase(SobolChecks).countTestCases(),
+        case_checks=checks,git_commit=plan['git_commit'],sif_sha256=c.SIF_SHA256,
         common_configuration_status='passed'))
     print('SIF numerical tests and nine case reference/cache checks passed',flush=True)
 
@@ -312,6 +368,8 @@ def main():
     parser.add_argument('--out-dir',required=True)
     parser.add_argument('--task-id',type=int); parser.add_argument('--case-id',type=int)
     parser.add_argument('--fit-root'); parser.add_argument('--figure4-dir'); parser.add_argument('--efast-root'); parser.add_argument('--sif')
+    parser.add_argument('--resolutions',nargs='+',type=int,default=[256,512,1024])
+    parser.add_argument('--reuse-from',help='Completed pilot with an identical nested design and model implementation')
     args=parser.parse_args()
     try:
         globals()[args.command.replace('-','_')](args)

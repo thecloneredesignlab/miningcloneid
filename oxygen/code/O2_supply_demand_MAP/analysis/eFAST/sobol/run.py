@@ -193,6 +193,36 @@ def worker(args):
     print('Completed task',args.task_id,task['scope'],task['case_id'],task['repeat'],task['block'],flush=True)
 
 
+def validate(args):
+    root=Path(args.out_dir).resolve(); plan=context(root)
+    target=root/'slurm/runtime_validation'; target.mkdir(parents=True,exist_ok=True)
+    with open(target/'numerical_tests.log','w') as log:
+        subprocess.run([sys.executable,str(HERE/'test_sobol.py')],stdout=log,stderr=subprocess.STDOUT,check=True)
+    checks=[]
+    for case in plan['cases']:
+        source=c.case_directory(root,case)/'runs/R01/blocks/A'
+        part=target/(case['scope']+'_'+case['case_id']); part.mkdir(parents=True,exist_ok=True)
+        meta=c.load_json(source/'metadata.json')
+        c.table(part/'samples.tsv.gz',c.read(source/'samples.tsv.gz')[:1])
+        meta.update(n_samples=1,samples_sha256=c.sha(part/'samples.tsv.gz'))
+        c.save_json(part/'metadata.json',meta)
+        evaluate(root,part,plan)
+        _,qc=c.output_array(part/'outputs.tsv.gz',1,c.OXYGEN)
+        receipt=c.load_json(str(part/'outputs.tsv.gz')+'.receipt.json')
+        checks.append(dict(**case,**qc,reference_checks=receipt['reference_checks'],common_reference=receipt['common_reference']))
+    reference={}
+    for case in checks:
+        for r in case['common_reference']:
+            key=float(r['O2_pct']); value=np.array([r[o] for o in c.OUTPUTS])
+            if key in reference and np.max(abs(value-reference[key]))>1e-8:
+                raise ValueError('Different fixed-oxygen configurations in the common-vector audit')
+            reference[key]=value
+    c.save_json(root/'runtime_validation.json',dict(status='passed',validated_utc=c.now(),
+        numerical_tests=7,case_checks=checks,git_commit=plan['git_commit'],sif_sha256=c.SIF_SHA256,
+        common_configuration_status='passed'))
+    print('SIF numerical tests and nine case reference/cache checks passed',flush=True)
+
+
 def summarize(args):
     root=Path(args.out_dir).resolve(); plan=context(root)
     if not 1<=args.case_id<=len(plan['cases']): raise ValueError('Invalid case id')
@@ -278,7 +308,7 @@ def finish(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=['prepare','worker','summarize','finalize','response-worker','finish'])
+    parser.add_argument('command',choices=['prepare','validate','worker','summarize','finalize','response-worker','finish'])
     parser.add_argument('--out-dir',required=True)
     parser.add_argument('--task-id',type=int); parser.add_argument('--case-id',type=int)
     parser.add_argument('--fit-root'); parser.add_argument('--figure4-dir'); parser.add_argument('--efast-root'); parser.add_argument('--sif')
@@ -286,7 +316,7 @@ def main():
     try:
         globals()[args.command.replace('-','_')](args)
     except Exception as error:
-        if args.command in ('finalize','finish'):
+        if args.command in ('validate','finalize','finish'):
             c.save_json(Path(args.out_dir)/'status.json',dict(status='incomplete',failed_stage=args.command,
                 error=str(error),recorded_utc=c.now()))
         raise

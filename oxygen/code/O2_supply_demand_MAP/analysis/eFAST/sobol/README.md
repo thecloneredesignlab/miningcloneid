@@ -45,7 +45,8 @@ are SOBOL_REPO_ROOT, SOBOL_FIT_ROOT, SOBOL_EFAST_ROOT, SOBOL_FIGURE4_DIR,
 SOBOL_SIF and SOBOL_OUT_DIR. Output defaults to `oxygen/results/eFAST/sobol`.
 
 Slurm: xxlarge,12h, no specified node or array concurrency cap. Jobs comprise
-1350 evaluation blocks, nine case summaries, an index/selection report,
+one runtime validation job (seven numerical tests and nine reference/cache
+checks), 1350 evaluation blocks, nine case summaries, an index/selection report,
 54 conditional response surfaces and a final report. Each worker has a private
 node-local Rcpp cache initialized from the audited existing template. All
 submitted model/helper/code hashes are checked; editing them during a run stops

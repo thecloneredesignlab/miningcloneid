@@ -20,10 +20,15 @@ printf 'role\tjob_id\tarray_spec\tqos\ttime\tcpus\tmem\tdependency\tsubmitted_ut
 record() {
   printf '%s\t%s\t%s\txxlarge\t12:00:00\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$out/slurm/submission_jobs.tsv"
 }
+validation=$(sbatch "${common[@]}" --cpus-per-task=1 --mem=4G \
+  --job-name=sobol_pilot_validate --output="$out/slurm/logs/validate_%j.out" \
+  --error="$out/slurm/logs/validate_%j.err" --export="$exports,SOBOL_ROLE=validate" "$code/run_array.sbatch")
+validation=${validation%%;*}; record validate "$validation" '' 1 4G ''
 evaluation=$(sbatch "${common[@]}" --array=1-1350 --cpus-per-task=1 --mem=4G \
+  --dependency="afterok:$validation" \
   --job-name=sobol_pilot_eval --output="$out/slurm/logs/evaluate_%A_%a.out" \
   --error="$out/slurm/logs/evaluate_%A_%a.err" --export="$exports,SOBOL_ROLE=evaluate" "$code/run_array.sbatch")
-evaluation=${evaluation%%;*}; record evaluate "$evaluation" 1-1350 1 4G ''
+evaluation=${evaluation%%;*}; record evaluate "$evaluation" 1-1350 1 4G "afterok:$validation"
 summary=$(sbatch "${common[@]}" --array=1-9 --cpus-per-task=1 --mem=8G --dependency="afterany:$evaluation" \
   --job-name=sobol_pilot_summary --output="$out/slurm/logs/summary_%A_%a.out" \
   --error="$out/slurm/logs/summary_%A_%a.err" --export="$exports,SOBOL_ROLE=summarize" "$code/run_array.sbatch")

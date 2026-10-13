@@ -12,6 +12,7 @@ mkdir "$scratch/model_cache" "$scratch/perron_cache"
 tar -xzf "$out/slurm/rcpp_template.tar.gz" -C "$scratch/model_cache"
 model_cache="$repo/oxygen/code/O2_supply_demand_MAP/model/.rcpp_cache_o2_supply_demand_map"
 case ${SOBOL_ROLE:?} in
+  validate) args=(validate) ;;
   evaluate) args=(worker --task-id "${SLURM_ARRAY_TASK_ID:?}") ;;
   summarize) args=(summarize --case-id "${SLURM_ARRAY_TASK_ID:?}") ;;
   finalize) args=(finalize) ;;

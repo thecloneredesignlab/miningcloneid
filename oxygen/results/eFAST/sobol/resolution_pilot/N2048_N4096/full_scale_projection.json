@@ -1,0 +1,13 @@
+{
+  "N": 4096,
+  "n_full_neighborhoods": 500,
+  "n_global_designs": 1,
+  "oxygen_points": 201,
+  "full_operator_evaluations": 61870694400,
+  "measured_task_seconds_p50": 175.79803037643433,
+  "measured_task_seconds_p90": 181.07459263801576,
+  "estimated_serial_core_hours_p50": 184406.64017643034,
+  "estimated_serial_core_hours_p90": 189941.58909625857,
+  "estimated_compressed_output_GiB": 2021.4162841781506,
+  "limitation": "Linear pilot extrapolation; no queue wait, compilation, analysis or storage overhead; target N needs review of convergence diagnostics."
+}

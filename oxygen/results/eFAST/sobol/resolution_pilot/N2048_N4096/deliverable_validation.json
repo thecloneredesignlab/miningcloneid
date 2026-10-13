@@ -1,0 +1,72 @@
+{
+  "validated_utc": "2026-10-13T21:53:10.549823+00:00",
+  "status": "passed",
+  "collection_verified_files": 331,
+  "collection_verified_bytes": 47681840,
+  "n_case_summaries": 9,
+  "n_repeat_index_rows": 128520,
+  "n_resolution_comparison_rows": 8568,
+  "exact_reused_index_means": 8568,
+  "n_numerical_qc_rows": 1350,
+  "operator_points": 22118400,
+  "recovered_points": 2,
+  "minimum_spectral_gap": 2.22734955479531e-11,
+  "maximum_residual": 4.65059009707659e-14,
+  "pdfs": 64,
+  "pngs": 64,
+  "conditional_surface_tables": 54,
+  "visual_checks": [
+    "N4096 global S2 heatmap",
+    "N4096 eight-neighborhood S2 heatmap",
+    "global lam_max x p_misseg conditional response surface"
+  ],
+  "final_slurm_job": "20837618",
+  "final_accounting": "COMPLETED|0:0",
+  "cases": [
+    {
+      "case": "global/pilot/global",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed138",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed165",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed2",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed214",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed25",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed395",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed464",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    },
+    {
+      "case": "neighborhood10pct/pilot/seed66",
+      "indices_rows": 14280,
+      "resolution_repeat_groups": 15
+    }
+  ]
+}

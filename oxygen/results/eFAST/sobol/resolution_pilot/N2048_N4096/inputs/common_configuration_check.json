@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "n_points": 180,
+  "tolerance": 1e-08,
+  "oxygen_pct": [
+    0.0,
+    0.5,
+    2.5,
+    5.0
+  ],
+  "description": "Identical midpoint parameter vector produces matching outputs in all eight endpoint configurations and the global reference"
+}

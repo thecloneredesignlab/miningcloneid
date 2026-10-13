@@ -1,0 +1,78 @@
+{
+  "status": "passed",
+  "N": 1024,
+  "cases": [
+    {
+      "scope": "global",
+      "case_id": "global",
+      "fit_seed": "seed25",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed25",
+      "fit_seed": "seed25",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed464",
+      "fit_seed": "seed464",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed165",
+      "fit_seed": "seed165",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed2",
+      "fit_seed": "seed2",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed214",
+      "fit_seed": "seed214",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed138",
+      "fit_seed": "seed138",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed66",
+      "fit_seed": "seed66",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed395",
+      "fit_seed": "seed395",
+      "n_indices": 952,
+      "maximum_absolute_difference": 0.0,
+      "status": "passed"
+    }
+  ]
+}

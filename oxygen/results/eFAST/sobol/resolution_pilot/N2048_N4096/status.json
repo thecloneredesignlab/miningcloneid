@@ -1,9 +1,17 @@
 {
-  "status": "prepared",
-  "n_evaluation_tasks": 1350,
-  "n_cases": 9,
+  "status": "complete",
+  "stage": "resolution_pilot",
+  "resolutions": [
+    1024,
+    2048,
+    4096
+  ],
+  "n_global_designs": 1,
+  "n_neighborhoods": 8,
   "n_pairs": 91,
-  "repeats": 5,
-  "global_and_neighborhood_separate": true,
-  "prepared_utc": "2026-10-13T21:29:56.924514+00:00"
+  "n_repeats": 5,
+  "n_response_surfaces": 54,
+  "completed_utc": "2026-10-13T21:50:11.757685+00:00",
+  "convergence_policy": "diagnostic_only",
+  "all_500_neighborhoods_run": false
 }

@@ -1,0 +1,9 @@
+scope	resolution	output	passed	total
+global	N1024	dominant_mean_ploidy	125	364
+global	N1024	dominant_growth_rate	283	364
+global	N4096	dominant_mean_ploidy	266	364
+global	N4096	dominant_growth_rate	336	364
+neighborhood10pct	N1024	dominant_mean_ploidy	131	364
+neighborhood10pct	N1024	dominant_growth_rate	319	364
+neighborhood10pct	N4096	dominant_mean_ploidy	279	364
+neighborhood10pct	N4096	dominant_growth_rate	361	364

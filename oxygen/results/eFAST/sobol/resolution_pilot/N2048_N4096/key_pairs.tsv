@@ -1,0 +1,7 @@
+pair_id	parameter_i	parameter_j	selection_origin	selection_strength	stable_somewhere	interpretation
+1	lam_max	p_misseg	global/dominant_mean_ploidy	0.09402071772352479	TRUE	candidate response surface; stability is reported separately
+2	lam_max	p_mis_base	global/dominant_growth_rate	0.14130001945170395	TRUE	candidate response surface; stability is reported separately
+3	buffer_smax	buffer_beta	neighborhood10pct/dominant_mean_ploidy	0.04851823243988297	TRUE	candidate response surface; stability is reported separately
+4	buffer_smax	alpha_o2	neighborhood10pct/dominant_growth_rate	0.006383999423106231	TRUE	candidate response surface; stability is reported separately
+5	lam_max	O2_crit	global/dominant_growth_rate	0.08300215879772864	TRUE	candidate response surface; stability is reported separately
+6	lam_max	mu_hp	global/dominant_growth_rate	0.07576661063206573	TRUE	candidate response surface; stability is reported separately

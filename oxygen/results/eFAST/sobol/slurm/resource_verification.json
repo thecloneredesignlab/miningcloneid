@@ -1,0 +1,17 @@
+{
+  "checked_utc": "2026-10-13T19:49:30.005564+00:00",
+  "array_job": 20835573,
+  "n_accounted_tasks": 1350,
+  "resource_combinations": [
+    {
+      "qos": "xxlarge",
+      "time": "12:00:00",
+      "cpus": "1",
+      "memory": "4G",
+      "n_tasks": 1350
+    }
+  ],
+  "submitted_array": "1-1350",
+  "array_concurrency_limit": null,
+  "specified_compute_node": null
+}

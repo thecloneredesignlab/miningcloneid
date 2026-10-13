@@ -1,0 +1,8 @@
+{
+  "n_tasks": 54,
+  "key_pairs_sha256": "01622e17c5c104bab50ba20b9c616b1880d2b0464734e16089f7bdb43d1fe83c",
+  "tasks_sha256": "b4f1db0f9666513eccb328035e427c4df059457d49c44c645c5ebb5bb07d9691",
+  "nominal_grid_size": 41,
+  "anchor_inserted_exactly": true,
+  "selection": "strongest stable candidates, cover both outputs and scopes first; retain unstable candidates with explicit labels"
+}

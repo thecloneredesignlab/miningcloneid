@@ -1,0 +1,10 @@
+role	job_id	array_spec	qos	time	cpus	mem	dependency	submitted_utc
+validate	20835572		xxlarge	12:00:00	1	4G		2026-10-13T19:40:38Z
+evaluate	20835573	1-1350	xxlarge	12:00:00	1	4G	afterok:20835572	2026-10-13T19:40:38Z
+summarize	20835574	1-9	xxlarge	12:00:00	1	8G	afterany:20835573	2026-10-13T19:40:38Z
+finalize	20835575		xxlarge	12:00:00	1	8G	afterany:20835574	2026-10-13T19:40:38Z
+response	20835576	1-54	xxlarge	12:00:00	1	4G	afterok:20835575	2026-10-13T19:40:38Z
+finish	20835577		xxlarge	12:00:00	1	8G	afterany:20835576	2026-10-13T19:40:38Z
+finalize_retry	20836985		xxlarge	12:00:00	1	8G		2026-10-13T19:58:41Z
+response_retry	20836986	1-54	xxlarge	12:00:00	1	4G	afterok:20836985	2026-10-13T19:58:41Z
+finish_retry	20836987		xxlarge	12:00:00	1	8G	afterany:20836986	2026-10-13T19:58:41Z

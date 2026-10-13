@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "stage": "representative_pilot",
+  "n_global_designs": 1,
+  "n_neighborhoods": 8,
+  "n_pairs": 91,
+  "n_repeats": 5,
+  "n_response_surfaces": 54,
+  "completed_utc": "2026-10-13T20:07:21.915997+00:00",
+  "convergence_policy": "diagnostic_only",
+  "all_500_neighborhoods_run": false
+}

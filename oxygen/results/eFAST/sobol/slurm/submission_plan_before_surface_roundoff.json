@@ -1,0 +1,177 @@
+{
+  "method": "Sobol_second_order",
+  "stage": "pilot",
+  "cases": [
+    {
+      "scope": "global",
+      "case_id": "global",
+      "fit_seed": "seed25"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed25",
+      "fit_seed": "seed25"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed464",
+      "fit_seed": "seed464"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed165",
+      "fit_seed": "seed165"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed2",
+      "fit_seed": "seed2"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed214",
+      "fit_seed": "seed214"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed138",
+      "fit_seed": "seed138"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed66",
+      "fit_seed": "seed66"
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed395",
+      "fit_seed": "seed395"
+    }
+  ],
+  "fit_root": "/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253",
+  "n_parameters": 14,
+  "n_pairs": 91,
+  "n_repeats": 5,
+  "resolutions": [
+    256,
+    512,
+    1024
+  ],
+  "oxygen_pct": [
+    0.0,
+    0.5,
+    2.5,
+    5.0
+  ],
+  "n_tasks": 1350,
+  "max_N": 1024,
+  "n_operator_evaluations": 5529600,
+  "granularity": "case x scramble repeat x one A/B/AB_i/BA_i matrix block; all pilot oxygen points",
+  "bootstrap_resamples": 200,
+  "repeat_range_tolerance": 0.05,
+  "resolution_delta_tolerance": 0.02,
+  "convergence_policy": "diagnostic_only; retain all representative endpoints and raw negative estimates",
+  "source_audit_sha256": "8064b46a84c51ea2e531296f2e44312c8d556164fbc36332b31ed74481dbd6a9",
+  "input_sha256": {
+    "inputs/source_audit.json": "ae363fdf242f7b039e4b6909fa5baaf9f5b09ca0121def7440c31f963da8742c",
+    "inputs/representative_seeds.tsv": "3d30a251ff4bd2419abda535963c0e0e7deebbf2836500d95b7b4b293f6d6693",
+    "inputs/global_bounds.tsv": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97",
+    "inputs/fixed_o2_dominant_ploidy_201grid.tsv": "8d712f1007423de8cc57e592e05205e68debd3229c31cfad48bac365dba62095",
+    "slurm/task_manifest.tsv": "2126326fabae68b82353c089c62240a487b6c36b640b3f26657179e79e046c9d",
+    "slurm/case_manifest.tsv": "82f26dcb800b464cb6d340f1e59c1bc908076102e08a2febf11dd3cf77acf7a8",
+    "global/pilot/global/parameter_bounds.tsv": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97",
+    "global/pilot/global/reference_best_params.tsv": "e822fa93a44ac40cae85b061e9f2c00cd9445ed2befd81793c924fcdca28a65e",
+    "neighborhood10pct/pilot/seed25/parameter_bounds.tsv": "c2952f6b5b67fbae08b6c485876d226206a869aab9f3495e7b406fb033d2bd8f",
+    "neighborhood10pct/pilot/seed25/reference_best_params.tsv": "e822fa93a44ac40cae85b061e9f2c00cd9445ed2befd81793c924fcdca28a65e",
+    "neighborhood10pct/pilot/seed464/parameter_bounds.tsv": "e58c91b8ce4a65e6d80c3ad6fd3cd3395fcc570ffecfa69291ec63382b3f1b74",
+    "neighborhood10pct/pilot/seed464/reference_best_params.tsv": "c6c094205defb40f9eca0de476e38872410e0b4fdfb8c1a72e2032f24d16f528",
+    "neighborhood10pct/pilot/seed165/parameter_bounds.tsv": "dfc3cd13c0fdc0e2d1c2f6aabc80d2ba26ef52abaaed9e0f621137c91545275c",
+    "neighborhood10pct/pilot/seed165/reference_best_params.tsv": "5af169b459ea1381a1b1e9ecff294df0e0eac93e622a4d9c63b7b9c3ff433e00",
+    "neighborhood10pct/pilot/seed2/parameter_bounds.tsv": "5b2a06fac14ab28c20725c1bce7ca47725caafb6fc6bb29dfcf244d4da2851b4",
+    "neighborhood10pct/pilot/seed2/reference_best_params.tsv": "d128d984ff3b1eef0a99b858e8f0b567296159ae0ca0501e6cf6dd221a3929c3",
+    "neighborhood10pct/pilot/seed214/parameter_bounds.tsv": "1f19c7579927a7a40dde280ed262e75e19349d0278b8aecea8fa12954495150a",
+    "neighborhood10pct/pilot/seed214/reference_best_params.tsv": "a732427ee1e19733d98d4e08a4eff42a399d836f3da888de647eb9ecd2ff9c2d",
+    "neighborhood10pct/pilot/seed138/parameter_bounds.tsv": "d6ddbd26af3bc39ca549652a4be4b6c30f0ea7c4d9d33a39684623577848abae",
+    "neighborhood10pct/pilot/seed138/reference_best_params.tsv": "1fa5ff6f3a2d35c43fecdb1eaf2e609fe9d6e0fab89395452c1d1d78f7e5facc",
+    "neighborhood10pct/pilot/seed66/parameter_bounds.tsv": "daed85d2c96b4a7e31329a9c7b1d6ca3bffe49e81aaa780be271f29a1e708299",
+    "neighborhood10pct/pilot/seed66/reference_best_params.tsv": "fe806af4bbc3ebe0da325b1115c873bcf3dcecc8d93b6381c6c8389e629e00fd",
+    "neighborhood10pct/pilot/seed395/parameter_bounds.tsv": "f457d69c5a483ed8d6be1f12d174d31db96b0d8e30506215eada1ddb981cfc39",
+    "neighborhood10pct/pilot/seed395/reference_best_params.tsv": "7bfc1a9e1baaa9a192134322fd9f34a921d69d515f4aa8c3d0b7980ac11455fc"
+  },
+  "code_sha256": {
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/core.py": "5eacccdf8bb1870e32f12d78d09226f158421b5bfa3a795ace148cdcfcd54a2b",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/evaluate.R": "b170b512daf75fac9f2295ed8cacf987184ecd2588e5ba2533b3cd2a2d821651",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/report.py": "667ba635e5b0bd6552650caa6ee9f5e4c1acc3d2d0848e240eaf2fea514922cd",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run.py": "d15a1f9c6de48f408f2e979b86d3436e29787e7ec36249fbc2f318de6c8493ee",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run_array.sbatch": "1dc5c0880a10bcf95e16d68b263306a1f8700a2f555bb8b6b2a71ab91192af49",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/structure.py": "da37301f66747a942bde942d7a89bbf503d0f6c94f8661871dff4e8b44b3c0d7",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_pilot.sh": "05035731461cd17a60fa0518adf1ad814759723b6fc9b11b91610b978acfe8c7",
+    "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/test_sobol.py": "118cf5051c67f197c4423a9b55076ec45536ab2523eaf484d9eaa23311d18688",
+    "oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+    "oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+    "oxygen/code/O2_supply_demand_MAP/simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_bpf_cli_utils.R": "a960dabf3254baff3756dd59ce678cead3fdd32d49db91888765c17d4c85cf07",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_bpf_path_utils.R": "1f5fa8ac501894a68568883de09f5910df74fece76d5ad56ac9fe75ad4e914ff",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_bpf_report_utils.R": "b0122b680fc6276358aab50b548a862b061103b451d497d3041c9eaa6a175d36",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_bpf_table_io_utils.R": "01d48c5d1d2361f3404c9c0b10346277196ea099e7d27b80828f1b29e27e4a24",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_combined_fixo2_eigen_utils.R": "5ed0219e80e91d59fbb873f329d25142d0d1fd3fbb22eb68b12bd24ec95e0555",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_combined_landscape_utils.R": "fbcfb69221ae1b95f8812872680d267cdba9d456a13ff1851ec67273494f0f89",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_common_semantics.R": "92ca2abb3e5df123ae3f3f3aa27a525c0d742771fd353f97b67924ff1d23feba",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_curve_classification_utils.R": "1da870f474688f4e7fa44392a8776713baf4c08cca48bc883ae2a096a5c67305",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_dense_grid_utils.R": "16f119b5284d3b0ed6ffe019ea60fca9fcec993a2a6bc6fd1abe852812db5a4b",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_eigen_attractor_utils.R": "07fdcdd0f926bf5ce3915b54cb056bc0761f17d599c87bff580f44ed764f569f",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_invitro_backend.R": "dba6f83e410bc55307f508f6b24d60ea6558fb4e31930dec83b85144e7747951",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_invivo_backend.R": "ea96f88c1e033992b4aaaaf851d96d98615ed85fe0d723198bcaad2840a9fe55",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_joint_backend.R": "2a31812a2f6acf99e1a5fbf3438164589a8e5041ea2258a19fa271ea00ecaf33",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_results_utils.R": "8f80700097f258fc636bd8af31edf89abe30e2fc24876f286b8961aea755ee52",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fixed_o2_format_utils.R": "5a595ee6e529891e7935ae56eae90c3395820bcd60c72271376a18afc4c2453b",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fixed_o2_mode_utils.R": "dbee13e9c6f07da54e8d632674a3a835b823cbefbbd71c082eeb373b4ba704ae",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fixed_o2_table_utils.R": "17a9131f32c949beeff471bc5c65567813feaf28b9fb1f16bf99b02659944ede",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fixed_o2_utils.R": "2f7e71f4e0e6c72dccfded1711068a0f20e15f4215f04506ffcb8f4d3ac6ab7b",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fixed_o2_validation_utils.R": "9fd07a1b492ded2f91827426a1cc64de3fb3c49ba716d06c42c46174c2ec8bb0",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_html_utils.R": "308f372d2e9fa912d5b1a02139aabeb636fd9299f942b9444deb0a48bb7ce659",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_io_utils.R": "a0671d60a8f7274f61cfbaa99ae6b383f44f3bb5dbb311b91f60b2b46d610c65",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_lineage_simulation_utils.R": "d6dfd1e45e26693330dd80d44e0873cae23e648b286b6817a5a744b8974d6d59",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_lineage_utils.R": "50f56d33383565cf25310c19c3366b8c5c02391528aedd399441eb35a2c5d522",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_objective_utils.R": "33af9ca774ef7d1a1b421c179a9ee63af326081b940c88f49c4714dc03629166",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_parameter_utils.R": "2c5a49233b4c4e1ed28736c2f7865093768d1423473a5fb3da1f8e0a28abbc52",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_postfit_io_utils.R": "b97f63ff2da0b9b4756b60cd5bdd1ead9119898974412d2fe97f5ecb48025e93",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_postfit_response_utils.R": "cdee8154d3ea2c295f53ebf528ab0609962372e85892b85f43f103f074dbf3d9",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_summary_utils.R": "bb0b690ee5da766b547499b133f873ada0fd26828da33f32e2cf49497bf92dd0",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_invitro_utils.R": "40a590448170bc0ad7f2d3c94d77ba4303e079c59ab1ceef16b1662888e32e3b",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_joint_coupling_analysis_utils.R": "15a9a9b09e42720884039d008fb32ebd6799c6f93ef745c16366bf37e4ea1fbc",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_joint_parameter_plot.R": "f5fa73495a8d905771d95886b3b530d0a11734bed6be975146f0a6eb889ca66c",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_joint_parameter_utils.R": "4c0099719582c93a2f8f8f11e77f3041ac29ebcb507df4e694dc345cdad51c82",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_joint_ploidy_category_utils.R": "822f5a1c84063238fd5287dbfd0fb379b6f59489d6e9a7d8dd857168def4a76a",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_multi_warmup_utils.R": "bd389250f62fbabb9d118db2359484a195ca60c4d2f28d1123f54488abb19261",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_parameter_landscape_io_utils.R": "d2074e6dc0606aa614ab5fc6c3f24329be45b68dd3064d643a2d1d8ceb583b21",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_perturbation_utils.R": "8b672b22cd33d01bcc441a95b75350696cce54100b04e3173d92a40863c0da44",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_ploidy_regime_utils.R": "5f4908dd2db3463ff2bdd301e401fa7790cae1ae8a24836fa7b125713aaccf6f",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_postfit_input_utils.R": "5ed9e13454d22a5ba3cebf8be1b5712d9e0d64b9e54e3a7130fb52ea51eedd8b",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_postfit_probe_utils.R": "57da9fd4464ac617f420f868c0e0db64df5d66fc3f5999d9d29ec9467d4b9368",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_process_fingerprint_utils.R": "4e21a44558e68b91dcf38c2b2a9ea1b44fed3c2de0b51616c809ce11b03d1a65",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_report_utils.R": "ec045ac34b3bbb84c54de60a703f138cc43278411f3bd761b899a50cdbe437a4",
+    "oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shared.R": "cadd418f90a3029cd9415619e52b8653df405bef27c9ee520f50ec1c79c357ee"
+  },
+  "git_commit": "f9aeab80e59541398e1b53b24c66b2d72ae10842",
+  "prepared_utc": "2026-10-13T19:40:38.102254+00:00",
+  "qos": "xxlarge",
+  "time": "12:00:00",
+  "array_concurrency_limit": null,
+  "specified_compute_node": null,
+  "sif": {
+    "path": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+    "sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+    "bytes": 4968341504,
+    "mtime_ns": 1790179231988363000
+  },
+  "template": {
+    "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/slurm/rcpp_template.tar.gz",
+    "sha256": "abef1512ec14ea81474faead226c9601c9e0e7b8eb830bb2521d5a7c12323307",
+    "bytes": 2853302,
+    "mtime_ns": 1791920349686628000
+  }
+}

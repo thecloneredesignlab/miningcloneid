@@ -1,0 +1,820 @@
+{
+  "status": "passed",
+  "validated_utc": "2026-10-13T19:41:27.397024+00:00",
+  "numerical_tests": 7,
+  "case_checks": [
+    {
+      "scope": "global",
+      "case_id": "global",
+      "fit_seed": "seed25",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.00151855580313927,
+      "maximum_residual": 6.66133814775094e-16,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 2.263874956486379,
+          "dominant_growth_rate": -0.11147908127506376,
+          "spectral_gap": 0.017985647259609494,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 6.765421556309548e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.0000350436259067,
+          "dominant_growth_rate": 0.20328570444058777,
+          "spectral_gap": 0.006062807015252331,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 4.440892098500626e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0000895629016462,
+          "dominant_growth_rate": 0.22681992636020898,
+          "spectral_gap": 0.0022713538799651045,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.4988010832439613e-15,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed25",
+      "fit_seed": "seed25",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.0316457396606112,
+      "maximum_residual": 9.23056547407283e-17,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 2.263874956486379,
+          "dominant_growth_rate": -0.11147908127506376,
+          "spectral_gap": 0.017985647259609494,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 6.765421556309548e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.0000350436259067,
+          "dominant_growth_rate": 0.20328570444058777,
+          "spectral_gap": 0.006062807015252331,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 4.440892098500626e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0000895629016462,
+          "dominant_growth_rate": 0.22681992636020898,
+          "spectral_gap": 0.0022713538799651045,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.4988010832439613e-15,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed464",
+      "fit_seed": "seed464",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.00014461426639692,
+      "maximum_residual": 2.09901540593194e-16,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 2.960801477442267,
+          "dominant_growth_rate": -0.08475101461874508,
+          "spectral_gap": 7.24599213335897e-05,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.0355204188127285,
+          "dominant_growth_rate": 0.16040447466526248,
+          "spectral_gap": 0.0017652692364439337,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.7470027081099033e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0953823926935167,
+          "dominant_growth_rate": 0.16917743689700637,
+          "spectral_gap": 0.00025731040854110043,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.942890293094024e-16,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed165",
+      "fit_seed": "seed165",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.0572583408752141,
+      "maximum_residual": 5.01274098185095e-17,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 3.7926169162790346,
+          "dominant_growth_rate": -0.1333511333929087,
+          "spectral_gap": 4.132783522153849e-06,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.8735013540549517e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.00003426400248,
+          "dominant_growth_rate": 0.2216291981151877,
+          "spectral_gap": 0.013179860177042924,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.6653345369377348e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0000546040592997,
+          "dominant_growth_rate": 0.2626534005910525,
+          "spectral_gap": 0.006507033837867826,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.0252275035329238e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed2",
+      "fit_seed": "seed2",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.0304231927617066,
+      "maximum_residual": 1.40555782708542e-16,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.9585501237613518,
+          "dominant_growth_rate": -0.025192285320167707,
+          "spectral_gap": 0.05944837613092502,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.0201512046346931e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 2.313315320035374,
+          "dominant_growth_rate": 0.08670559256548162,
+          "spectral_gap": 0.048364247258312246,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 2.313374054676709,
+          "dominant_growth_rate": 0.0867147660004188,
+          "spectral_gap": 0.04836043067477864,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 2.5587171270657905e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed214",
+      "fit_seed": "seed214",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.0241487379671951,
+      "maximum_residual": 1.55568502166852e-16,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 2.155951764057399,
+          "dominant_growth_rate": 0.012836882426921381,
+          "spectral_gap": 0.04970140903459663,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 9.534040206796456e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 2.4278825127895365,
+          "dominant_growth_rate": 0.09116819213099228,
+          "spectral_gap": 0.0471637876224756,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.903127820947816e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 2.5266484656611654,
+          "dominant_growth_rate": 0.1380294804059153,
+          "spectral_gap": 0.04124021763602749,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 4.85722573273506e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed138",
+      "fit_seed": "seed138",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.000798416489868989,
+      "maximum_residual": 3.35569327677457e-16,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.3115269721621734,
+          "dominant_growth_rate": -0.13410428943679406,
+          "spectral_gap": 0.0033417066379589355,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.7005985235314957e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.229818014569929,
+          "dominant_growth_rate": 0.13075522428431308,
+          "spectral_gap": 0.00936485658575864,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.0581813203458523e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.248550623465336,
+          "dominant_growth_rate": 0.14022111525249722,
+          "spectral_gap": 0.000858779576487112,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 8.326672684688674e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed66",
+      "fit_seed": "seed66",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.0316233528656038,
+      "maximum_residual": 6.50521303491303e-17,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 2.0992105626352306,
+          "dominant_growth_rate": 0.0020942973541809295,
+          "spectral_gap": 0.017267078888813653,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 2.4070842514473883e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 2.436370156402021,
+          "dominant_growth_rate": 0.07894790317253579,
+          "spectral_gap": 0.04965317646553339,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 2.2985086056692694e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 2.4620284447556204,
+          "dominant_growth_rate": 0.08323667643868204,
+          "spectral_gap": 0.05017950747859709,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 2.0816681711721685e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "scope": "neighborhood10pct",
+      "case_id": "seed395",
+      "fit_seed": "seed395",
+      "n_points": 4,
+      "n_recovered": 0,
+      "minimum_spectral_gap": 0.00071621868508694,
+      "maximum_residual": 1.05818132034585e-16,
+      "reference_checks": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.9920134361647148,
+          "dominant_growth_rate": -0.07694175831109606,
+          "spectral_gap": 0.036679062137414134,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 6.288372600415926e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 2.2636003633103936,
+          "dominant_growth_rate": 0.09665252780176581,
+          "spectral_gap": 0.03210007651940229,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.382710778154774e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 2.2415798465054704,
+          "dominant_growth_rate": 0.13650703474061315,
+          "spectral_gap": 0.026873468678732762,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.984795992119984e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ],
+      "common_reference": [
+        {
+          "sample_id": 0,
+          "O2_pct": 0,
+          "dominant_mean_ploidy": 1.0484195512277799,
+          "dominant_growth_rate": -0.005333777030693321,
+          "spectral_gap": 0.004391985541708131,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 1.259503135665222e-16,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 0.5,
+          "dominant_mean_ploidy": 1.0469866173268472,
+          "dominant_growth_rate": 0.00568636789987409,
+          "spectral_gap": 0.004158846662037958,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 7.546047120499111e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 2.5,
+          "dominant_mean_ploidy": 1.040971930960521,
+          "dominant_growth_rate": 0.03662107605061953,
+          "spectral_gap": 0.00042082917361346145,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 5.551115123125783e-17,
+          "solver": "double",
+          "status": "ok"
+        },
+        {
+          "sample_id": 0,
+          "O2_pct": 5,
+          "dominant_mean_ploidy": 1.0595159388844568,
+          "dominant_growth_rate": 0.03802170783429584,
+          "spectral_gap": 0.00011124006921813673,
+          "eigenvector_nonnegative": true,
+          "eigen_residual": 3.642919299551295e-17,
+          "solver": "double",
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "git_commit": "f9aeab80e59541398e1b53b24c66b2d72ae10842",
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "common_configuration_status": "passed"
+}

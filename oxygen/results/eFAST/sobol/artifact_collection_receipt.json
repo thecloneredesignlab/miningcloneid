@@ -1,0 +1,1666 @@
+{
+  "collected_utc": "2026-10-13T20:23:46.897047+00:00",
+  "source": "4482173@red.moffitt.org:/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol",
+  "source_manifest_sha256": "9458c78de5d717f4abd90d0b1e2bcfad589b6032733e8cd2c89cdbcb34c1d293",
+  "status": {
+    "status": "complete",
+    "stage": "representative_pilot",
+    "n_global_designs": 1,
+    "n_neighborhoods": 8,
+    "n_pairs": 91,
+    "n_repeats": 5,
+    "n_response_surfaces": 54,
+    "completed_utc": "2026-10-13T20:07:21.915997+00:00",
+    "convergence_policy": "diagnostic_only",
+    "all_500_neighborhoods_run": false
+  },
+  "final_job_id": "20836987",
+  "final_accounting": "COMPLETED|0:0",
+  "collector_sha256": "a510786a8ea65552987f6547ec2676c19080db919d0272476641fa4de70ec923",
+  "n_verified_files": 328,
+  "verified_bytes": 44990760,
+  "verified_files": [
+    {
+      "path": "environment.tsv",
+      "bytes": "99",
+      "sha256": "ff9db5f38794b2487fe41d17e501fc68b9de1a9aae6793745e1090000147eb1d"
+    },
+    {
+      "path": "full_scale_projection.json",
+      "bytes": "565",
+      "sha256": "e23abfb2d28ef215a4fd1c6dfb3124f912e4be7a99de1f71a7bd94bcc467cc58"
+    },
+    {
+      "path": "global/pilot/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36448",
+      "sha256": "1ed68cef4a21b30e48c762bbd0f33df4a15f45ebb8eacfe68e30d3071000eae5"
+    },
+    {
+      "path": "global/pilot/figures/s2_pair_by_oxygen.png",
+      "bytes": "296824",
+      "sha256": "9dc0fa7cf7922b2644f28b9f24ef5f2c3af41682caefc0ac3d863ac939a93a21"
+    },
+    {
+      "path": "global/pilot/global/completion.json",
+      "bytes": "33443",
+      "sha256": "0bd11ae09535e25686109d5908b328c5cdfeab398b0f1ad5fd0344f10dce1695"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "51030",
+      "sha256": "63c36b848f62d99cdc1fcfba87e3a986b8605f70d833d350e438289c98021466"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "183218",
+      "sha256": "cb425b29c0ed843e0d9c0d9d85fc70efd6fc9f4e03f8de70ecbf18bd8a533b48"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "45241",
+      "sha256": "903b9a2b330d50cc7de7c75742ca2238c9b912789ebde007cf945a78140c5408"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "178986",
+      "sha256": "cae9966c76124ac3cd901dfbd31cb14ef4408f891896cebaf3effe07cebe42de"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "59370",
+      "sha256": "a5a33c79b70153b7da0366df5f6720f98d76da572d6936480909bbf68e707203"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "189399",
+      "sha256": "fb772cbad7f6581fa8ae04d9cb14f85a5f7ce1f83351543d2bd126844d34c6e2"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "61385",
+      "sha256": "45f1fa6e66ac13c1ac89e1b68332e87b174943eca18eeebe825cfc4f84aceb64"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "183028",
+      "sha256": "bed9e7987935f090d8a7bae34c2cdadb3cb3d8451dba8bd2ac5bd035e15aa7fb"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "60032",
+      "sha256": "5d78bc3a4699632b1631596985131e43cc4864fca3a9f308327fca9918340c86"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "193120",
+      "sha256": "28c3bd323fe810cd9bbcd10fc12b1c54cc4acf658a34f3fdff9022e672a43c7e"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "61173",
+      "sha256": "079df4fbc0d49169b9f37d3595f4be05441462529ef9db64f8689c3837e88df8"
+    },
+    {
+      "path": "global/pilot/global/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "181956",
+      "sha256": "f93e6345143e3d421569c816662071740cbecde884d0dd117ff6180ce4fabb2b"
+    },
+    {
+      "path": "global/pilot/global/indices_repeats.tsv.gz",
+      "bytes": "618767",
+      "sha256": "a09c4ae5a713606fecaba827d6e97d222d9121af5d99134fcbe540043627c398"
+    },
+    {
+      "path": "global/pilot/global/indices_summary.tsv",
+      "bytes": "723516",
+      "sha256": "7cfba5a402b2036084ba3ce7f75b4dfe553b29d52f1c03d9e2b8f1ac930bb27b"
+    },
+    {
+      "path": "global/pilot/global/numerical_qc.tsv",
+      "bytes": "9415",
+      "sha256": "e49bdb7490a5c21123d334c72665104ddaae9b7962f59e564956ae579de5fa60"
+    },
+    {
+      "path": "global/pilot/global/parameter_bounds.tsv",
+      "bytes": "1391",
+      "sha256": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97"
+    },
+    {
+      "path": "global/pilot/global/reference_best_params.tsv",
+      "bytes": "398",
+      "sha256": "e822fa93a44ac40cae85b061e9f2c00cd9445ed2befd81793c924fcdca28a65e"
+    },
+    {
+      "path": "global/pilot/global/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "2876",
+      "sha256": "1b93fae53f8d210b2425e9e827842fc514936fc86233ac693f4079a8f7093e62"
+    },
+    {
+      "path": "global/pilot/global/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "182298",
+      "sha256": "dd98f98a2238ea58eaf1671d66f10bfdfdd0f4ddcd9a2429e1229b140c002f36"
+    },
+    {
+      "path": "global/pilot/global/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "2374",
+      "sha256": "0a83214cf1d2c9ea02ca4c81aa0e45667e9a05b69327e1821ff4783d78892012"
+    },
+    {
+      "path": "global/pilot/global/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "260908",
+      "sha256": "d5f1411bc355c7ff0896039b319a31ca36e3e7f69b60385ff926d117258732a8"
+    },
+    {
+      "path": "global/pilot/global/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "2903",
+      "sha256": "5f2d695a19af52bf56718a156a6ecc76cf3c601c80ec4bdf817a1d23714cb3fc"
+    },
+    {
+      "path": "global/pilot/global/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "262084",
+      "sha256": "70ac7654bf8abefa93102120d0fd4bdee9e4830120ba9d8a0f16472a6f1728ae"
+    },
+    {
+      "path": "global/pilot/global/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3324",
+      "sha256": "411a848646c33f4a020aaab6f5721932b38c95fbdec88fafc42f993ed36279e7"
+    },
+    {
+      "path": "global/pilot/global/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "259657",
+      "sha256": "dc64befee28f20e037ee8240d90b821fd5354e0dbcf1ac11c34cb597499d902b"
+    },
+    {
+      "path": "global/pilot/global/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "2962",
+      "sha256": "e17c61e3007ee982a302b4f75b2af29907db61f1fb10c137987239669c8aa5c4"
+    },
+    {
+      "path": "global/pilot/global/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "259523",
+      "sha256": "fc116237923d06003c9a0440fe9eff60a3c09a9a2c1f09dcae98a6878b9acca3"
+    },
+    {
+      "path": "global/pilot/global/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3387",
+      "sha256": "43e37e38e04dc4ee9f0b96a8702b96174927059809443b77a50c38f9573f06d5"
+    },
+    {
+      "path": "global/pilot/global/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "258686",
+      "sha256": "9e6e40a8c13e90abf2f1f31c5947674f2410798e2a30e10aadf19efe8d0e11b9"
+    },
+    {
+      "path": "global/pilot/global/status.json",
+      "bytes": "86",
+      "sha256": "c7e60405c3d36c2cf13306abe1d2e131b74c96a610f96ce8d45376d966e64cb3"
+    },
+    {
+      "path": "global/pilot/indices_scope_summary.tsv",
+      "bytes": "242190",
+      "sha256": "efac3bc3950d70f1f9e58e5915f0b9192f2ca8a31a8b8fbaa4ece5f5931cb024"
+    },
+    {
+      "path": "global/pilot/interpretation.md",
+      "bytes": "2395",
+      "sha256": "9a1bc062287f64f944c760557c449ec94e5032922d77003f756fd7ac86f798b2"
+    },
+    {
+      "path": "global/pilot/top_pair_estimates.tsv",
+      "bytes": "3298",
+      "sha256": "f5ddef88fc9332167ffdfc74430a90d034b6c1e01ac98b0669312862e7ef9388"
+    },
+    {
+      "path": "inputs/common_configuration_check.json",
+      "bytes": "268",
+      "sha256": "c9c86730185067873d34844b17c2c887ffae95094ee17c53e86e58718348e4be"
+    },
+    {
+      "path": "inputs/global_bounds.tsv",
+      "bytes": "1391",
+      "sha256": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97"
+    },
+    {
+      "path": "inputs/representative_seeds.tsv",
+      "bytes": "2660",
+      "sha256": "3d30a251ff4bd2419abda535963c0e0e7deebbf2836500d95b7b4b293f6d6693"
+    },
+    {
+      "path": "inputs/source_audit.json",
+      "bytes": "1218",
+      "sha256": "ae363fdf242f7b039e4b6909fa5baaf9f5b09ca0121def7440c31f963da8742c"
+    },
+    {
+      "path": "key_pairs.tsv",
+      "bytes": "941",
+      "sha256": "01622e17c5c104bab50ba20b9c616b1880d2b0464734e16089f7bdb43d1fe83c"
+    },
+    {
+      "path": "model_structure/model_equations.md",
+      "bytes": "3165",
+      "sha256": "59f950b5eb1d343938f8e149ed66e50e94500d4ca091a283f2940aa104e24522"
+    },
+    {
+      "path": "model_structure/parameter_equation_map.tsv",
+      "bytes": "5269",
+      "sha256": "22811b4cea65a07f93e530aea0a8d7f95e90f019d862c0917d2906ec6b18a1e0"
+    },
+    {
+      "path": "model_structure/parameter_pair_mechanism_map.tsv",
+      "bytes": "17444",
+      "sha256": "df7ecda8d9489ed8eb6395eecfc0deadd625890226e6c183116dc56419672ec6"
+    },
+    {
+      "path": "model_structure/source_manifest.json",
+      "bytes": "309",
+      "sha256": "b1f8f4b387bbbb6b465c592a6d321a0dee0b66fa2fd6795a8833f4ff68e084e8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36066",
+      "sha256": "6e86b6f526e058bf24106e4ab7ab967a37f95948d711fc70c7ca21a1d41e411e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/figures/s2_pair_by_oxygen.png",
+      "bytes": "292435",
+      "sha256": "47ed47bc152bf74056ad82bace34fb1c1d2161c3cdeb218ef8d9d41233c2e24a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/indices_scope_summary.tsv",
+      "bytes": "226353",
+      "sha256": "fd45fb76e7c98378778f935a8285a7bfde71dae31c377c5fcae84f8879ea739a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/interpretation.md",
+      "bytes": "2660",
+      "sha256": "06f93a8c6a02028d2a7d8a77795a38b1b3bee58b999ce83627bbb044a9a74d2f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/completion.json",
+      "bytes": "35256",
+      "sha256": "0e49ecd99ef16bfec7a9313b95290ce87263207166faec5bbb03cae7a46fa341"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "59358",
+      "sha256": "14b25d06677210ca1acea8789252d88fd12dbf73a9f030c159fc869966eb5746"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "208632",
+      "sha256": "d3cf1121834619b9d2e5db60cdaea7da45396e54a0e0688a2c1782d57a7c60f6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "50947",
+      "sha256": "ec689f08d3a6474e57b044c2bdb2a532b51cf214af783a0f7b641446b68c89c4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "196153",
+      "sha256": "c902ac10bc114e53ba6bcaf4cbdd548b399589865b3cd5137ce1a61c28af8b1b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "53502",
+      "sha256": "bf3c61d937aee02677a3e3c7b6ddb0c4afe8fee5784f4ca28ddf9a2528828953"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "188352",
+      "sha256": "53d96c1f9eeade13272dd820aafb57a48cd8b736c9bb4a04c0962cf779aae9dd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "50046",
+      "sha256": "5afc54b746763594e371b8322ce24af080fad40f881a67fa2e5ea901bb935d38"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "212682",
+      "sha256": "ab2fda4e36e4a93c0910beff272914a859cd7cb0915d73864be6d67e491484e9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "50188",
+      "sha256": "3574e91f110e4492d1386902ce681d9d694a142a907784110eeb98cf0788a5bf"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "209188",
+      "sha256": "c2c327a8ae39ec4976d5412d8f4a2dc5e1609ea2ed8eae3b4c7e244a1bf2feef"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "47812",
+      "sha256": "de4b6b01e72ca42a82e1d3e1e44f3e945181755ac070e5432306867242156685"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "228463",
+      "sha256": "abe27301eac1490f068f94bf023e9a4e90f1f0bec9c70a7a19eaba6c9a02a8b5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36028",
+      "sha256": "66465fb19d655e457c3834ee2b291185c56116704639a8eb7eec54a6cf058c2d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/figures/s2_pair_by_oxygen.png",
+      "bytes": "264054",
+      "sha256": "0a87ab408c1fc97917b90933c6c37f9ba15948c47539f124d2e69138cf640c6f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/indices_repeats.tsv.gz",
+      "bytes": "627176",
+      "sha256": "2f444e8cae15e0b946daf9018ed2a854061034d4640bc39c96b6a7d86e29559b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/indices_summary.tsv",
+      "bytes": "772647",
+      "sha256": "b431aed71ab1a0f7d0c0960d960cef10d17b0c662a27c8244bd1816172054c2c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/numerical_qc.tsv",
+      "bytes": "9407",
+      "sha256": "86e22ddb81aee1f9fb96e951c5c5090ec7b0cc818e7442323cddb86aff6ed03c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/parameter_bounds.tsv",
+      "bytes": "2915",
+      "sha256": "d6ddbd26af3bc39ca549652a4be4b6c30f0ea7c4d9d33a39684623577848abae"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/reference_best_params.tsv",
+      "bytes": "387",
+      "sha256": "1fa5ff6f3a2d35c43fecdb1eaf2e609fe9d6e0fab89395452c1d1d78f7e5facc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3264",
+      "sha256": "026aacc836f4efac370329c05b665e11c1d95d08f642b266d4a63bbcda567645"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "263648",
+      "sha256": "9ff59f4081bcbade7f5fa7b8b12d771a9eefe6878888d883d26a459f879df29a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3154",
+      "sha256": "c5060bf8b15a8e280546d2348f219f7fe4f7c73e6d4505b930302b82644203dd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "266489",
+      "sha256": "bf9ecf9c2414da1748917d6f7dc3fb1d0cc26fab54fb7f2cea067360007f59b6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3325",
+      "sha256": "7ca70c7e8221aac6ddd5126398dff60a6b1cdf2c52d188e2d88afdda800a97ac"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "262494",
+      "sha256": "44b33642d0331ef7c59b9ffcc1e541aa01743cec739f6c4cc636dce0d8091179"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3387",
+      "sha256": "4315d267f45ed421635b52358572e5fa840e340e88aea10ba466c24dff8ad4a0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "260697",
+      "sha256": "1ba13c4da4a0e67de68529f0ea204aacca4ef9eeee769711ced4103f04a5f9f7"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3208",
+      "sha256": "1c968b45c36051f6ff21bec2e163d366cb90b38b1b8a2a866cf7cc35737611f4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "265948",
+      "sha256": "c9b0b03022ab57cc86553ef524574e2fab51506b05dae79e729a7d84f0055332"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3301",
+      "sha256": "c7924b53cf2445fecbcd6da15c091886e400569841a7c892805cd0530d697f0e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "265094",
+      "sha256": "de130022856bceea4d89f650b1aa348219b1c488b0eac185a37087fb81a04ddf"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/status.json",
+      "bytes": "85",
+      "sha256": "f19ef0ff32f97cdb90a49d434668b636019ea37bf71812552ab5fdf30e4151f5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/completion.json",
+      "bytes": "35256",
+      "sha256": "2547eed5fd417938b1c93d26525856450defa9793f5b87dffafdf36b956fdc99"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "53414",
+      "sha256": "fdb12fc1afe67fa9459810e79a243ae2db2e4f8ed3ad3052efd6f82576836cfa"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "188743",
+      "sha256": "6d8122adb06a0b60666a0b8c0a8f32377c96c9716443ccde593f4005b19f832f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "46858",
+      "sha256": "f9977b7036b4bb6904f98475c48efb99ace35990c52d54a67e9bdb4ed4f5543e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "194147",
+      "sha256": "0703f8984a92d0a900c730759db48a93f246266a4a1d1566764a09e878adce8f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "49660",
+      "sha256": "eb665d3881a580ac238253b53d4a049a3c8b20e1f5f0c1d51aa222415ef8e39d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "187425",
+      "sha256": "a6e76b90e1100daa9b54989830a9e1a886f8d791baef5820df88a1d39b105349"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "46299",
+      "sha256": "5b465f567e7591d3e418ee725c9412ec92bb84e930a1e970b075a8dc7f7e6700"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "203114",
+      "sha256": "c114d72fd6953a2bcbc98408ac7cb416d46fb14c2aa6fef0c6c76de145859f0b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "47087",
+      "sha256": "e7d989b7a333df700808a6eab846b99b8eb746d462f79872f38ef312e777f3a6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "198593",
+      "sha256": "7a5a0a92e16eb36773399f3e423b51c455500a7c340c616a1f687c5618bae76c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "46691",
+      "sha256": "74937a7dec590e699e664ddf0e450df6d8a3842e180f5ec90f6067647f5d6901"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "191785",
+      "sha256": "6e00351e7b020c05fc890199bb91da7aab0a42ddd80fbf6a002f9e86884e0a8f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36209",
+      "sha256": "12a810a2f5c231a62f45ce0fcacc5149976faaa0b2dd708c18db1aab1b7b8869"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/figures/s2_pair_by_oxygen.png",
+      "bytes": "273516",
+      "sha256": "2963b0034455b65c85b6edcfae2a5890e238cfc4586cdbb7439e69980b6c6d44"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/indices_repeats.tsv.gz",
+      "bytes": "626875",
+      "sha256": "7e0d355bd083256a6856246a23e48f1933e2abf0fd96bffe47cd85b2b4f0e2fd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/indices_summary.tsv",
+      "bytes": "765734",
+      "sha256": "b046345791105c08ca2a41adc995f06b893300e542e8aa1707669eb4a9158717"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/numerical_qc.tsv",
+      "bytes": "9416",
+      "sha256": "928466988d42b7473008f5b040044476f9072b03f8045cd61951d10560ca2455"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/parameter_bounds.tsv",
+      "bytes": "2812",
+      "sha256": "dfc3cd13c0fdc0e2d1c2f6aabc80d2ba26ef52abaaed9e0f621137c91545275c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/reference_best_params.tsv",
+      "bytes": "360",
+      "sha256": "5af169b459ea1381a1b1e9ecff294df0e0eac93e622a4d9c63b7b9c3ff433e00"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3267",
+      "sha256": "652c87cbb7935507f1fa8d4106bafda3d7608b1107b2edfc6b2111f6941e83e9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "226061",
+      "sha256": "c8c3929fb7c500461db5e2678b39c2f063263515d7ec355d45bae8d4e633bb4b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3203",
+      "sha256": "973c5a0564c1117563fafbff8c98eade0cc056492d722f1683e81de9776b405b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "259792",
+      "sha256": "992909b10ecbff17ad660f2cf38c343e12f3a6f3d64428d62563dd5e877ce911"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3344",
+      "sha256": "75bdd176e6c804e83f9adaf58aed8c2bfee09c9211423109bce96a6dedd1fd58"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "256964",
+      "sha256": "b7adb70b022e3a709915ff1d98dbfe5bfb7a522d40e98222dcc390ce565c3a28"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3382",
+      "sha256": "90d0ef9c3bcdc1fe543cbdacf6bfd228408627b288142911b8162e55915fa12f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "255635",
+      "sha256": "d55220c0f6c7aa9f857fd7b63af9aba14d86334e5891677dd1a46b3a0d8c8141"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3232",
+      "sha256": "5b23302e040b300a09656d45c639e2266b02c8ac527dc4b9d519c6176b657014"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "261214",
+      "sha256": "4fc07076dafc873a39e1acc22a533fdc80a85dcd22615cfee6c341faa600dfd0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3326",
+      "sha256": "42016f1a6e1daa679331455721ce0445365773651585b7d2c12d6cf6090833bc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "260497",
+      "sha256": "3e0010097c8768becbe63657ce1ac3ce5311917c481b783f8d98e29ea7dc6564"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed165/status.json",
+      "bytes": "86",
+      "sha256": "74cbbf11e2824f149fe97b9bde5e36503cc9b586523b414bb75cf694824e817d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/completion.json",
+      "bytes": "34952",
+      "sha256": "f534670cc89e8241b8bdeaa2bce823f7eac0132cfbce410837bcd771fbc72f49"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "66749",
+      "sha256": "938bceb2b1d958d87353ec6fcba3b6d880560e84922f1a572fc8137419472161"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "207401",
+      "sha256": "44f84e7c82bb150251f461ff5c487da42aa31d2e8765fa14921a42f53411b9f2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "46470",
+      "sha256": "bdff9ed395b92976d92d148b85642152edeb3ac3de18744d8a04cb82d6d01aa6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "186002",
+      "sha256": "f62ca3ca0d92b9864ea98ba96a69960f321394f1f7ea4a36ab4a49fad15788fb"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "48606",
+      "sha256": "b9bf4015b5dfbbb168711757370e921abf463feea0cd03168725c51d40c7ad99"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "188395",
+      "sha256": "19f3e07fb7a70f61c2787db3a5c76e53d938683acb9ab1285d4c4ccf96196bb4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "51893",
+      "sha256": "d33e148ae2cdfa07ed0751c63099092ad996a42ffb40776fdfe721a309098321"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "187395",
+      "sha256": "51524544b13bd7e1e400faf98c6d727d5f37aece7d3d794293ae0ee5a4c301c8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "46728",
+      "sha256": "33dbec474b111fcd6509dd2cfb792a98d640fde1ae60203a0401a450a9b6ef91"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "180276",
+      "sha256": "3057637f12eac5765b3ba288fc720a510a507051ffb84c2f6ce6e772df650bad"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "49090",
+      "sha256": "05c4883c135bb989124037fb17a08870cbf5411bf8b6b0d9dfee953991cd9ce2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "183585",
+      "sha256": "6ab38616ad6f07750e32d9192d7984df60e22759bc19a79ad6bc7f15e8ce2a2e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36177",
+      "sha256": "a7ee76f0c37f92973cf54bce77779ac7cda732f417a6672e9931fc8d2c27c94b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/figures/s2_pair_by_oxygen.png",
+      "bytes": "261044",
+      "sha256": "6862cdce6931ea09f8dda2c88e7a89c2c132c7dc7cedd356c2d1c02de318b7f0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/indices_repeats.tsv.gz",
+      "bytes": "623175",
+      "sha256": "42c0f0b1027d09d587209eca952b429b658d2526e044bf816bbaf6275bf98e6c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/indices_summary.tsv",
+      "bytes": "765035",
+      "sha256": "edd5a3522415b9121535e25f0c2061dc8b8b3d637d93b50eac74de270679032f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/numerical_qc.tsv",
+      "bytes": "9399",
+      "sha256": "ab62d93c1b30f2fa64f690d475e1f5c698b4be1b312e06d9275f4825cd14e7b0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/parameter_bounds.tsv",
+      "bytes": "2870",
+      "sha256": "5b2a06fac14ab28c20725c1bce7ca47725caafb6fc6bb29dfcf244d4da2851b4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/reference_best_params.tsv",
+      "bytes": "375",
+      "sha256": "d128d984ff3b1eef0a99b858e8f0b567296159ae0ca0501e6cf6dd221a3929c3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3272",
+      "sha256": "391611d45517bc00ca4e06ed8e4014eba02e7c7a37069fdcd32fe2463f91fd4b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "269067",
+      "sha256": "7b770bdc7268cd3741ad7a5c07f577ac606113c001a52bfeeacc45210876647b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3199",
+      "sha256": "1dcc075bb23713209e7056617285f0243aab30ada81053e3a74a75207d11d134"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "241285",
+      "sha256": "1c39734e92ef99d63ec194699d2b4273c5e51e7d3b0c9a099fffd255cb8415ba"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3267",
+      "sha256": "15003475f7744fd05442b2f459c83b450fc15de2b4b7e2ed2fd2e538b4ab9006"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "265605",
+      "sha256": "f810fa90a8fb781e18514bdfc828947bf98d177095dd6e088815344a754c3d3c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3400",
+      "sha256": "d8715016fb5d8eff6cfb6c2080452919a9c8317bd65876babc319535d2a91840"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "269452",
+      "sha256": "55654bcd536af9716184f73ed87585482c635d1017eabc545adb3b0c55ba7775"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3307",
+      "sha256": "8de67ad577c517771608aa2dbf749aacfb5eae23dd0690b74b293fea57422edf"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "261462",
+      "sha256": "f33e8552066bedb97c53a7d1bfe48252d4c9208f15fe3b16729d521adcae19fe"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3398",
+      "sha256": "4d25987e921b73110dc28d7c8fa40bc54d2c9527f6947a0e4f8048df2f1eea36"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "262714",
+      "sha256": "f443e9fbc282ee3345d5cd04d20b3549b56e3e5de9b6be60b382875af5bb9a80"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed2/status.json",
+      "bytes": "85",
+      "sha256": "0db1d84fe341acd5b72850ceb25c78c99f01b041d538a646e05ef42e43cb5b55"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/completion.json",
+      "bytes": "35256",
+      "sha256": "ba2f8de6c271cf590dbbaf77cb16db3e157cf8131172d02e05f65ac36a99b208"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "71067",
+      "sha256": "e778dbc59ec82a0955d37a313f9e0494baa5154a84ff2855e928c01a6f057dcb"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "226898",
+      "sha256": "c157f75fd30d6b6916051e655c96c3cb7a0fe65a5e05bdcdcad0bfb8a90e4b67"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "56876",
+      "sha256": "f6565c705cd4682a8b0cc57060e4ca0dcafb0a8013c711aec92eb94748506c5f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "208056",
+      "sha256": "9fedf89a4bc84b53dce9aaeb3c0ff29b3218fcbb4ed56c4993e4008aa3cb25c6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "66943",
+      "sha256": "59a6f537ed89a8310f9c26e83fb505872fbf83a7172d108bc3fe24b9b6efe0d2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "215924",
+      "sha256": "c8b934f205be4566e72ef4b4dd21fc8a2ea0f5c6e2812fed9373ad35d0caa382"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "69595",
+      "sha256": "351ed9e110f0b3af383e07da302c5765da61e2d203b33302b9347b717fa0b9cd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "216986",
+      "sha256": "56c16baf220067d7866702b88b64190df4c0a71a63d3b59cfea41715300d1942"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "68556",
+      "sha256": "a87075385b31e6212a88b001855700c8d998b832bd907d1fbbad41d3c0bf6778"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "208145",
+      "sha256": "5218742cda89a11772778c34ccdc0cf9778bfe4d744e17828631f05e5f94cc43"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "64320",
+      "sha256": "ad2309c925e250478ca799ebfc679c31163d1c212332a904a8f0935c1735ab81"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "223140",
+      "sha256": "1f2ccc49f9c9c011488c2fa6d7efbffbdd912135856ad11f308edf2ee1b2ea31"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "35707",
+      "sha256": "22084f9918d275920314400787d7e735cb53c791ba4b06c558b4297adab19c79"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/figures/s2_pair_by_oxygen.png",
+      "bytes": "262807",
+      "sha256": "133d545e3ea4d380ad3757c8909f44b775f6516314e3dbeb2a5bcf5f2f64004e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/indices_repeats.tsv.gz",
+      "bytes": "624306",
+      "sha256": "c31c793fd8cbb57fa78adec98671fbdea7ca4abd4696ae19e0db6bb03f387194"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/indices_summary.tsv",
+      "bytes": "771063",
+      "sha256": "e015ebe3846c81d439e74931a82d96c8fdcc76955bbf88c729575a52acd7abf0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/numerical_qc.tsv",
+      "bytes": "9341",
+      "sha256": "69f92ceed8ca1b4525531283c2bd63cb074d74d3e60fee076cbe2108a8885854"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/parameter_bounds.tsv",
+      "bytes": "2855",
+      "sha256": "1f19c7579927a7a40dde280ed262e75e19349d0278b8aecea8fa12954495150a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/reference_best_params.tsv",
+      "bytes": "371",
+      "sha256": "a732427ee1e19733d98d4e08a4eff42a399d836f3da888de647eb9ecd2ff9c2d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3267",
+      "sha256": "639da67515b3f574bfb58cc4ab2e6b959a9943be9b9e000f1912be6ff62e6c1a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "272794",
+      "sha256": "0f0d3ebf989688ca3891cc18f2324958c6524bd95c10544fe5f58a14cd3753e5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3176",
+      "sha256": "4a8cc796ff3676181a5a52b479a08c9c981db056e3c92e09c91331fe897d1d4a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "264959",
+      "sha256": "2a748b12deda5bcd3e924ba7f0b772f7e8f5ca7308085f3575f03736405ad56d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3269",
+      "sha256": "d6305ddb5e7d0ce27322e2fcbdd32153402ac27b278fe98c85e502035023b268"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "267586",
+      "sha256": "61b91aabd16b68ddccb4753df5d7f49eefc6a2140f2aba69933e591f09ec0834"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3409",
+      "sha256": "16ed789089ebdd7863252f6481ccb3521ded037797388a6a54dd62d83b933952"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "269349",
+      "sha256": "c13852f63aa3b128245f45af259998db5ca77e364714a441d3811d6fa7be6fab"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3298",
+      "sha256": "1d8ee5945674ec624463cd63c8bfbbb3a813f1c7bf639bfe64e4a465fd4ddba5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "265590",
+      "sha256": "235c667250ea524fcab8908c3adeff113de545416801c092ce42a079cdff8e25"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3427",
+      "sha256": "feaf520aa1c7e54a9c743c449ba5be4d7189866c98da03c7c84a92122836dd32"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "267603",
+      "sha256": "8a01b1fd27955ac55b68ff8c811a4d412da2aa4293d0b51025b0ba9dc9d2ed05"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed214/status.json",
+      "bytes": "85",
+      "sha256": "0b2add95c4b7a53246d52ac224b0d832bd28452b047afa0821306fd2c2a3fe34"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/completion.json",
+      "bytes": "35104",
+      "sha256": "4304ed0a5ce4b7409678262ebf45f6d4090e3487919dccf9c6f0f26172f79f8a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "56910",
+      "sha256": "5dc1d9e5ad7ffa0f3498728048fb9f60ae2fed79050b2fb7e1de652e8fdf675b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "199302",
+      "sha256": "ded1bdf414e052a6a01e522fabe7144abd479d2af49c44d9436f6c24e89a5f2a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "46797",
+      "sha256": "e36d3d77c4e9e201e2a68f06e1bff9ea67ebca5f05cc29c326556a0ca7aba245"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "194222",
+      "sha256": "c2ca0bd72730d317d890991aa61c3364fe832ce77a16d46f7492233d90e7e42e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "46077",
+      "sha256": "89ad58da9fa8255a55fbfc6dee3d174aa7e8615ba924b6dcbe805a4db956a048"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "170864",
+      "sha256": "512ddd37c81904fa88c27e8e73d500d5562111b7b306bb8ef48e661d510ebd09"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "48395",
+      "sha256": "c79b647473dec7153eb9f2e36c1dbb7b445f097ee1995540a20353e3b4d13c7c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "197481",
+      "sha256": "a8051d23f9d7bf5af010b40007b4946f4f83d4f0ffee0b84b1c56f8a535c7cf5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "51178",
+      "sha256": "abc625901766e65b7ab66a349312158d9789ba698df71b2b81b4c1e86b96edf6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "201034",
+      "sha256": "bfd0f3a11de6f27fdb3ca9138ee2e5b39a58a56a0bb9f6d2054d3d96f30abbd1"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "48353",
+      "sha256": "3efd64139612f67ca690e6187bb751c101082f984e6a62d0f00200067a6d2729"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "205464",
+      "sha256": "a7c48156d0898ec0006bd216f40886da942f35ba9b603339bfe3efaee92f050d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36027",
+      "sha256": "96f45874f25fd09bd7a2a631f9d87b575d8d7bf981760fbd284ccf5635d225a1"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/figures/s2_pair_by_oxygen.png",
+      "bytes": "275502",
+      "sha256": "4a41901584c102c1b54cf0a336035edb3a44b17dae120025dfeebe975b09f57a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/indices_repeats.tsv.gz",
+      "bytes": "625195",
+      "sha256": "941f2220e788f3a576eea25ab11dc601262a5eb35c07fe63649f0af48abd7915"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/indices_summary.tsv",
+      "bytes": "759229",
+      "sha256": "7db0a5531371726f62c54bb3e947c3a64d265fccc9b4519cb1f3706d2d6d837b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/numerical_qc.tsv",
+      "bytes": "9409",
+      "sha256": "13830b0e1e5fdd59be7486b7e7899aabc8aeb57e3d96063e5bf76f26a34c4413"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/parameter_bounds.tsv",
+      "bytes": "2887",
+      "sha256": "c2952f6b5b67fbae08b6c485876d226206a869aab9f3495e7b406fb033d2bd8f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/reference_best_params.tsv",
+      "bytes": "398",
+      "sha256": "e822fa93a44ac40cae85b061e9f2c00cd9445ed2befd81793c924fcdca28a65e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3264",
+      "sha256": "1cb0d4737c05d45565630e31d3f6989d17f1f23d785d341c76a425415a5403e3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "211887",
+      "sha256": "86f8e93cc0eef58a637f05f198c1b6c0e1e12a2efb7c40590a3e62cfffde7786"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3188",
+      "sha256": "8ad6a6cf6c069317df7db18252514b4f1a368744925eb03e9660d422b0ef29d8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "259335",
+      "sha256": "69b0429a78c18711b08ce48235704eee2431bcb5af1a0daea6922167c3d0bb79"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3342",
+      "sha256": "54f384e9e5d50006cac95757f9e0f4b038c75412476cca9fe084663f288bbcf7"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "259800",
+      "sha256": "425c5ccdb6edf5f2b2258f2f253b8d00d690234c37229b9b85d4fc3d4f15f50d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3435",
+      "sha256": "f53748f3b1fd1fde4f93f7addeb13fac9c7f08e25cd5da5fd5af8fc4bc1bfbba"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "259338",
+      "sha256": "3332a97dd40737a8a05687ea2586b285f2d4f8c8a5be939d5b4fe08bce9c983c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3269",
+      "sha256": "92be8c222181cd6e9162750c5eed8d4f333742f88424cb25c6ef4edac1abb4d2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "262136",
+      "sha256": "d20ecb87e0d517fb0fc0f25fafdb89d3e278d94d5cc3b4c4042aae1a268bbc03"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3384",
+      "sha256": "810fedef889fbd4a98557dd05af1076cafeaad06fc8b483d89d9642218f7d632"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "265006",
+      "sha256": "8c7e4bb2d70ac61f8112cde1eb37f0e289d8921f5c525a941cf71485d68d2164"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed25/status.json",
+      "bytes": "86",
+      "sha256": "d9becaa7b985362600b14a6b973098e35c5f525422b15efe8ea75bfc177f38de"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/completion.json",
+      "bytes": "35256",
+      "sha256": "53f107edbeec38448c209ff01faf47f85643dafb4b1f1e941f6b4869d5147938"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "64763",
+      "sha256": "bd0ebced54b86f4d3cba10e7a511bc16b4d7f36311ca3c14b1fdc440226da9c5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "216766",
+      "sha256": "39f4d8a5b6db13ea371a5beb39222743dfc1607043b9402b0bc9ef04cdfb46cb"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "62184",
+      "sha256": "c246f5751b72e22fe31d517dd52132dd8cb1ab78659b0baa1d7ceeca75961dff"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "220534",
+      "sha256": "ca68304aea8ca12d569f069ec503bf45cff8b25c8a9a3596cb01d67d4ca6c22e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "64633",
+      "sha256": "4d9da52ebd11cae906d0d5c870347b16ae314ede63c083b37ba63b0a9ddf6f20"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "211036",
+      "sha256": "a8292e9b09bc24f16a072152062ff563bffe35a256dad5ed04f95e99ee7a7f3a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "59096",
+      "sha256": "d764457e1ae28bddab2dc2ac98a3a5ccf6dd1a9a4caaec047202ca500e8403f3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "217360",
+      "sha256": "ee23dda2ef88a2c46af0e28110b13c729c13ec8ac83124179823845612bd9896"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "66644",
+      "sha256": "724e390c044144cb2c602bbc8e2138d0c4f9c4415b798434e32b38f0691cd520"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "222779",
+      "sha256": "69aa4054f620027a5fade7852ec7dde9207aa066d1fe5e1fdc4b9fb4bb489148"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "63833",
+      "sha256": "306cd953b47e7d2494d1ba54cc2fe773ffa546d28e709574d19f85496315f6c6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "234403",
+      "sha256": "2f80ad67b2cb3de4eea923820daba682b1524dedf56b19bbbb74b1904e1fe224"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "35919",
+      "sha256": "272db7ac12249bcfeafded2a5442f1e72d36bb08c4258fe9fc1207cf69620387"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/figures/s2_pair_by_oxygen.png",
+      "bytes": "274657",
+      "sha256": "00971a8c60cd2c1d5c950342c98b68e05458645f2e2f02ceeebc5ee6b10c800f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/indices_repeats.tsv.gz",
+      "bytes": "623292",
+      "sha256": "36ddd7b7d3662ac8eb9beb9994662b91612fbd1ffe94853802ab06264799c13a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/indices_summary.tsv",
+      "bytes": "764674",
+      "sha256": "c08ac9da1dbe59f65e07a0a249e3da4c02a10c280c14da1cdb9066ce6e2ba31d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/numerical_qc.tsv",
+      "bytes": "9404",
+      "sha256": "4ce3deb8255e903eb874140c2c102337ab36c8abbb96936825ba34ad26906ac4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/parameter_bounds.tsv",
+      "bytes": "2929",
+      "sha256": "f457d69c5a483ed8d6be1f12d174d31db96b0d8e30506215eada1ddb981cfc39"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/reference_best_params.tsv",
+      "bytes": "401",
+      "sha256": "7bfc1a9e1baaa9a192134322fd9f34a921d69d515f4aa8c3d0b7980ac11455fc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3271",
+      "sha256": "d32eddf224497b9ca46fc614dce6d76b4861badde8d62d342a7fec47ef72259f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "270378",
+      "sha256": "789c0c9eedeb8ba44b12d456b0e39ddf12177b787a430346c00be542e39afd4e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3182",
+      "sha256": "f75d71a3a5314bb476edbf6e6099737c14067a1d7697d82109f2e0825a474eaf"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "264266",
+      "sha256": "f6e5aa1fcace21a700ae5ab1078d560acd98a61f3e9ec1fcfe09a7e4b6f29c26"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3327",
+      "sha256": "a2c027b5e86cedd7886568a8f2674492d008605e7d7e67f85f141b91e620a5c2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "261111",
+      "sha256": "6ba7a8b63f94d347d047e49f17deccbfb939a2eb69a1d8515ff3d8c9c38fdb70"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3448",
+      "sha256": "9418d57ee9d9681448c416cb5392b8195dad3746ffd7d9941e1cb66dc2a7e8e9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "264098",
+      "sha256": "ea568bdf2bb4cb61ed08d24d8e5b4407a8864fb0d6362c901b695a56cc2053c0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3279",
+      "sha256": "6767117b05c778485e315e2d01da18b4839738c10c997cd0464b50022e1f8ed8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "266550",
+      "sha256": "2858fd06d0856a81223cd9c65250c38e4bfa63c76d09c088b457a67f90e38e3e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3375",
+      "sha256": "cbac6690d438463d7963cafb1e7912eb913d0a05198d0ba3a2390e36ec505ff7"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "268897",
+      "sha256": "6e3fa9dcf749f121b0c9fdafd40d796945c280bd31f9be47f1df4781ebaada1c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed395/status.json",
+      "bytes": "86",
+      "sha256": "2bfb0916a490a1eabca9e9fc4d0e471c8e2b60da4d661d83a8cb5c27e79665bc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/completion.json",
+      "bytes": "35256",
+      "sha256": "77948f88a39fc39e8089f60cacdef499642ab2ef7655299c2b72b4564b068810"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "52894",
+      "sha256": "81689cf77614036904c20c3d02028adbdffe2b743831790390c82f043715a705"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "189059",
+      "sha256": "18808ee0bae6757af804c760b6394493e521fd1338ceed0ef25b899d0b900906"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "47658",
+      "sha256": "567948d8cec9903d11242f69943ef89f11ad338193c38260e583b429c4ae878e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "202125",
+      "sha256": "962cc03a3e9642b28e3eb0e5752e5a805b5247b345690b8ab108829466d6813a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "47968",
+      "sha256": "5a1bf68e0c325cc772eda3190ba3120c85264c5d06e81dd714a92837cdf88dc5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "185355",
+      "sha256": "e6878d8b5d6cb043ff464224d0aa9a3c99a5ae06ffff84ec16e37e66f8f7a257"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "47714",
+      "sha256": "29fed8f44f46017553b8b9b107ed3c8c9c105898cbeed9fc66cb466b0c4baae4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "201740",
+      "sha256": "50fb8d88c26c66e4f514cf0ac107257f68398c6a903a16999d38db6588e5ee05"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "50987",
+      "sha256": "5c23fbbd808a217ff9c2ad91db90be5ec3324760874b52f4a70597f4c7e74dd3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "204942",
+      "sha256": "3394ec5a93462460594b5f84079429551990262503bc175904cfe016622e01a8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "42727",
+      "sha256": "933273567bcca2a68f34d7f36f83bd6a6ecac69a95c090b4652f0bf067ba7f31"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "164497",
+      "sha256": "0d95525d19d97cd6e2a7c97794f4101ddd99eb806441b59c454d63f714eec43d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "36925",
+      "sha256": "d163b6aceaaf444a2adbb7acf553aaf13b964a123b54538d7299fa61798a7742"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/figures/s2_pair_by_oxygen.png",
+      "bytes": "277616",
+      "sha256": "0e2004d37abd82431d9a0797500b3fed5668e9d196e718e182cf96d654e91e94"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/indices_repeats.tsv.gz",
+      "bytes": "626932",
+      "sha256": "79328b0f79d9d1a6cd7a4cdb7ed3f1af9469c1ce5cb7c2820e3c2bfdfa80a89c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/indices_summary.tsv",
+      "bytes": "765959",
+      "sha256": "9b6068963e7496dd5e6966b3062638bd26008dc2ccdb0cd5a6c53cd218126765"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/numerical_qc.tsv",
+      "bytes": "9410",
+      "sha256": "ce06b38422d1e4f3d1a1fb165e76fcfdbabf0741afae4b4b8c29ccaf75c5fc27"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/parameter_bounds.tsv",
+      "bytes": "2897",
+      "sha256": "e58c91b8ce4a65e6d80c3ad6fd3cd3395fcc570ffecfa69291ec63382b3f1b74"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/reference_best_params.tsv",
+      "bytes": "401",
+      "sha256": "c6c094205defb40f9eca0de476e38872410e0b4fdfb8c1a72e2032f24d16f528"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3267",
+      "sha256": "23a4938d7d9710e2f193bb321cf8073cc6d089f55ee75161c756f1aaace9e57a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "263922",
+      "sha256": "d7ef19370bcbdd19929110181e87fc02eede24a62c4d2880a601a238c95f837f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3196",
+      "sha256": "6bb0b61c86e3a1c1e781dc4045aa734cd9714fd5b1e7fce72ecf51a0f2db0764"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "266101",
+      "sha256": "61b5418bf9a0bba9e94aff8ea46e75449b91269447d65a134797ab10dc3eb13a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3347",
+      "sha256": "dd5fedea8e9e9d160ff8b336f531cd666bf8c08a4d247a9d652dd61f16f32227"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "264229",
+      "sha256": "3c00e47a62d6ba3e088b7e8040c327cf0c4ef11942efe13565911a279212b8af"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3416",
+      "sha256": "835cb525f76bbaa89feb8fa68fb51adbf70cfb86053e8fca4d20652955035139"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "261064",
+      "sha256": "a5fee403d58b892de8703cee8bb80b6e561fe6469925864076c1e504d9ef0303"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3255",
+      "sha256": "42acda689492c076e63a26b9a6104cc10e502302bbfbd2f258ad5783510bdd8e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "266921",
+      "sha256": "7aa5bf3b60d5e4ec59c0e81db870f1cbda324aad0381e2ac5d3aabd8f0ea974c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3379",
+      "sha256": "c3ee436a1a86c2be4d4b07e32b636e4acc91cc3fc55326717ddc825a45ef65d5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "267548",
+      "sha256": "b3461e4d71a367c5ec42e387e521b0f92304cec64b1f13457241b88e3b71e346"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed464/status.json",
+      "bytes": "86",
+      "sha256": "c4a2aee91ac34cc72680fc8e852e2d1162ec4f1e0c1cbf5dfcc473c31c7a7354"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/completion.json",
+      "bytes": "35104",
+      "sha256": "03c749a324d5935253a523c93b287432842df79ec42f5111dfd0101fa4710ada"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/buffer_smax__buffer_beta.pdf",
+      "bytes": "64436",
+      "sha256": "b0c510afbc961fe345f65f112ec277d7cc16286a2f33708205338b82535107a4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/buffer_smax__buffer_beta.png",
+      "bytes": "211874",
+      "sha256": "394abb4d778376238f229ddec81b702e219437e7aa20db22e01ad823d1bc6189"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/gamma_growth__gamma_mu.pdf",
+      "bytes": "51089",
+      "sha256": "970c61bebfa619d0b4cb8f7c1a4592ca3b0d6a9e7569faef141c4b1888639603"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/gamma_growth__gamma_mu.png",
+      "bytes": "194790",
+      "sha256": "4ad7913b023fd73298f894c507c8587664eb490554846dc3484c3b68287f0fae"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_mis_base__gamma_mu.pdf",
+      "bytes": "57696",
+      "sha256": "5528dcc170801308638a622c18164fc2e89cd99b188c4b070ba235cc1d160857"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_mis_base__gamma_mu.png",
+      "bytes": "222641",
+      "sha256": "b7fe2751bea7fcfc7397ce049b5811a0fb1e521199911a7f6aa816ccdb838d75"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_mis_base__p_misseg.pdf",
+      "bytes": "54627",
+      "sha256": "e3bbed0cda65a79910610ddcc16e9ea2e731a3e5d9173e056d1bd2c6a800c29c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_mis_base__p_misseg.png",
+      "bytes": "222800",
+      "sha256": "4ebe75043f574bb1bd7615c7bc0061d2e2d354c6a2bb34c25690c25b254f5220"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_misseg__gamma_mu.pdf",
+      "bytes": "53864",
+      "sha256": "4eadba465430b7f2be128b37bb3694b3f494df2f0c65531eff649243c1201ce0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_misseg__gamma_mu.png",
+      "bytes": "191233",
+      "sha256": "612f59624cbf1a5bc3d771ddf1fba723026fd3ea4c728895122662a7fd6d0e20"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_misseg__mu_hp.pdf",
+      "bytes": "55980",
+      "sha256": "90861bba959b922aab2aee44c5e260b6f9cd838c1adf1845060573e6f817077a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/responses/p_misseg__mu_hp.png",
+      "bytes": "212293",
+      "sha256": "d8840b3e2515deac65f2900f1bf126a81718fe7ae50e214dc0f24ad8cc764425"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/s2_pair_by_oxygen.pdf",
+      "bytes": "35839",
+      "sha256": "31f8d01966f15d4edc4c029b7b3b6914b7c709165b98c60ff8e7572ae328effe"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/figures/s2_pair_by_oxygen.png",
+      "bytes": "261641",
+      "sha256": "fa4068de9ce27d4cb004cedaac471bae86ab7eb286f1cc29aa5fdfba5423ff73"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/indices_repeats.tsv.gz",
+      "bytes": "625964",
+      "sha256": "cbdacbc62b537a3afe3a9923db4e1574e5e16443cf3782735b685ae2fb5cb930"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/indices_summary.tsv",
+      "bytes": "766999",
+      "sha256": "d06fa08d8d5ef7359e9613e9cf759f67a7229b7e1b2137588e557d42244c2d6b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/numerical_qc.tsv",
+      "bytes": "9413",
+      "sha256": "757fcfeb1302f2f29000e043ede410b49fcff2a0c1395709f7829c9163870f91"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/parameter_bounds.tsv",
+      "bytes": "2942",
+      "sha256": "daed85d2c96b4a7e31329a9c7b1d6ca3bffe49e81aaa780be271f29a1e708299"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/reference_best_params.tsv",
+      "bytes": "388",
+      "sha256": "fe806af4bbc3ebe0da325b1115c873bcf3dcecc8d93b6381c6c8389e629e00fd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/buffer_smax__buffer_beta/metadata.json",
+      "bytes": "3274",
+      "sha256": "16eba30a408c5245f2c0ca1675407dd4b8a9a98e99c2886c1f8e45b617e2f6f5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/buffer_smax__buffer_beta/response_surface_source.tsv.gz",
+      "bytes": "271286",
+      "sha256": "2703310f46d76d884bb7d65c92ebf52c2fbeef89e0ea3d9c7d1da834d5a9809d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/gamma_growth__gamma_mu/metadata.json",
+      "bytes": "3160",
+      "sha256": "6252b4a7b1fbdb9ba7a544fa005e70de42624c026b4a5f30ef105ce1382c5a38"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/gamma_growth__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "263259",
+      "sha256": "a01b490877593a7a4b0cdca12e3e3eeda0d7b4bebe9f41a2d1c9c332f0f06575"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_mis_base__gamma_mu/metadata.json",
+      "bytes": "3219",
+      "sha256": "ca9bab369835105f2b05de6cfbbb1beb4d03a6b33288ace30cfd82c19d9af40d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_mis_base__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "269035",
+      "sha256": "b7979b2288ddeae5519810ce9330724c0b98ee303b5f707ec150fc864897d4c8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_mis_base__p_misseg/metadata.json",
+      "bytes": "3367",
+      "sha256": "38b0232971f3a072074732bba62e89faa3955f3012a993d49072834f31d772d9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_mis_base__p_misseg/response_surface_source.tsv.gz",
+      "bytes": "272265",
+      "sha256": "7b2af2dbf134232745bbcfb95c64221a81e15fb36aafd76fc3962d02656649a2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_misseg__gamma_mu/metadata.json",
+      "bytes": "3284",
+      "sha256": "bcd6b47409d5bea56c71685ddc47a1abfdae02ede60fd3eaa48f916635c34a32"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_misseg__gamma_mu/response_surface_source.tsv.gz",
+      "bytes": "266215",
+      "sha256": "95c35dab9791b5219c704ea117f92800067d4312a28fa3559741a4ca459260aa"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_misseg__mu_hp/metadata.json",
+      "bytes": "3435",
+      "sha256": "1509d6072111ac3bb1e3813ba9a2f0040d5c3967b239413a8bce8800a8cbdf2d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/responses/p_misseg__mu_hp/response_surface_source.tsv.gz",
+      "bytes": "268297",
+      "sha256": "c2742db136c8d480df25ab8977309d99c61079280a7a90fbc00bda2e9056f4b6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed66/status.json",
+      "bytes": "85",
+      "sha256": "c927c0c5acbbf821bfbbbb184c24ec30b0ba67643fad05377ca3e5ca80db9956"
+    },
+    {
+      "path": "neighborhood10pct/pilot/top_pair_estimates.tsv",
+      "bytes": "3168",
+      "sha256": "148e3106676afbc5f5aa08dd8ff03bdb40d48b8f44c7ac46b3034f58cd6a408d"
+    },
+    {
+      "path": "response_surface_inventory.tsv",
+      "bytes": "15994",
+      "sha256": "2c3b627a238328b4bdb9e47aab3759697ab8d25f08317c804797ad363c8a90dc"
+    },
+    {
+      "path": "runtime_validation.json",
+      "bytes": "26969",
+      "sha256": "856313b8db954b927f42d8c85fcc4e8c9092f681c44d8a654a8ab772dd112922"
+    },
+    {
+      "path": "slurm/case_manifest.tsv",
+      "bytes": "337",
+      "sha256": "82f26dcb800b464cb6d340f1e59c1bc908076102e08a2febf11dd3cf77acf7a8"
+    },
+    {
+      "path": "slurm/resource_verification.json",
+      "bytes": "369",
+      "sha256": "c644649a27a73d9179e137aeb21a04a25f9f8170a5458127bf0f43a58ba7957b"
+    },
+    {
+      "path": "slurm/response_plan.json",
+      "bytes": "390",
+      "sha256": "bfc7f7e5814866ed738afceda8128db6bf526f4a4ca26095c89a8ac21be94c2d"
+    },
+    {
+      "path": "slurm/response_tasks.tsv",
+      "bytes": "9817",
+      "sha256": "b4f1db0f9666513eccb328035e427c4df059457d49c44c645c5ebb5bb07d9691"
+    },
+    {
+      "path": "slurm/status_before_surface_roundoff.json",
+      "bytes": "158",
+      "sha256": "0b9af9da7383834d7ab52056a990c7b305223ed1bf4829695585d9ae3a128e35"
+    },
+    {
+      "path": "slurm/submission_jobs.tsv",
+      "bytes": "781",
+      "sha256": "cd2a256fcfef1a08eee7cfce26f5e7321c0ea749b123aabe676d9b92f2d43813"
+    },
+    {
+      "path": "slurm/submission_plan.json",
+      "bytes": "23895",
+      "sha256": "e2ae372343e4e4de6fcb64d300b917ded9e162a203687cd718493322a7242d02"
+    },
+    {
+      "path": "slurm/submission_plan_before_surface_roundoff.json",
+      "bytes": "14127",
+      "sha256": "97c3f1ce3999de275ce41232591af96dfb904c091c684e64fea2947e0f781eb5"
+    },
+    {
+      "path": "slurm/task_manifest.tsv",
+      "bytes": "326356",
+      "sha256": "2126326fabae68b82353c089c62240a487b6c36b640b3f26657179e79e046c9d"
+    },
+    {
+      "path": "status.json",
+      "bytes": "311",
+      "sha256": "601c064d70dbdb2b9a08f6272486eb73f8298b753da98c8dbabc0815a0814882"
+    }
+  ],
+  "n_files_retained_on_hpc": 5738,
+  "exclusions": "raw sampling blocks, ordered large arrays, recovery matrices, logs and full external Figure 4 reference table remain on HPC"
+}

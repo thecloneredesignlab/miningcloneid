@@ -1,0 +1,837 @@
+{
+  "status": "complete",
+  "case": {
+    "scope": "neighborhood10pct",
+    "case_id": "seed138",
+    "fit_seed": "seed138"
+  },
+  "completed_utc": "2026-10-13T19:45:55.786366+00:00",
+  "n_repeats": 5,
+  "n_pairs": 91,
+  "indices_sha256": "2f444e8cae15e0b946daf9018ed2a854061034d4640bc39c96b6a7d86e29559b",
+  "summary_sha256": "b431aed71ab1a0f7d0c0960d960cef10d17b0c662a27c8244bd1816172054c2c",
+  "output_receipts": [
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/A/outputs.tsv.gz",
+      "sha256": "0ccc2abe83b6bb1bc0e4baa8daf299c866ee3216ce114c0ad32a734bf4cd9f3a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_lam_max/outputs.tsv.gz",
+      "sha256": "d51e75d1ddd3659747a82c91726e215d72429261325afeff9e6c6119aa132f7a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_p_mis_base/outputs.tsv.gz",
+      "sha256": "0a8a5664c0e9ae514aa90e0fa203a7b515231b5594af131f83f3baafc6e258e8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_p_misseg/outputs.tsv.gz",
+      "sha256": "4872bfeaa47b010f7ebbd3e952824a8172a7c4cee80be061c8e16831672c8986"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_k_o_mis/outputs.tsv.gz",
+      "sha256": "13e022765c5a5c211c362b00f14457f815cf873acf62adfdcea73fc5ba29d050"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_buffer_smax/outputs.tsv.gz",
+      "sha256": "19c9b907aac4cb45370f58e8605b26ebad5f0a23d128198fc78b3bd2e9b3e8c6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_buffer_beta/outputs.tsv.gz",
+      "sha256": "15dfccf68088f4d6524b96e8eb9ba950127b2d4f018a7565b84900b3c4dc0c9b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "3a364da970e2855ba5a7f2a6b12487635b73e3a9426c0918b8692e73a8f19d51"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_p_wgd/outputs.tsv.gz",
+      "sha256": "1663230ed00d5be531770fe4167dfc9607a534dde4952650a570720794d4792a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_alpha_o2/outputs.tsv.gz",
+      "sha256": "6740b69f6dfbe66dfadd1601a9d0509c2f208518262fd1f0a455b98521369715"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_gamma_growth/outputs.tsv.gz",
+      "sha256": "b2d5163ab7baf24069323d50d0f6e2acb4e8ea9b68b72cb1acd7c5b0548a244d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_mu_hp/outputs.tsv.gz",
+      "sha256": "a005055ae05f6cb3b3360780f27d4f19e599bd5e5fc143d77ee77e23cd5819b5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_gamma_mu/outputs.tsv.gz",
+      "sha256": "b4d7e33f14b676451ec6e561e02063e4461c841206dca34c178a9a077cb2e6bf"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_O2_crit/outputs.tsv.gz",
+      "sha256": "8f4be7b493d4d66c8c884088f9345f5ea07697c907fd3b82265c3a57a96f2396"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/AB_n_O/outputs.tsv.gz",
+      "sha256": "c8a52f7dd87d67f3843221a97b7ec895caf60ed384a03f806dc64df66b8cfd53"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_lam_max/outputs.tsv.gz",
+      "sha256": "902187c3358064604fe9d0682fc90ad67aab5fd55c074ea024d2672d8d2af236"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_p_mis_base/outputs.tsv.gz",
+      "sha256": "46c14f4a401511615a48c4f327cd1de9d939ee56ab934001d1c55f018ccffdaa"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_p_misseg/outputs.tsv.gz",
+      "sha256": "372d786c00e4e769cb785d8950102d4ce9e035b054dc6febe2eccc6b10b49768"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_k_o_mis/outputs.tsv.gz",
+      "sha256": "3e9d4d669803c407753b4701edbf7bfbf51b3e7b867c20542fdc681b24bfed72"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_buffer_smax/outputs.tsv.gz",
+      "sha256": "98827b34670ee45f453fbc91a9dac6d6a787a1be987ed850bb5b0a07aadcc0ea"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_buffer_beta/outputs.tsv.gz",
+      "sha256": "3a909b59689318cd8b46e3f40146a5be52ccfdf3419f9415844c641719d4e9ac"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "c158d66fc134d8ee0a39a103b9bb39a58165f5fc9f776fd438ad0a06a86d8f8e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_p_wgd/outputs.tsv.gz",
+      "sha256": "5f45b7e4acafad0529ac2962909b3101987fad79400703c99cb95dcd16867ec4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_alpha_o2/outputs.tsv.gz",
+      "sha256": "79cded71e09db9b071b34beb40577f9985083b80c75c533aaf35fbfd96e50061"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_gamma_growth/outputs.tsv.gz",
+      "sha256": "16825dded3fab5e1bd6f67026d168006e5dcbed71626382b52ccf5478bc0bd6a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_mu_hp/outputs.tsv.gz",
+      "sha256": "37adbf129ba49bef4f99aa51d60bcab36aa765795ffbe03959f9fd8e81d0235c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_gamma_mu/outputs.tsv.gz",
+      "sha256": "b51d37395ea672488fb776a9379e813aaed1db70f0230c122cad6ce7deefb2cc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_O2_crit/outputs.tsv.gz",
+      "sha256": "b0f4e4d9da1542d3b6ce7b1c597cf180198806f6b57862cb0d6c6adafe792681"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/BA_n_O/outputs.tsv.gz",
+      "sha256": "e553871b6729c54f505f75bd679b1672966cb3bff29ed948f7909a07c657104b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R01/blocks/B/outputs.tsv.gz",
+      "sha256": "1f9e1e339c57b7421743c41c2a2751605bc4ba33bcb500ef0fc1f15e2bb1ada9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/A/outputs.tsv.gz",
+      "sha256": "4f766c2fd7b1a43fe0c6553c64a11eadd9fe88bfc73910accea08f88952aafd1"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_lam_max/outputs.tsv.gz",
+      "sha256": "f666f0cabd377fefa2cda37ee9d44e39a445f395a881d9d5187ad6dec8308aa6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_p_mis_base/outputs.tsv.gz",
+      "sha256": "807ae95285f3631cce370c5cbb59a4cead739b46afd089d276b4192d4b1df18a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_p_misseg/outputs.tsv.gz",
+      "sha256": "1021898a74be127c7e2fbd90abf94cf6796a49dbc1abc9a324953cc2313f8a4f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_k_o_mis/outputs.tsv.gz",
+      "sha256": "ff5e1a25ff7354e59ca9124fa91183321b92ca9ae6e4d064a1dff77b071f8098"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_buffer_smax/outputs.tsv.gz",
+      "sha256": "cacdc012dec9140ded08e276f4223b9deae0cf97b94947a0599aa5045da9b1c1"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_buffer_beta/outputs.tsv.gz",
+      "sha256": "ee55802afdfd0a07d1249859e7316199755e0d94000a34e9f81a0db578aa4d32"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "deb0defa923f300f28461cdb04e6ea9e30d58ecbee3f69f7d5f9268a46289190"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_p_wgd/outputs.tsv.gz",
+      "sha256": "30e15bbb2bbdb38eaaa3d84f3bfcb9cdbb4f9803b8f3fd76dd7c05d01c32ab4b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_alpha_o2/outputs.tsv.gz",
+      "sha256": "a7daeddcc1cf26658e2bab2b3124558dc9b7c4a7a60e7fd1a9b67b8264eb77be"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_gamma_growth/outputs.tsv.gz",
+      "sha256": "120a12fa16c854b3fa8e0bda83f432af292867012eaed82cb69e5ce86cd766e5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_mu_hp/outputs.tsv.gz",
+      "sha256": "1fd8acb276fc86de9ee7ead5c0f0d44d38a793ad7f273c0c274511bf72f85fb4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_gamma_mu/outputs.tsv.gz",
+      "sha256": "9eec12e458bc3ed089c04e2c54f5c8de8f605fe415eb71a107cff72197569a57"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_O2_crit/outputs.tsv.gz",
+      "sha256": "82fa16b44c96001741b7d02564da298b1f0a54c97ff122c3eaa1a38c33885d6c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/AB_n_O/outputs.tsv.gz",
+      "sha256": "732932dfee5f5da0aea63e222a07d576c6297c59cf583c4456526e0b30a73041"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_lam_max/outputs.tsv.gz",
+      "sha256": "dfefaad16b24bcc5033a251c0e82d351f4efc7145ba0468dcdaf19a919f4bae9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_p_mis_base/outputs.tsv.gz",
+      "sha256": "085980e88bcec605107ddc27ae9520c06e6610eda4057b9bb51acb684f17a2c7"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_p_misseg/outputs.tsv.gz",
+      "sha256": "3afa56dfc613170cbf5debfd5852f47e59213106d2bee40361d9e8d25c216f23"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_k_o_mis/outputs.tsv.gz",
+      "sha256": "4b81e4e5d54eb884c08f7166c59412c94b00a906d54a44577c7b29cc2f7bafed"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_buffer_smax/outputs.tsv.gz",
+      "sha256": "0ef628b3c7332f5181754942f97148daedbb3f80eced8ee8884d3025675a2217"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_buffer_beta/outputs.tsv.gz",
+      "sha256": "2f7a7fc37c71fcae9336acad3b8318c5ddb2e4b48e64d5ee63e7de0cc89d451c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "469527da50ff3f0a3a033de2435ab221f5e9c73921bdf583797a4005f1df21b7"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_p_wgd/outputs.tsv.gz",
+      "sha256": "4813abfb3e68a976adf8e10c548c046dd21556b01726d67dcfdb82ce60f6c5ce"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_alpha_o2/outputs.tsv.gz",
+      "sha256": "96a6fbf3ac7d25a43566d6b2ff71ab0fc860da1eacaad61f8aa1eb4dbbaf7e18"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_gamma_growth/outputs.tsv.gz",
+      "sha256": "daf819d4854282e2d5ee5f382b65963753ec0564a565023885badaef3f414d8e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_mu_hp/outputs.tsv.gz",
+      "sha256": "190a5e4dfcd3efe35cb96640d3f710c4f2d30cf52800fca6bfce1237f21a0bf3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_gamma_mu/outputs.tsv.gz",
+      "sha256": "d12150ade010b62c46a1310aa58f7c0ba838b10fb3851b5f29161ade1f2ec1e8"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_O2_crit/outputs.tsv.gz",
+      "sha256": "2684ee59e56ff868af82f84c51108672564f8844a05f6d55d04d69dc4147efab"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/BA_n_O/outputs.tsv.gz",
+      "sha256": "f7787da2e6a8388673afd8d4a4ecee0c69a1137d773adb9bb5c89f8bbf6bba38"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R02/blocks/B/outputs.tsv.gz",
+      "sha256": "abf6c6073801a15faff5cb3e53fb156ec3aa60bbbf368be08944773f342d8456"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/A/outputs.tsv.gz",
+      "sha256": "1039d5ac01ca54717e98039413fcb989076b86887c9df734a5d2d24ef516cccd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_lam_max/outputs.tsv.gz",
+      "sha256": "8c64fb04159c2ad0e60dd0cc1eec0b8123c424635fb39d46184a19d2e6677ce3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_p_mis_base/outputs.tsv.gz",
+      "sha256": "c1ed9a4eeb99e5873a29353521af75590e136472e97a6f50b64d7f6c9ff8ae6d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_p_misseg/outputs.tsv.gz",
+      "sha256": "4dca949837a41ab99e2f117440eb8c6281fd604ea171e4dc3b497f6dc3484091"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_k_o_mis/outputs.tsv.gz",
+      "sha256": "c88cedb1c3e9db8267c8ea86af8a8f06231d4ff407b733a25be8002266113f94"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_buffer_smax/outputs.tsv.gz",
+      "sha256": "94f0fdac7fefdafd81361026a75cb7720beab06047e970d931e32925ce290a54"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_buffer_beta/outputs.tsv.gz",
+      "sha256": "4be676a69e628981037e27bb221ef1561c207c3da4bae701a4bfeda7dd588ffa"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "b9327b3110514bf222ff0fb97267c52693f3b95f97b4217e7fc98c03329c3d08"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_p_wgd/outputs.tsv.gz",
+      "sha256": "f2c067db953bb68ec665aefdd848dfc7b1c48892f80482802ac3509498941c99"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_alpha_o2/outputs.tsv.gz",
+      "sha256": "3adb4d65c8e8a688f5094dfa23c03ccb6b6a819a147e3c14a287a975ae807632"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_gamma_growth/outputs.tsv.gz",
+      "sha256": "c038cf31e2493b7e2c1225874a166b5a5f0147203a6e39da2a7e835b6367cafb"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_mu_hp/outputs.tsv.gz",
+      "sha256": "123634cb5ab3cfd0351d6377019a3e685ac1d355d73c6a4e63fcacb0de35a75c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_gamma_mu/outputs.tsv.gz",
+      "sha256": "b61535104e546dbd6b4bd429025990f7950f8fc8089eddd0f54f755d8c4c8e8f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_O2_crit/outputs.tsv.gz",
+      "sha256": "9adad258c12ce58e5482481e51ead3437b52882b5625c57b19383d14fa7300f6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/AB_n_O/outputs.tsv.gz",
+      "sha256": "9f36679c4c3bd034cced0ff38704b3254a319942d4ea8cad65e2810e7499cc1c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_lam_max/outputs.tsv.gz",
+      "sha256": "72d6070853638a9698069a228b85e645fc49c514367af702180ee0ee0198ff39"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_p_mis_base/outputs.tsv.gz",
+      "sha256": "1946754b9fc509e5cf25bd3970fbf98f4ba5e596cc292c1da1555367c50e17cf"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_p_misseg/outputs.tsv.gz",
+      "sha256": "b51687a1956bb6b79eaedf6c0118f2b84203036cba2f167ddb0ef5e4870aab85"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_k_o_mis/outputs.tsv.gz",
+      "sha256": "f508bbcf82a252c49dc074e20d50338c8ab254facd0454da64b48c67c4935fa6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_buffer_smax/outputs.tsv.gz",
+      "sha256": "ced88730322c23239358460f941ed7b8ff62058da228cafba610adaa4cbac058"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_buffer_beta/outputs.tsv.gz",
+      "sha256": "251214f63fee779a96a8416483b1a9891b858ceb2c9edd60bb917d6c9ea74608"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "fecc886c95a9748835612d020f84f49c09c4cbc885c13c6353f0e48743dd6292"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_p_wgd/outputs.tsv.gz",
+      "sha256": "1144dae5bee592e379c0bd0de073bf47fc8ac3ec738e65dc246c1000ef3d85b1"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_alpha_o2/outputs.tsv.gz",
+      "sha256": "8fe954aa351390b0fc9c07eef26f3877bd202d7fc7ed1fd0b8776ddc9d869151"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_gamma_growth/outputs.tsv.gz",
+      "sha256": "0418dafd5d206750edfaeb4f1d94c51ea93079fa6de49c766e9fa353eba5f2cc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_mu_hp/outputs.tsv.gz",
+      "sha256": "047c63001704b5cf0953846a422e138d8305e884f94f0463f2c3e1c5eee83222"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_gamma_mu/outputs.tsv.gz",
+      "sha256": "ac34c2643805826579174b393cac4d2611c5578304a5ace3a432f4ca546cb688"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_O2_crit/outputs.tsv.gz",
+      "sha256": "73e4f45e428f94708c49985969afb817170073ddd22df05c380a38f8c4e08712"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/BA_n_O/outputs.tsv.gz",
+      "sha256": "07c3c3036c8591213d68b521105e64eb5e922e4603d4afd18bee82eaa64b2ba0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R03/blocks/B/outputs.tsv.gz",
+      "sha256": "dca9e33aea9f303ab812967c7a5e09f4552b47b913e61463933233c66c1ddb28"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/A/outputs.tsv.gz",
+      "sha256": "550ffbb18781456fe2ed2265c1bc617a88a22e504346c58f1a4bfa43628707f9"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_lam_max/outputs.tsv.gz",
+      "sha256": "a56d9350a323f508305629c8fb40c521120b96b8b0e5950eb6aa0c4c34f91d34"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_p_mis_base/outputs.tsv.gz",
+      "sha256": "caf0e2ff6df3f6013d07c528b46ddc478f4faa72801bd4aea87af5c7f7eb2be0"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_p_misseg/outputs.tsv.gz",
+      "sha256": "ff8e8174acfd8aa5f5057a098874d89639c3fa63a30975ab679a058a9dc4268f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_k_o_mis/outputs.tsv.gz",
+      "sha256": "3d989b4e4e015df8d33b5708755bb50ceacb90dcf6bfc425a7f79d8d76009622"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_buffer_smax/outputs.tsv.gz",
+      "sha256": "4204ae3b0e88911700e7773e0c8ac2b0712fc92c2778e34bb4dcab8c49e63d31"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_buffer_beta/outputs.tsv.gz",
+      "sha256": "a3671ba1ac10f95fe565152934cc1dd372574af78152cce9834a5d63f25db584"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "8be1bb86496dc59bf95840ec0cabe477888f722d8354b52dc531944a21e1ec76"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_p_wgd/outputs.tsv.gz",
+      "sha256": "c0c7c679298dccc0e78aee2e22bd3e7f895ce5433934e7efc183efa204677cac"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_alpha_o2/outputs.tsv.gz",
+      "sha256": "4e31a148afeb6670626a1eb4706198a9f8c469ae33a0d3ea6ee3ccaee6cce553"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_gamma_growth/outputs.tsv.gz",
+      "sha256": "d8f6c1d444666801a0ef7e1f382a9661ca30f050bb07b516c52e18234d2297ab"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_mu_hp/outputs.tsv.gz",
+      "sha256": "b9c2fde1cb8ac622b9eecc4dd5674cc7c0bbfa07e8737c6893665db8e78914d4"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_gamma_mu/outputs.tsv.gz",
+      "sha256": "316e8f012706255aa580ee1f5811a3f9b20428045ec0e6d182fdf613c96c9a00"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_O2_crit/outputs.tsv.gz",
+      "sha256": "fa38dddde95df0ffc70ed868044d593920f6019e36f9147c920049b236c7c030"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/AB_n_O/outputs.tsv.gz",
+      "sha256": "8de60b10a11a4d490709bab18c4798705df8c8f88b4b7a35adbbfcb0219740ce"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_lam_max/outputs.tsv.gz",
+      "sha256": "6f1ccf81b2279e6f9e58369b039261f53354860fd8389f838b5311f242cdcb00"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_p_mis_base/outputs.tsv.gz",
+      "sha256": "9ad16dc8eaa838c104db62ba8bf4687ef76d8f6ed497d09c86d4369b1db0dd45"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_p_misseg/outputs.tsv.gz",
+      "sha256": "a420f2af4b38b2cb96de4261c4854a4dd4a3986dd4a3dc929248ebba96fac08d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_k_o_mis/outputs.tsv.gz",
+      "sha256": "048a230d522f5e6a5197f8528be28354795d5b27eeec734f4fb488ffdd9ba1f7"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_buffer_smax/outputs.tsv.gz",
+      "sha256": "f64d5ed988d63b56ef94040e645fbcca8fe384c486cdf5f9a4b0c7f1b438c920"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_buffer_beta/outputs.tsv.gz",
+      "sha256": "06a6018e938ec54133f1d8f4cb460dd6ef95e451d73aad607d78d936ce50de32"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "c619b60e10345081df88f84d526ff10c88bbae475ad5f4c37e136c4d8b4d012b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_p_wgd/outputs.tsv.gz",
+      "sha256": "ca812e8011d8314e7f9d1111991b8d671c11cc3f1478f8606981bdad9965012c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_alpha_o2/outputs.tsv.gz",
+      "sha256": "6baf4e6f86431f93bc4a4bb9e98a0b436e61c43a2913b75f596bfc4952baa6de"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_gamma_growth/outputs.tsv.gz",
+      "sha256": "ea080f233ad4e25dcafdb6e260bf15e704e1f70ae06475af80eafea737715e4a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_mu_hp/outputs.tsv.gz",
+      "sha256": "8ac2e8cd94e23f9b175e0c605ee71b790de4ac2cb3c3a6c72861bef6300d6900"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_gamma_mu/outputs.tsv.gz",
+      "sha256": "e18e6c2332dfdd2ce181cafe7d59d45a465c9aa7f0fcbd9611041fe13ca8af47"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_O2_crit/outputs.tsv.gz",
+      "sha256": "75d218762e88d46469abbb85eeab0c566a2c16d7b9045a987d0c6af5a731172b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/BA_n_O/outputs.tsv.gz",
+      "sha256": "e61f636860a3252bf7bfb2599b9913aa8e26e321db2a1f8354d2a5a296138dd2"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R04/blocks/B/outputs.tsv.gz",
+      "sha256": "4486ffd7cbf17074d393373ab1e01c3baa41cd486b4850dbf23ed505735125a5"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/A/outputs.tsv.gz",
+      "sha256": "d88f84f856b0b1a1f262dadd2d8c8a7a55caa10878672facf7d50e03fef44376"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_lam_max/outputs.tsv.gz",
+      "sha256": "6a9da3a43e6bd94c8ab3aa04ce837e6426d4bcdbf2455da388d32810d6b285e6"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_p_mis_base/outputs.tsv.gz",
+      "sha256": "b419e333977e869f423246d62b48be083e37f92cf8a098884fa477c25a819848"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_p_misseg/outputs.tsv.gz",
+      "sha256": "4c2b4ca63d8bcb2e7c1a05228a1282b8d854f8cc92cd19bcfdfc52abe361bd41"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_k_o_mis/outputs.tsv.gz",
+      "sha256": "1f5ec55490a6333a951676e8f84ccc8485d6ca4fab6a123a12328edae7e390bc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_buffer_smax/outputs.tsv.gz",
+      "sha256": "fa213e9ff1d92786b3275abf286efaeb40992b7635e017003dae16400d946a30"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_buffer_beta/outputs.tsv.gz",
+      "sha256": "c7c077436575594deb30f2d49547eba599b4e4b55f61da7cd7e5f95a8ae3bf2f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "7c220cb415947ef7e8a779c6a06e25321a2e6ccd77f31370533f71389822ab79"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_p_wgd/outputs.tsv.gz",
+      "sha256": "adaab4a6790a4828f0c73651b2234b46e9271f34ebdc6243c7b3be8ca0673a8a"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_alpha_o2/outputs.tsv.gz",
+      "sha256": "eed430a97d1a6d7ef420ada6780f4949d562ca49e712292ce155c8d814ea9a47"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_gamma_growth/outputs.tsv.gz",
+      "sha256": "1d6629192345b12eae44f26aad30a81900e72fd15d281cfbe74c601436368468"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_mu_hp/outputs.tsv.gz",
+      "sha256": "07a8dd8c099bf758b4d5854fa15be1b2e17c352395912afd6f341f665e14338d"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_gamma_mu/outputs.tsv.gz",
+      "sha256": "5eced388be7e8372d27e1418af019be18a59e9f113a3cd064ca2abfcd8d0c28f"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_O2_crit/outputs.tsv.gz",
+      "sha256": "57b1c2f0e9176db8d6f336dbc0a2759dc6464d2a00a15268a9170f7d6105c332"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/AB_n_O/outputs.tsv.gz",
+      "sha256": "6ea63c0e6df81fb69f258eb5f6fc30c60918e1258be8c29e15b8ab2f7ceabc76"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_lam_max/outputs.tsv.gz",
+      "sha256": "2e395f22640b40bd1d26c9a6a1cb106b8ca604925c5a5bd587d3cebf84c466fc"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_p_mis_base/outputs.tsv.gz",
+      "sha256": "4d13a6957ce45b155feb47544b8c25f723c5e99cfccf257add097c51de18d398"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_p_misseg/outputs.tsv.gz",
+      "sha256": "9227779e7560b53e6e31b9bc605c075e63497568c71dd7b638589515823d5264"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_k_o_mis/outputs.tsv.gz",
+      "sha256": "1acbcc7914071f3312cf76cc1583147945c8fb8b85ee64aee3d8da4080e64cd3"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_buffer_smax/outputs.tsv.gz",
+      "sha256": "f3fda2ccea8df31b1d5c0b4855322267e5c35acd780c977a0ce12842cad34e28"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_buffer_beta/outputs.tsv.gz",
+      "sha256": "0582a5237388e04f6d37410748ee5611d5897f1ed6aa72c4bc6fb56032eb8503"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_buffer_n_exp/outputs.tsv.gz",
+      "sha256": "93bce4af3ba41fec557dd2dc6abaf060f682dfd5da9425f73c3691b488681590"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_p_wgd/outputs.tsv.gz",
+      "sha256": "9c6bdcfe82b63fd9a37f4c06eeeb3898188c771302017c567843c6bfbd4ae056"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_alpha_o2/outputs.tsv.gz",
+      "sha256": "72b732b02b610f8539604a7b8b79cc78c7709478e8ccba080404b709f64dfb4e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_gamma_growth/outputs.tsv.gz",
+      "sha256": "e5b3f6b84d55629ca3628c1ee22dadc15bcc06c75159ea79016626156b42fbcd"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_mu_hp/outputs.tsv.gz",
+      "sha256": "407ddd511e7ab6fd11127b4078cb909c08b804bd6fd8388dae775f05232eef2b"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_gamma_mu/outputs.tsv.gz",
+      "sha256": "bfa7df9b6d3c04f6dad4a4ea3e7576e27e49a6d99b6ec3fa816c25f1b802220c"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_O2_crit/outputs.tsv.gz",
+      "sha256": "f9fba7a223a589fcb4f33996e7d17de88733eb19fa88c180757bc090a1fd9f0e"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/BA_n_O/outputs.tsv.gz",
+      "sha256": "b34ea387e435b5dd3487a5451670c2fbc5a4c8a9c49561950df2729916d93428"
+    },
+    {
+      "path": "neighborhood10pct/pilot/seed138/runs/R05/blocks/B/outputs.tsv.gz",
+      "sha256": "912ca5679e08e76535cdb2a00419bfcc20baada00fe74883c046960107b5b437"
+    }
+  ],
+  "common_reference": [
+    {
+      "sample_id": 0,
+      "O2_pct": 0,
+      "dominant_mean_ploidy": 1.0484195512277799,
+      "dominant_growth_rate": -0.005333777030693321,
+      "spectral_gap": 0.004391985541708131,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 1.259503135665222e-16,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0.5,
+      "dominant_mean_ploidy": 1.0469866173268472,
+      "dominant_growth_rate": 0.00568636789987409,
+      "spectral_gap": 0.004158846662037958,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 7.546047120499111e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 2.5,
+      "dominant_mean_ploidy": 1.040971930960521,
+      "dominant_growth_rate": 0.03662107605061953,
+      "spectral_gap": 0.00042082917361346145,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 5.551115123125783e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 5,
+      "dominant_mean_ploidy": 1.0595159388844568,
+      "dominant_growth_rate": 0.03802170783429584,
+      "spectral_gap": 0.00011124006921813673,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 3.642919299551295e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0,
+      "dominant_mean_ploidy": 1.0484195512277799,
+      "dominant_growth_rate": -0.005333777030693321,
+      "spectral_gap": 0.004391985541708131,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 1.259503135665222e-16,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0.5,
+      "dominant_mean_ploidy": 1.0469866173268472,
+      "dominant_growth_rate": 0.00568636789987409,
+      "spectral_gap": 0.004158846662037958,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 7.546047120499111e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 2.5,
+      "dominant_mean_ploidy": 1.040971930960521,
+      "dominant_growth_rate": 0.03662107605061953,
+      "spectral_gap": 0.00042082917361346145,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 5.551115123125783e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 5,
+      "dominant_mean_ploidy": 1.0595159388844568,
+      "dominant_growth_rate": 0.03802170783429584,
+      "spectral_gap": 0.00011124006921813673,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 3.642919299551295e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0,
+      "dominant_mean_ploidy": 1.0484195512277799,
+      "dominant_growth_rate": -0.005333777030693321,
+      "spectral_gap": 0.004391985541708131,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 1.259503135665222e-16,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0.5,
+      "dominant_mean_ploidy": 1.0469866173268472,
+      "dominant_growth_rate": 0.00568636789987409,
+      "spectral_gap": 0.004158846662037958,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 7.546047120499111e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 2.5,
+      "dominant_mean_ploidy": 1.040971930960521,
+      "dominant_growth_rate": 0.03662107605061953,
+      "spectral_gap": 0.00042082917361346145,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 5.551115123125783e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 5,
+      "dominant_mean_ploidy": 1.0595159388844568,
+      "dominant_growth_rate": 0.03802170783429584,
+      "spectral_gap": 0.00011124006921813673,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 3.642919299551295e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0,
+      "dominant_mean_ploidy": 1.0484195512277799,
+      "dominant_growth_rate": -0.005333777030693321,
+      "spectral_gap": 0.004391985541708131,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 1.259503135665222e-16,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0.5,
+      "dominant_mean_ploidy": 1.0469866173268472,
+      "dominant_growth_rate": 0.00568636789987409,
+      "spectral_gap": 0.004158846662037958,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 7.546047120499111e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 2.5,
+      "dominant_mean_ploidy": 1.040971930960521,
+      "dominant_growth_rate": 0.03662107605061953,
+      "spectral_gap": 0.00042082917361346145,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 5.551115123125783e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 5,
+      "dominant_mean_ploidy": 1.0595159388844568,
+      "dominant_growth_rate": 0.03802170783429584,
+      "spectral_gap": 0.00011124006921813673,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 3.642919299551295e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0,
+      "dominant_mean_ploidy": 1.0484195512277799,
+      "dominant_growth_rate": -0.005333777030693321,
+      "spectral_gap": 0.004391985541708131,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 1.259503135665222e-16,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 0.5,
+      "dominant_mean_ploidy": 1.0469866173268472,
+      "dominant_growth_rate": 0.00568636789987409,
+      "spectral_gap": 0.004158846662037958,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 7.546047120499111e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 2.5,
+      "dominant_mean_ploidy": 1.040971930960521,
+      "dominant_growth_rate": 0.03662107605061953,
+      "spectral_gap": 0.00042082917361346145,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 5.551115123125783e-17,
+      "solver": "double",
+      "status": "ok"
+    },
+    {
+      "sample_id": 0,
+      "O2_pct": 5,
+      "dominant_mean_ploidy": 1.0595159388844568,
+      "dominant_growth_rate": 0.03802170783429584,
+      "spectral_gap": 0.00011124006921813673,
+      "eigenvector_nonnegative": true,
+      "eigen_residual": 3.642919299551295e-17,
+      "solver": "double",
+      "status": "ok"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+pair_id	parameter_i	parameter_j	selection_origin	selection_strength	stable_somewhere	interpretation
+1	p_misseg	mu_hp	global/dominant_mean_ploidy	0.06984907035284701	TRUE	candidate response surface; stability is reported separately
+2	p_mis_base	p_misseg	global/dominant_growth_rate	0.022309287647008486	TRUE	candidate response surface; stability is reported separately
+3	p_mis_base	gamma_mu	neighborhood10pct/dominant_mean_ploidy	0.0028333814422518196	TRUE	candidate response surface; stability is reported separately
+4	buffer_smax	buffer_beta	neighborhood10pct/dominant_growth_rate	0.028635125899993293	TRUE	candidate response surface; stability is reported separately
+5	p_misseg	gamma_mu	global/dominant_mean_ploidy	0.04576497369827194	TRUE	candidate response surface; stability is reported separately
+6	gamma_growth	gamma_mu	global/dominant_mean_ploidy	0.03741835458512187	TRUE	candidate response surface; stability is reported separately

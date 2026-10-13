@@ -1,0 +1,92 @@
+parameter_i	parameter_j	process_i	process_j	structural_link_category	structural_link	evidence_status
+lam_max	p_mis_base	growth	missegregation	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	p_misseg	growth	missegregation	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	k_o_mis	growth	missegregation	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	buffer_smax	growth	buffering	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	buffer_beta	growth	buffering	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	buffer_n_exp	growth	buffering	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	p_wgd	growth	genome_doubling	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	alpha_o2	growth	growth	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	gamma_growth	growth	growth	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	mu_hp	growth	death	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	gamma_mu	growth	death	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	O2_crit	growth	shared_oxygen_stress	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+lam_max	n_O	growth	shared_oxygen_stress	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	p_misseg	missegregation	missegregation	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	k_o_mis	missegregation	missegregation	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	buffer_smax	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	buffer_beta	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	buffer_n_exp	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	p_wgd	missegregation	genome_doubling	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	alpha_o2	missegregation	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	gamma_growth	missegregation	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	mu_hp	missegregation	death	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	gamma_mu	missegregation	death	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	O2_crit	missegregation	shared_oxygen_stress	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_mis_base	n_O	missegregation	shared_oxygen_stress	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	k_o_mis	missegregation	missegregation	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	buffer_smax	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	buffer_beta	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	buffer_n_exp	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	p_wgd	missegregation	genome_doubling	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	alpha_o2	missegregation	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	gamma_growth	missegregation	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	mu_hp	missegregation	death	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	gamma_mu	missegregation	death	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	O2_crit	missegregation	shared_oxygen_stress	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_misseg	n_O	missegregation	shared_oxygen_stress	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	buffer_smax	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	buffer_beta	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	buffer_n_exp	missegregation	buffering	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	p_wgd	missegregation	genome_doubling	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	alpha_o2	missegregation	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	gamma_growth	missegregation	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	mu_hp	missegregation	death	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	gamma_mu	missegregation	death	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	O2_crit	missegregation	shared_oxygen_stress	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+k_o_mis	n_O	missegregation	shared_oxygen_stress	shared_rate_or_upstream_pathway	missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	buffer_beta	buffering	buffering	shared_rate_or_upstream_pathway	buffering	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	buffer_n_exp	buffering	buffering	shared_rate_or_upstream_pathway	buffering	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	p_wgd	buffering	genome_doubling	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	alpha_o2	buffering	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	gamma_growth	buffering	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	mu_hp	buffering	death	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	gamma_mu	buffering	death	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	O2_crit	buffering	shared_oxygen_stress	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_smax	n_O	buffering	shared_oxygen_stress	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	buffer_n_exp	buffering	buffering	shared_rate_or_upstream_pathway	buffering	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	p_wgd	buffering	genome_doubling	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	alpha_o2	buffering	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	gamma_growth	buffering	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	mu_hp	buffering	death	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	gamma_mu	buffering	death	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	O2_crit	buffering	shared_oxygen_stress	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_beta	n_O	buffering	shared_oxygen_stress	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	p_wgd	buffering	genome_doubling	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	alpha_o2	buffering	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	gamma_growth	buffering	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	mu_hp	buffering	death	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	gamma_mu	buffering	death	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	O2_crit	buffering	shared_oxygen_stress	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+buffer_n_exp	n_O	buffering	shared_oxygen_stress	missegregation_kernel_survival_weighting	binomial event weights multiplied by buffering survival	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_wgd	alpha_o2	genome_doubling	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_wgd	gamma_growth	genome_doubling	growth	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_wgd	mu_hp	genome_doubling	death	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_wgd	gamma_mu	genome_doubling	death	division_channel_weighting	1-p_wgd scales the missegregation/buffering channel	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_wgd	O2_crit	genome_doubling	shared_oxygen_stress	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+p_wgd	n_O	genome_doubling	shared_oxygen_stress	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+alpha_o2	gamma_growth	growth	growth	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+alpha_o2	mu_hp	growth	death	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+alpha_o2	gamma_mu	growth	death	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+alpha_o2	O2_crit	growth	shared_oxygen_stress	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+alpha_o2	n_O	growth	shared_oxygen_stress	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+gamma_growth	mu_hp	growth	death	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+gamma_growth	gamma_mu	growth	death	division_generator_product	division rate scales offspring transition weights	mechanistic candidate; neither large S2 nor nonidentifiability is established
+gamma_growth	O2_crit	growth	shared_oxygen_stress	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+gamma_growth	n_O	growth	shared_oxygen_stress	shared_rate_or_upstream_pathway	growth	mechanistic candidate; neither large S2 nor nonidentifiability is established
+mu_hp	gamma_mu	death	death	shared_rate_or_upstream_pathway	death;missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+mu_hp	O2_crit	death	shared_oxygen_stress	shared_rate_or_upstream_pathway	death;missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+mu_hp	n_O	death	shared_oxygen_stress	shared_rate_or_upstream_pathway	death;missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+gamma_mu	O2_crit	death	shared_oxygen_stress	shared_rate_or_upstream_pathway	death;missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+gamma_mu	n_O	death	shared_oxygen_stress	shared_rate_or_upstream_pathway	death;missegregation	mechanistic candidate; neither large S2 nor nonidentifiability is established
+O2_crit	n_O	shared_oxygen_stress	shared_oxygen_stress	shared_rate_or_upstream_pathway	death;growth;missegregation;oxygen_stress	mechanistic candidate; neither large S2 nor nonidentifiability is established

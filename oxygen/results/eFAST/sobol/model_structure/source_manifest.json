@@ -1,0 +1,8 @@
+{
+  "model_cpp_sha256": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+  "fixed_O2_script_sha256": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+  "n_active_parameters": 14,
+  "n_absent_parameters": 4,
+  "n_pairs": 91,
+  "structural_identifiability_tested": false
+}

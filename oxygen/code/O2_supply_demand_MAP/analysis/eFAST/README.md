@@ -1,5 +1,8 @@
 # Independent in-vivo eFAST companion to Figure 4B
 
+For the separate full-bound and per-endpoint **second-order Sobol pilot** and
+the parameter/equation audit, see [sobol/README.md](sobol/README.md).
+
 `efast.py` generates SALib 1.5.2 FAST trajectories and analyzes the two outputs
 of the **fixed-oxygen** operator. `evaluate_fixed_o2.R` sources the canonical
 `simulation/o2/fixed_o2/run_fixed_o2_simulation.R` and calls its

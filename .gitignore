@@ -166,6 +166,21 @@ data/DrugResponseData_PDX/.DS_Store
 /oxygen/code/O2_supply_demand_MAP/model/.rcpp_cache_o2_supply_demand_map
 
 # Local draft/output artifacts
+!/oxygen/results/eFAST/sobol/
+/oxygen/results/eFAST/sobol/**
+!/oxygen/results/eFAST/sobol/**/
+!/oxygen/results/eFAST/sobol/**/*.md
+!/oxygen/results/eFAST/sobol/**/*.tsv
+!/oxygen/results/eFAST/sobol/**/*.tsv.gz
+!/oxygen/results/eFAST/sobol/**/*.json
+!/oxygen/results/eFAST/sobol/**/*.pdf
+!/oxygen/results/eFAST/sobol/**/*.png
+/oxygen/results/eFAST/sobol/**/runs/**
+/oxygen/results/eFAST/sobol/**/responses/**/samples.tsv.gz
+/oxygen/results/eFAST/sobol/**/responses/**/outputs.tsv.gz*
+/oxygen/results/eFAST/sobol/**/responses/**/worker.lock
+/oxygen/results/eFAST/sobol/**/logs/**
+/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/__pycache__/
 /docs/qxbio_2026_abstract_draft.md
 /docs/render_parameter_landscape_pca_interpretation_html.py
 /docs/build-public-hpc-container/

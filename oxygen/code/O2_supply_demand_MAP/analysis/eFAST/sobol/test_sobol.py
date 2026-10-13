@@ -78,6 +78,9 @@ class SobolChecks(unittest.TestCase):
         gj=report.anchored_grid(0,1,.381,False)
         ai=int(np.flatnonzero(gi==.173)[0]); aj=int(np.flatnonzero(gj==.381)[0])
         self.assertEqual(len(gi),41); self.assertEqual((gi[0],gi[-1]),(.01,10.))
+        near_boundary=report.anchored_grid(.005,.2999999999999997,.3,True)
+        self.assertEqual(near_boundary[-1],.3)
+        with self.assertRaises(ValueError): report.anchored_grid(.005,.3,.31,True)
         additive=gi[:,None]**2+np.cos(gj[None,:])
         np.testing.assert_allclose(report.interaction_contrast(additive,ai,aj),0,atol=2e-14)
         product=gi[:,None]*gj[None,:]

@@ -124,7 +124,11 @@ def choose_pairs(scope_rows):
 
 def anchored_grid(lo,hi,best,logarithmic,size=41):
     lo,hi,best=map(float,(lo,hi,best))
-    if not lo<=best<=hi: raise ValueError('Response anchor outside bounds')
+    tolerance=64*np.finfo(float).eps*max(1.,abs(lo),abs(hi),abs(best))
+    if best<lo-tolerance or best>hi+tolerance: raise ValueError('Response anchor outside bounds')
+    # Preserve the actual optimum when decimal/log bound conversions differ only
+    # by roundoff. This applies to the deterministic surface grid, not Sobol bounds.
+    lo,hi=min(lo,best),max(hi,best)
     values=np.geomspace(lo,hi,size) if logarithmic else np.linspace(lo,hi,size)
     close=np.flatnonzero(np.isclose(values,best,rtol=1e-12,atol=0))
     index=int(close[0]) if len(close) else int(np.argmin(np.abs(values[1:-1]-best)))+1
@@ -187,6 +191,9 @@ def finalize_indices(root,plan):
             c.save_json(part/'metadata.json',dict(method='Sobol_response_surface',**case,
                 parameter_i=pi,parameter_j=pj,grid_i=gi.tolist(),grid_j=gj.tolist(),
                 anchor_i=best[pi],anchor_j=best[pj],transform_i=bi['transform'],transform_j=bj['transform'],
+                original_bounds_i=[float(bi['natural_lower']),float(bi['natural_upper'])],
+                original_bounds_j=[float(bj['natural_lower']),float(bj['natural_upper'])],
+                anchor_boundary_policy='exact optimum retained within 64 machine epsilons; Sobol sampling bounds unchanged',
                 n_samples=len(samples),parameters=list(c.ACTIVE),
                 oxygen_pct=c.OXYGEN,samples_sha256=c.sha(part/'samples.tsv.gz'),
                 best_params_sha256=endpoint['best_params_sha256'],fit_config_sha256=endpoint['fit_config_sha256'],

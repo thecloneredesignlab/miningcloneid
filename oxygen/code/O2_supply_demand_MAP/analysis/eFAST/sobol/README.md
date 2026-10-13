@@ -103,3 +103,18 @@ Raw matrix blocks and large ordered arrays remain on HPC. Tracked deliverables
 include input/provenance manifests, source tables, diagnostic summaries,
 response-surface source tables, figures and interpretation. Reproduction
 requires the recorded external fitting inputs and immutable SIF.
+
+Collect only after the final report job is COMPLETED with exit 0:0:
+
+```bash
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/collect_pilot.py
+```
+
+The collector checks completion, verifies copied checksums against the HPC
+inventory, and records exclusions and the final Slurm accounting state.
+Surface anchors tolerate 64 machine epsilons of endpoint conversion roundoff;
+the actual optimum is retained and the Sobol sampling bounds are unchanged.
+For the initial surface-boundary correction, `resume_postprocessing.sh`
+archives the original plan, verifies all nine original index receipts, records
+the changed plotting/test sources, and submits only the remaining downstream
+stages. Existing evaluated response surfaces require a separate audit.

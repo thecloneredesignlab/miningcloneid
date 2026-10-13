@@ -180,6 +180,9 @@ data/DrugResponseData_PDX/.DS_Store
 /oxygen/results/eFAST/sobol/**/responses/**/outputs.tsv.gz*
 /oxygen/results/eFAST/sobol/**/responses/**/worker.lock
 /oxygen/results/eFAST/sobol/**/logs/**
+/oxygen/results/eFAST/sobol/**/slurm/code_snapshot/**
+/oxygen/results/eFAST/sobol/**/slurm/runtime_validation/**
+/oxygen/results/eFAST/sobol/**/slurm/*.tar.gz
 /oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/__pycache__/
 /docs/qxbio_2026_abstract_draft.md
 /docs/render_parameter_landscape_pca_interpretation_html.py

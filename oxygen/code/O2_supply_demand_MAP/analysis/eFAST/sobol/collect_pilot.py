@@ -41,7 +41,8 @@ def main():
     args=parser.parse_args(); before=remote_snapshot(args.host,args.remote_dir)
     target=Path(args.local_dir).resolve(); target.mkdir(parents=True,exist_ok=True)
     filters=['--exclude=**/runs/***','--exclude=**/recovery/***','--exclude=**/logs/***',
-        '--exclude=slurm/runtime_validation/***','--exclude=inputs/fixed_o2_dominant_ploidy_201grid.tsv',
+        '--exclude=slurm/runtime_validation/***','--exclude=slurm/code_snapshot/***','--exclude=**/*.tar.gz',
+        '--exclude=inputs/fixed_o2_dominant_ploidy_201grid.tsv',
         '--exclude=**/samples.tsv.gz','--exclude=**/outputs.tsv.gz*','--exclude=**/*.lock',
         '--include=*/','--include=*.json','--include=*.tsv','--include=*.tsv.gz','--include=*.md',
         '--include=*.pdf','--include=*.png','--exclude=*']

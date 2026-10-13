@@ -126,6 +126,72 @@ The separate follow-up run keeps the same eight endpoints, four oxygen values,
 using N2048→N4096 for the resolution diagnostic and retaining every endpoint.
 The earlier pilot remains under its original output root.
 
+## Full N4096 run: all 500 fitted neighborhoods and 201 oxygen points
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_full.sh
+```
+
+Output: `oxygen/results/eFAST/sobol/full_N4096`. One global domain plus
+seed1 through seed500, all 14 active factors/all 91 pairs, five independently
+scrambled repeats per domain, oxygen 0:0.025:5 from the hashed Figure 4 grid.
+N4096 has 122880 parameter vectors per design. All 75150 matrix-block tasks
+evaluate their 4096 vectors at the same 201 oxygen points; both outputs come
+from one canonical operator call, totaling 61870694400 calls.
+
+Global bounds/distributions match the independent in-vivo fit. Neighborhoods
+remain optimum ±10% of the full natural span, clipped; log-uniform parameters
+retain their transform. Unit-cube designs are paired across domains, while the
+five scrambles are independent. Shared-unit transport is checked against the
+canonical SALib design exactly. N2048 prefixes provide diagnostics without
+extra model evaluation. Every seed is included regardless of diagnostics.
+
+The submission freezes the committed workflow in a read-only code snapshot.
+The canonical evaluate.R and mathematical model are unchanged. Each task
+uses private node-local Rcpp caches, initially warmed once for the snapshot.
+The workflow is bootstrap/tests → 501 configuration/storage checks → validation
+report → all 75150 evaluation tasks → 501 summaries → ensemble report →
+54 representative response surfaces → final report. All stages use xxlarge,
+12h; evaluation 1 CPU/4G, case and ensemble summary 1 CPU/16G, final 1 CPU/8G.
+There is no specified node or `%` array concurrency cap. The actual cluster
+MaxArraySize must accommodate 75150; verify it before submission.
+
+Outputs are losslessly compressed float64 arrays (NPZ), with per-point solver
+flags, per-oxygen minimum gap/maximum residual, and full exception matrices.
+The canonical temporary CSV is parsed on node-local scratch; it is not kept
+as a second multi-terabyte copy. An atomic NPZ checkpoint is saved every eight
+oxygen conditions. On resubmission, its identity/axes/CRC/completed points are
+checked and already completed oxygen chunks are retained. Analysis similarly
+checkpoints each eight-oxygen batch. Completion receipts checksum every block.
+No bad sample row is deleted. The storage gate requires 1.35 TiB free, allowing
+for roughly 980 GiB uncompressed values+flags plus reserve; compression is
+measured during the 501 configuration validations. This is a correctness and
+resource gate, never an index-convergence gate.
+
+Per-seed `indices_summary.tsv.gz` contains N4096 five-repeat means, repeat range,
+N2048→N4096 difference, bootstrap half-width, variance, group labels and
+defined/passed/not-passed status. The full two-resolution repeated arrays remain
+on HPC as `indices_repeats.npz`. Every completed domain gets S1/ST/S2 figures.
+Ensemble reports first average five repeats per seed, then summarize the 500
+endpoint means. Medians/quantiles use defined values and explicitly retain
+undefined counts; no convergence filtering is applied. A companion S2 heatmap
+shows the fraction of all 500 endpoints passing diagnostics. Global and
+neighborhood outputs and ploidy/growth have separate color scales.
+
+Low/high windows remain 0–1% and 3–5%. Process-group summaries are parameter
+index means, not formal group variance decompositions; ST is not summed into
+a variance fraction. Hypothesis-pattern fractions describe optimizer-endpoint
+robustness, not biological confidence. All sources preserve raw negative S2
+estimates. Selected response surfaces are conditional four-oxygen diagnostics
+at the existing eight representative endpoints plus the global reference;
+five scrambles apply to the Sobol designs, not duplicate deterministic surfaces.
+
+Do not rerun submit_full.sh after jobs are recorded. Failed workers can be
+resubmitted with the same frozen script and task IDs; it will inspect receipts
+and checkpoints. Record retry IDs and correct dependencies for downstream
+stages rather than silently aggregating missing blocks. An incomplete model
+rectangle stops that domain's summary; diagnostic failure does not.
+
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_resolution_pilot.sh
 ```

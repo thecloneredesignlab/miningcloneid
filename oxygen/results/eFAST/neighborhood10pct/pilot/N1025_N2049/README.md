@@ -1,5 +1,28 @@
 # N=1025/2049 five-phase neighborhood eFAST pilot
 
+## Submission on 2026-10-13
+
+Scientific code commit: `47055427002b86bc8796d4fb3ee0df218d3ac530`.
+Smoke job **20833826** completed with exit `0:0`; all nine tests ran and passed
+in the requested SIF. Real full-N trajectories at three oxygen values passed
+for seed174/N1025 and seed494/N2049, together with the actual-matrix 50/100-digit
+recovery validation (double residual `2.7755575615628914e-17`).
+
+Pilot trajectory array **20833838** (`1-1680`), seed/N summary array **20833839**
+(`1-24`, afterany:20833838), and comparison job **20833840**
+(`afterany:20833839`) were submitted. The recorded controller snapshot confirmed
+all 1,680 trajectories running; summaries and comparison were waiting on their
+dependencies. This is a submission snapshot, not a completed-analysis claim.
+Actual controller settings confirmed xxlarge, 12 hours, no requested node and
+no array concurrency throttle.
+
+`slurm/submission_jobs.tsv`, `slurm/resource_verification.json`,
+`smoke/smoke_receipt.json` and `collection_receipt.json` record the evidence.
+All ten collected baseline/submission/preflight artifacts matched HPC SHA256
+hashes in `artifact_collection_manifest.tsv`. Subsequent provenance commits do
+not alter the frozen scientific code. New high-N outputs and figures will be
+generated on HPC by the background jobs and require collection after completion.
+
 This pilot evaluates the separate **in-vivo** fixed-oxygen operator at 12 fitted
 endpoints. It retains all 14 active parameters and the original 201 oxygen values
 (0–5%, step 0.025%). Outputs are dominant mean ploidy and asymptotic net live-cell

@@ -1,0 +1,44 @@
+{
+  "all_hpc_sha256_matched": true,
+  "analysis_complete": false,
+  "array_concurrency_limit": null,
+  "collected_utc": "2026-10-13T19:30:12.991793+00:00",
+  "n_collected_artifacts": 10,
+  "n_summary_tasks": 24,
+  "n_trajectory_tasks": 1680,
+  "pilot_jobs": {
+    "cross_N_comparison": 20833840,
+    "seed_N_summary": 20833839,
+    "trajectory": 20833838
+  },
+  "qos": "xxlarge",
+  "raw_outputs_location": "HPC only; collection covers baseline and submission/preflight provenance",
+  "requested_node": null,
+  "scientific_code_commit": "47055427002b86bc8796d4fb3ee0df218d3ac530",
+  "sif_unit_tests": {
+    "passed": 9,
+    "skipped": 0
+  },
+  "smoke_exit_code": "0:0",
+  "smoke_job_id": 20833826,
+  "smoke_slurm_state": "COMPLETED",
+  "status": "passed",
+  "submission_snapshot": [
+    {
+      "job_name": "efast_N_compare",
+      "n_jobs": 1,
+      "state": "PENDING"
+    },
+    {
+      "job_name": "efast_N_summary",
+      "n_jobs": 24,
+      "state": "PENDING"
+    },
+    {
+      "job_name": "efast_N_trajectory",
+      "n_jobs": 1680,
+      "state": "RUNNING"
+    }
+  ],
+  "time": "12:00:00"
+}

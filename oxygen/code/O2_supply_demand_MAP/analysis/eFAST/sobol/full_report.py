@@ -25,21 +25,28 @@ def summary_rows(case,oxygen,mean,spread,delta,status,variance,width):
                     included_in_full_analysis='TRUE')
 
 
-def summarize_case(root,p,case):
-    target=f.case_dir(root,case); target.mkdir(parents=True,exist_ok=True)
-    key=hashlib.sha256(json.dumps(dict(case=case,unit_sha256=p['unit_sha256'],engine=p['engine_sha256'],
-        git_commit=p['git_commit'],oxygen=c.OXYGEN,resolutions=f.NS),sort_keys=True).encode()).hexdigest()
+def summarize_case(root,p,case,target_dir=None,analysis_metadata=None):
+    source=f.case_dir(root,case)
+    target=Path(target_dir) if target_dir is not None else source
+    target.mkdir(parents=True,exist_ok=True)
+    analysis_identity=hashlib.sha256(json.dumps(dict(case=case,unit_sha256=p['unit_sha256'],engine=p['engine_sha256'],
+        git_commit=p['git_commit'],oxygen=c.OXYGEN,resolutions=f.NS,postprocess=analysis_metadata),sort_keys=True).encode()).hexdigest()
     if (target/'completion.json').exists():
         old=c.load_json(target/'completion.json')
-        if old['analysis_identity']!=key or old['summary_sha256']!=c.sha(target/'indices_summary.npz'): raise ValueError('Summary changed')
+        if old['analysis_identity']!=analysis_identity: raise ValueError('Summary identity changed')
+        for filename,field in [('indices_summary.npz','summary_sha256'),('indices_summary.tsv.gz','summary_table_sha256'),
+                               ('indices_repeats.npz','repeat_indices_sha256'),('numerical_qc.tsv','numerical_qc_sha256')]:
+            if old.get(field)!=c.sha(target/filename): raise ValueError('Summary changed: '+filename)
         return
-    bounds=c.read(target/'parameter_bounds.tsv'); shape=(2,5,len(c.OXYGEN),2,len(f.METRICS))
+    bounds=c.read(source/'parameter_bounds.tsv'); shape=(2,5,len(c.OXYGEN),2,len(f.METRICS))
     checkpoint=target/'indices_checkpoint.npz'
     if checkpoint.exists():
         with np.load(checkpoint) as z:
-            if str(z['identity'])!=key: raise ValueError('Analysis checkpoint identity changed')
+            if str(z['identity'])!=analysis_identity: raise ValueError('Analysis checkpoint identity changed')
             values,widths,variance,done=z['values'],z['widths'],z['variance'],z['done']
-        if values.shape!=shape: raise ValueError('Analysis checkpoint axes differ')
+        if (values.shape!=shape or widths.shape!=shape or variance.shape!=shape[:-1] or
+            done.shape!=(5,len(c.OXYGEN),2) or done.dtype!=np.dtype(bool)):
+            raise ValueError('Analysis checkpoint axes differ')
     else:
         values=np.full(shape,np.nan); widths=np.full(shape,np.nan)
         variance=np.full(shape[:-1],np.nan); done=np.zeros((5,len(c.OXYGEN),2),bool)
@@ -47,9 +54,9 @@ def summarize_case(root,p,case):
     for repeat in range(1,6):
         arrays=[]
         for bi,block in enumerate(c.BLOCKS):
-            path=target/'runs'/('R%02d'%repeat)/'blocks'/block/'outputs.npz'
-            x=f.samples(root,case,repeat,bi); key=f.identity(p,case,repeat,bi,x)
-            if not f.complete(path,key): raise ValueError('Missing/invalid block: '+str(path))
+            path=source/'runs'/('R%02d'%repeat)/'blocks'/block/'outputs.npz'
+            x=f.samples(root,case,repeat,bi); block_identity=f.identity(p,case,repeat,bi,x)
+            if not f.complete(path,block_identity): raise ValueError('Missing/invalid block: '+str(path))
             rr=c.load_json(str(path)+'.receipt.json'); receipts.append(dict(path=str(path.relative_to(root)),sha256=rr['sha256']))
             numerical.append(dict(repeat=repeat,block=block,n_points=rr['n_points'],n_recovered=rr['n_recovered'],
                 minimum_spectral_gap=rr['minimum_spectral_gap'],maximum_residual=rr['maximum_residual']))
@@ -69,7 +76,7 @@ def summarize_case(root,p,case):
                     variance[ni,repeat-1,oi,k]=var
                 done[repeat-1,oi,k]=True
             if (oi+1)%8==0 or oi==len(c.OXYGEN)-1:
-                f.atomic_npz(checkpoint,identity=np.array(key),values=values,widths=widths,variance=variance,done=done)
+                f.atomic_npz(checkpoint,identity=np.array(analysis_identity),values=values,widths=widths,variance=variance,done=done)
                 print('Indices',case['case_id'],'repeat',repeat,'oxygen',oi+1,'/201',flush=True)
         del ordered
     if not done.all(): raise ValueError('Incomplete five-repeat indices')
@@ -85,9 +92,10 @@ def summarize_case(root,p,case):
     c.efast.write_table(target/'indices_summary.tsv.gz',fields,chain([first],rows))
     c.table(target/'numerical_qc.tsv',numerical)
     plot_indices(mean,c.OXYGEN,target/'figures',case['scope']+'/'+case['case_id']+'; mean of five repeats')
-    c.save_json(target/'completion.json',dict(status='complete',analysis_identity=key,case=case,N=f.N,repeats=5,oxygen_points=201,
+    c.save_json(target/'completion.json',dict(status='complete',analysis_identity=analysis_identity,case=case,N=f.N,repeats=5,oxygen_points=len(c.OXYGEN),
         summary_sha256=c.sha(target/'indices_summary.npz'),summary_table_sha256=c.sha(target/'indices_summary.tsv.gz'),
-        repeat_indices_sha256=c.sha(target/'indices_repeats.npz'),output_receipts=receipts,
+        repeat_indices_sha256=c.sha(target/'indices_repeats.npz'),numerical_qc_sha256=c.sha(target/'numerical_qc.tsv'),output_receipts=receipts,
+        source_directory=str(source),result_directory=str(target),analysis_metadata=analysis_metadata,
         n_undefined_indices=int((status==0).sum()),n_not_passed_indices=int((status==2).sum()),
         n_recovered=sum(r['n_recovered'] for r in numerical),completed_utc=c.now(),
         included_in_full_analysis=True,convergence_policy='diagnostic_only'))
@@ -107,7 +115,8 @@ def plot_indices(values,oxygen,directory,title,fraction=None):
         fig,axes=plt.subplots(1,2,figsize=(16,height),sharey=True,layout='constrained')
         for k,ax in enumerate(axes):
             data=values[:,k,selected].T; finite=data[np.isfinite(data)]
-            lo=min(0,float(finite.min())) if len(finite) else 0.; hi=max(.001,float(finite.max())) if len(finite) else .001
+            lo=min(0,float(finite.min())) if len(finite) else 0.
+            hi=float(finite.max()) if len(finite) and finite.max()>0 else .001
             high='#e66101' if index=='ST' else '#54278f'
             cmap=LinearSegmentedColormap.from_list('sensitivity',['#2166ac','white',high] if lo<0 else ['white',high]); cmap.set_bad('#d9d9d9')
             if lo<0: image=ax.imshow(np.ma.masked_invalid(data),aspect='auto',cmap=cmap,norm=TwoSlopeNorm(vmin=lo,vcenter=0,vmax=hi))
@@ -117,7 +126,7 @@ def plot_indices(values,oxygen,directory,title,fraction=None):
             ax.set_yticks(range(len(labels)),labels,fontsize=7)
             ax.set_title('Dominant mean ploidy' if k==0 else 'Net live-cell growth rate')
             fig.colorbar(image,ax=ax,orientation='horizontal',pad=.025,fraction=.025,label=index+' (raw estimates; blue = negative sampling estimates)')
-        fig.suptitle(title+'; N4096\nAll endpoints retained; gray = undefined; diagnostics in source tables',fontsize=11)
+        fig.suptitle(title+'; N4096\nAll estimates retained; gray = undefined; diagnostics in source tables',fontsize=11)
         name='s2_pair_by_oxygen' if index=='S2' else index.lower()+'_parameter_by_oxygen'
         fig.savefig(directory/(name+'.pdf')); fig.savefig(directory/(name+'.png'),dpi=120); plt.close(fig)
         if index=='S2' and fraction is not None:

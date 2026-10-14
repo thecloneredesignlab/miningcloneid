@@ -192,6 +192,46 @@ and checkpoints. Record retry IDs and correct dependencies for downstream
 stages rather than silently aggregating missing blocks. An incomplete model
 rectangle stops that domain's summary; diagnostic failure does not.
 
+## Independent global post-processing
+
+After all 150 global model blocks have completed, the full-bound domain can be
+reported before the 500-neighborhood run finishes:
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_global_postprocess.sh
+```
+
+This submits one independent xxlarge/12h/1-CPU/16G job using the original
+SALib 1.5.2 SIF, without a node restriction or a dependency on the neighborhood
+array. The scheduler's user CPU quota still applies. Original model outputs,
+fit inputs and the existing calculation snapshot are mounted read-only.
+The existing evaluation and downstream job dependencies are preserved.
+
+The result directory is:
+`oxygen/results/eFAST/sobol/full_N4096/global/standalone_N4096/`.
+It contains three PDF/PNG heatmaps (S1, ST, S2), N4096 five-repeat summaries,
+all repeated estimates at N2048/N4096, 200-resample 95% bootstrap intervals,
+numerical and repeat/resolution diagnostics, low/high-oxygen summaries,
+interpretation, provenance and a checksum inventory. Raw model arrays stay
+in the original HPC global model directory. Each output has an independent
+color scale; negative sampling estimates and undefined values are preserved.
+
+The global job uses a new frozen post-processing snapshot. The analysis
+identity is distinct from each model-block identity, so interrupted analysis
+can resume and completed analysis can be reused safely. Results are isolated
+from the original full-run summaries. The job runs test_global.py in the
+actual SIF before analyzing the submitted output.
+
+After the global job is COMPLETED with exit 0:0 and its own status.json says
+complete, collect its allowlisted deliverables:
+
+```bash
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/collect_global.py
+```
+
+Collection verifies source inventory stability and every copied artifact's
+SHA256. The local output path is the same repository-relative directory.
+
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_resolution_pilot.sh
 ```

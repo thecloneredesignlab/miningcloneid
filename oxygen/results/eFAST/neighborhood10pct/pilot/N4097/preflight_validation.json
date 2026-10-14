@@ -1,0 +1,39 @@
+{
+  "checked_utc": "2026-10-14T16:16:08.235793+00:00",
+  "status": "passed",
+  "old_pilot_code_sha256_unchanged": {
+    "../../model/model_O2_supply_demand_MAP.R": true,
+    "../../model/model_O2_supply_demand_MAP.cpp": true,
+    "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": true,
+    "efast.py": true,
+    "evaluate_fixed_o2.R": true,
+    "neighborhood.py": true,
+    "neighborhood_slurm.py": true,
+    "perron_high_precision_safe.cpp": true,
+    "repair_eigen_points_safe.R": true,
+    "resolution_pilot.py": true,
+    "resolution_pilot_smoke.R": true,
+    "run_resolution_pilot.sbatch": true,
+    "submit_resolution_pilot.sh": true,
+    "test_resolution_pilot.py": true
+  },
+  "local_tests_run": 14,
+  "local_tests_skipped": 4,
+  "container_tests_required": true,
+  "n_tasks": 420,
+  "n_summaries": 6,
+  "total_operator_evaluations": 345868740,
+  "fit_seeds": [
+    "seed25",
+    "seed101",
+    "seed138",
+    "seed174",
+    "seed66",
+    "seed311"
+  ],
+  "N": 4097,
+  "n_phases": 5,
+  "n_parameters": 14,
+  "n_oxygen": 201,
+  "M": 4
+}

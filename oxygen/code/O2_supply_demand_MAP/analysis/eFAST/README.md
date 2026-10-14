@@ -43,6 +43,43 @@ eigenvector determines dominant mean ploidy.
 
 ## Execution
 
+### Six-endpoint N4097 resolution pilot
+
+`resolution_4097.py` adds the approved N=4097 pilot for **seed25, seed101,
+seed138, seed174, seed66, seed311**, with all 14 inputs, M=4, five phases,
+and the full 201-point O2 grid. It reuses the unchanged `resolution_pilot.py`
+evaluation, trajectory splitting, certified numerical recovery and seed summary.
+The original N1025/N2049 code and receipts remain valid.
+
+After committing/pushing and synchronizing the branch on RED:
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_resolution_4097.sh prepare
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_resolution_4097.sh smoke
+# Once smoke/smoke_receipt.json reports passed:
+bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_resolution_4097.sh submit
+```
+
+The submitter requests `--qos=xxlarge --time=12:00:00`, uses `--array=1-420`
+without a concurrency suffix, and requests no named node. Each 1-CPU/4G task
+evaluates one complete 4097-vector focal FAST trajectory at all 201 O2 points.
+Six 1-CPU/8G seed summaries and one 4-CPU/32G final comparison use `afterany`
+dependencies and require complete, validated inputs before calculating results.
+Missing trajectories stop aggregation; convergence failures are retained as diagnostics.
+
+Results are separate under
+`oxygen/results/eFAST/neighborhood10pct/pilot/N4097/`. Frozen comparison
+arrays cover N513, N1025 and N2049 for these six endpoints. Finalization
+exports all-output S1/ST tables, full phase ranges and means, key-parameter
+ST curves, and a ploidy ST stability overview. The primary resolution check
+is **2049 to 4097**. Across overall [0,5], low [0,1], and high [3,5] O2 windows,
+the phase-range p90 threshold is 0.10 and mean-curve change p90 threshold is
+0.05, in absolute index units. Local maxima are checked separately; p90
+passes with a failing maximum are labeled `localized_review`. These are
+practical diagnostics, not confidence intervals or a population estimate.
+
+### Original global analysis
+
 On `hpctpa3pc0028`, with the SALib 1.5.2 SIF and direct shell access:
 
 ```bash

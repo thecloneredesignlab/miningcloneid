@@ -9,6 +9,22 @@ the original uniform/log-uniform transforms.
 
 ## Status and execution
 
+**Submitted on 2026-10-14.** Scheduler audit at 12:25:36 EDT verified:
+
+| Role | Job ID | Tasks | Dependency |
+|---|---|---|---|
+| SIF smoke | 20863802 | 1 | None |
+| N4097 trajectories | 20864027 | 420 | afterok:20863802 |
+| Seed summaries | 20864028 | 6 | afterany:20864027 |
+| Comparison and figures | 20864029 | 1 | afterany:20864028 |
+
+At that snapshot, all jobs were pending; smoke had not passed and numerical
+analysis was incomplete. Smoke was waiting on `QOSMaxCpuPerUserLimit`.
+`slurm/submission_validation.json` validates resources and dependencies,
+not numerical completion. `collection_receipt.json` verifies ten collected
+files, 18 frozen code files, 40 preceding source files, and 18 baseline arrays.
+Refresh scheduler state before treating this historical snapshot as current.
+
 The initial code commit prepares this directory; submission is established
 only by `slurm/submission_jobs.tsv` and live Slurm accounting. A passed
 `smoke/smoke_receipt.json` establishes the compute-node container preflight.

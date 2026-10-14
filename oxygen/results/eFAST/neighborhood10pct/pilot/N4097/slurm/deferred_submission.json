@@ -1,0 +1,10 @@
+{
+  "submission_plan_sha256": "4e254547b3fb85a1b57bd1e7b2e9e02c18fa8b3edf6c9e4371690d5b9d89ab4d",
+  "smoke_job_id": "20863802",
+  "smoke_state_at_queue": "PENDING",
+  "smoke_receipt_present_at_queue": false,
+  "main_dependency": "afterok:20863802",
+  "reason": "Queue while preflight waits for xxlarge capacity; evaluate only after successful smoke",
+  "submitter_sha256": "9f927f4256e549ad48c1d894ed280bf5ef8f38ad60fd004a39a25be5a52bf2d1",
+  "submission_git_commit": "1338ccb423703be34cedd88cd7d51cb245d2073d"
+}

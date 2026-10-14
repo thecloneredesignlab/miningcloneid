@@ -1,0 +1,126 @@
+{
+  "checked_utc": "2026-10-14T16:25:36.843809+00:00",
+  "validation_scope": "scheduler requests and dependency chain, not numerical completion",
+  "status": "passed",
+  "code_commit": "bb4f60998134ace2a3d150257030521a350a87bb",
+  "submission_commit": "1338ccb423703be34cedd88cd7d51cb245d2073d",
+  "submission_plan_sha256": "4e254547b3fb85a1b57bd1e7b2e9e02c18fa8b3edf6c9e4371690d5b9d89ab4d",
+  "n_trajectory_tasks": 420,
+  "n_seed_summaries": 6,
+  "jobs": [
+    {
+      "role": "smoke",
+      "job_id": "20863802",
+      "array_spec": "",
+      "records": [
+        {
+          "JobId": "20863802",
+          "ArrayJobId": null,
+          "ArrayTaskId": null,
+          "ArrayTaskThrottle": null,
+          "JobState": "PENDING",
+          "Reason": "QOSMaxCpuPerUserLimit",
+          "QOS": "xxlarge",
+          "TimeLimit": "12:00:00",
+          "ReqNodeList": "(null)",
+          "ExcNodeList": "(null)",
+          "NumCPUs": "1",
+          "CPUs/Task": "1",
+          "ReqTRES": "cpu=1,mem=4G,node=1,billing=1",
+          "Dependency": "(null)",
+          "NodeList": ""
+        }
+      ]
+    },
+    {
+      "role": "trajectory",
+      "job_id": "20864027",
+      "array_spec": "1-420",
+      "records": [
+        {
+          "JobId": "20864027",
+          "ArrayJobId": "20864027",
+          "ArrayTaskId": "1-420",
+          "ArrayTaskThrottle": null,
+          "JobState": "PENDING",
+          "Reason": "Dependency",
+          "QOS": "xxlarge",
+          "TimeLimit": "12:00:00",
+          "ReqNodeList": "(null)",
+          "ExcNodeList": "(null)",
+          "NumCPUs": "1",
+          "CPUs/Task": "1",
+          "ReqTRES": "cpu=1,mem=4G,node=1,billing=1",
+          "Dependency": "afterok:20863802(unfulfilled)",
+          "NodeList": ""
+        }
+      ]
+    },
+    {
+      "role": "seed_summary",
+      "job_id": "20864028",
+      "array_spec": "1-6",
+      "records": [
+        {
+          "JobId": "20864028",
+          "ArrayJobId": "20864028",
+          "ArrayTaskId": "1-6",
+          "ArrayTaskThrottle": null,
+          "JobState": "PENDING",
+          "Reason": "Dependency",
+          "QOS": "xxlarge",
+          "TimeLimit": "12:00:00",
+          "ReqNodeList": "(null)",
+          "ExcNodeList": "(null)",
+          "NumCPUs": "1",
+          "CPUs/Task": "1",
+          "ReqTRES": "cpu=1,mem=8G,node=1,billing=1",
+          "Dependency": "afterany:20864027_*(unfulfilled)",
+          "NodeList": ""
+        }
+      ]
+    },
+    {
+      "role": "finalize",
+      "job_id": "20864029",
+      "array_spec": "",
+      "records": [
+        {
+          "JobId": "20864029",
+          "ArrayJobId": null,
+          "ArrayTaskId": null,
+          "ArrayTaskThrottle": null,
+          "JobState": "PENDING",
+          "Reason": "Dependency",
+          "QOS": "xxlarge",
+          "TimeLimit": "12:00:00",
+          "ReqNodeList": "(null)",
+          "ExcNodeList": "(null)",
+          "NumCPUs": "4",
+          "CPUs/Task": "4",
+          "ReqTRES": "cpu=4,mem=32G,node=1,billing=4",
+          "Dependency": "afterany:20864028_*(unfulfilled)",
+          "NodeList": ""
+        }
+      ]
+    }
+  ],
+  "state_counts": {
+    "smoke": {
+      "PENDING": 1
+    },
+    "trajectory": {
+      "PENDING": 420
+    },
+    "seed_summary": {
+      "PENDING": 6
+    },
+    "finalize": {
+      "PENDING": 1
+    }
+  },
+  "runtime_preflight_passed": false,
+  "analysis_complete": false,
+  "specified_compute_node": null,
+  "array_concurrency_limit": null
+}

@@ -1,0 +1,18 @@
+{
+  "collected_utc": "2026-10-14T16:27:43.622820+00:00",
+  "status": "verified",
+  "collection_scope": "submission inputs and scheduler receipts; numerical results pending",
+  "n_collected_source_files": 10,
+  "n_collected_source_bytes": 7569467,
+  "collection_manifest_sha256": "5eb45ea6470ecb4c59e4d028857e8c2f4ccf1cf34f32dfb114e74718b3fed532",
+  "n_frozen_code_files_verified": 18,
+  "n_previous_source_files_verified": 40,
+  "n_baseline_phase_arrays_verified": 18,
+  "n_task_rows_verified": 420,
+  "n_summary_rows_verified": 6,
+  "scheduler_snapshot_utc": "2026-10-14T16:25:36.843809+00:00",
+  "runtime_preflight_passed": false,
+  "analysis_complete": false,
+  "scientific_code_commit": "bb4f60998134ace2a3d150257030521a350a87bb",
+  "submission_commit": "1338ccb423703be34cedd88cd7d51cb245d2073d"
+}

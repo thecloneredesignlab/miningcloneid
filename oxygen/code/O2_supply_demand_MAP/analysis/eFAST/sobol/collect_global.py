@@ -9,6 +9,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+import time
 
 
 def sha(path):
@@ -31,7 +32,34 @@ if a.splitlines()[0].split('|')[:2]!=['COMPLETED','0:0']: raise SystemExit('Glob
 print(json.dumps(dict(status=s,job_id=jobs[0],accounting=a,manifest_sha256=hashlib.sha256((p/'collection_manifest.tsv').read_bytes()).hexdigest())))
 """
     cmd='python3 -c '+shlex.quote(code)+' '+shlex.quote(root)
-    return json.loads(subprocess.check_output(['ssh','-o','BatchMode=yes',host,cmd],universal_newlines=True))
+    return json.loads(subprocess.check_output(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=15',host,cmd],
+                                             universal_newlines=True,timeout=60))
+
+
+def wait_until_complete(host,root,hours,poll):
+    deadline=time.monotonic()+hours*3600
+    while time.monotonic()<deadline:
+        try:
+            return remote_snapshot(host,root)
+        except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+            command='python3 -c '+shlex.quote(
+                "import csv,pathlib,subprocess,sys; p=pathlib.Path(sys.argv[1]); "
+                "h=open(str(p/'slurm/submission_jobs.tsv')); "
+                "j=[r['job_id'] for r in csv.DictReader(h,delimiter='\\t') if r['role']=='global_postprocess'][0]; "
+                "print(subprocess.check_output(['/cm/shared/apps/slurm/current/bin/sacct','-X','-n','-P','-j',j,'--format=State,ExitCode'],universal_newlines=True))"
+            )+' '+shlex.quote(root)
+            try:
+                state=subprocess.check_output(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=15',host,command],
+                                               universal_newlines=True,timeout=60).strip()
+                first=state.splitlines()[0].split('|') if state else []
+                if first and (first[0] in ['FAILED','TIMEOUT','CANCELLED','NODE_FAIL','OUT_OF_MEMORY'] or
+                              (first[0]=='COMPLETED' and first[1]!='0:0')):
+                    raise RuntimeError('Global job ended unsuccessfully: '+state)
+            except (subprocess.CalledProcessError,subprocess.TimeoutExpired):
+                state='connection unavailable; will retry'
+            print(datetime.datetime.now(datetime.timezone.utc).isoformat(),state,flush=True)
+            time.sleep(poll)
+    raise TimeoutError('Global collection wait reached its deadline')
 
 
 def main():
@@ -39,7 +67,13 @@ def main():
     parser.add_argument('--host',default='4482173@red.moffitt.org')
     parser.add_argument('--remote-dir',default='/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/global/standalone_N4096')
     parser.add_argument('--local-dir',default=str(Path(__file__).resolve().parents[6]/'oxygen/results/eFAST/sobol/full_N4096/global/standalone_N4096'))
-    args=parser.parse_args(); before=remote_snapshot(args.host,args.remote_dir)
+    parser.add_argument('--wait',action='store_true',help='One-off collection after the submitted global job completes')
+    parser.add_argument('--timeout-hours',type=float,default=16)
+    parser.add_argument('--poll-seconds',type=float,default=120)
+    args=parser.parse_args()
+    if args.timeout_hours<=0 or args.poll_seconds<=0: parser.error('Positive wait settings required')
+    before=(wait_until_complete(args.host,args.remote_dir,args.timeout_hours,args.poll_seconds)
+            if args.wait else remote_snapshot(args.host,args.remote_dir))
     target=Path(args.local_dir).resolve(); target.mkdir(parents=True,exist_ok=True)
     remote=args.host+':'+args.remote_dir.rstrip('/')+'/'
     subprocess.run(['rsync','-az','--no-perms','--no-owner','--no-group','-e','ssh',

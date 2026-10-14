@@ -1,0 +1,35 @@
+{
+  "question": "Global parameter main effects, total effects and named pair interactions across fixed oxygen",
+  "renderer": "Matplotlib PDF/PNG; quantitative heatmaps",
+  "population": "one global full-bound domain; five independently scrambled repeats",
+  "oxygen_axis": "0 to 5 percent by 0.025 percent; 201 points",
+  "matrices": {
+    "S1": [
+      14,
+      201
+    ],
+    "ST": [
+      14,
+      201
+    ],
+    "S2": [
+      91,
+      201
+    ]
+  },
+  "outputs": [
+    "dominant_mean_ploidy",
+    "dominant_growth_rate"
+  ],
+  "independent_output_color_scales": true,
+  "palette": {
+    "S1": "white to deep purple",
+    "ST": "white to orange",
+    "S2": "white to deep purple",
+    "negative": "blue",
+    "undefined": "gray"
+  },
+  "source": "N4096 five-repeat means; full signed estimates; all diagnostic states retained",
+  "export": "three PDF/PNG pairs in figures/",
+  "qa": "inspect PDFs and PNGs after collection"
+}

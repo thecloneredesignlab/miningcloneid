@@ -1,0 +1,31 @@
+{
+  "recorded_utc": "2026-10-14T15:57:01.215781+00:00",
+  "scope": "global",
+  "postprocess_job": "20862092",
+  "source_code_git_commit": "471f6a84afbf2363078a9cefce12a75cd0ee691f",
+  "postprocess_git_commit": "01e7ffc4e9b1dec7921e039f75ac9bcd5928f0ef",
+  "runtime_sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "model_blocks_with_complete_receipts": 150,
+  "local_math_tests": 18,
+  "SIF_unit_tests": "scheduled in independent job; not yet run",
+  "raw_output_checksums": "pinned from receipts; full verification at job start",
+  "new_job_control": "JobId=20862092 JobName=sobol_global_postprocess\n   UserId=4482173(107865) GroupId=g_4482173(107865) MCS_label=N/A\n   Priority=10135 Nice=0 Account=tao.li2 QOS=xxlarge WCKey=*4482173\n   JobState=PENDING Reason=QOSMaxCpuPerUserLimit Dependency=(null)\n   Requeue=1 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0\n   RunTime=00:00:00 TimeLimit=12:00:00 TimeMin=N/A\n   SubmitTime=2026-10-14T11:52:05 EligibleTime=2026-10-14T11:52:05\n   AccrueTime=2026-10-14T11:52:05\n   StartTime=Unknown EndTime=Unknown Deadline=N/A\n   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-10-14T11:57:01 Scheduler=Backfill:*\n   Partition=red AllocNode:Sid=hpctpa3pl0002:3231777\n   ReqNodeList=(null) ExcNodeList=(null)\n   NodeList=\n   NumNodes=1 NumCPUs=1 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*\n   ReqTRES=cpu=1,mem=16G,node=1,billing=1\n   AllocTRES=(null)\n   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*\n   MinCPUsNode=1 MinMemoryNode=16G MinTmpDiskNode=0\n   Features=(null) DelayBoot=00:00:00\n   OverSubscribe=OK Contiguous=0 Licenses=(null) LicensesAlloc=(null) Network=(null)\n   Command=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/global/standalone_N4096/slurm/code_snapshot/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run_global_postprocess.sbatch\n   WorkDir=/share/lab_crd/taoli/Project/soft_couping_eFAST\n   StdErr=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/global/standalone_N4096/slurm/logs/global_20862092.err\n   StdIn=/dev/null\n   StdOut=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/global/standalone_N4096/slurm/logs/global_20862092.out\n   TresPerTask=cpu=1",
+  "existing_pipeline_dependencies": {
+    "20839424": "PENDING|afterany:20839423_*(unfulfilled),afterany:20861574_*(unfulfilled)",
+    "20839425": "PENDING|afterany:20839424_*(unfulfilled)",
+    "20839426": "PENDING|afterok:20839425(unfulfilled)",
+    "20839427": "PENDING|afterany:20839426_*(unfulfilled)"
+  },
+  "existing_model_code_snapshot": "unchanged; original source hashes verified during preparation",
+  "neighborhood_jobs_rescheduled": false,
+  "array_concurrency_limit_changed": false,
+  "analysis_complete": false,
+  "N": 4096,
+  "repeats": 5,
+  "oxygen_points": 201,
+  "n_parameters": 14,
+  "n_pairs": 91,
+  "expected_summary_rows": 47838,
+  "expected_repeat_rows": 478380,
+  "convergence_policy": "diagnostic_only"
+}

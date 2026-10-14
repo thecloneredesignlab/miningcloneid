@@ -1,0 +1,36 @@
+{
+  "frozen_calculation_sources_unchanged": true,
+  "n_reported_seed_rows_verified": 12,
+  "new_jobs_submitted": false,
+  "pdf_render_and_text_checks": [
+    {
+      "height_pt": 1728.0,
+      "n_pages": 1,
+      "path": "figures/growth_ST_resolution_comparison.pdf",
+      "render_inspected": true,
+      "text_layer_verified": true,
+      "width_pt": 1152.0
+    },
+    {
+      "height_pt": 482.4,
+      "n_pages": 1,
+      "path": "figures/ploidy_ST_convergence_overview.pdf",
+      "render_inspected": true,
+      "text_layer_verified": true,
+      "width_pt": 972.0
+    },
+    {
+      "height_pt": 1728.0,
+      "n_pages": 1,
+      "path": "figures/ploidy_ST_resolution_comparison.pdf",
+      "render_inspected": true,
+      "text_layer_verified": true,
+      "width_pt": 1152.0
+    }
+  ],
+  "raw_model_evaluations_repeated": false,
+  "source_files_sha256_reverified": 97,
+  "status": "passed",
+  "unit_tests_passed": 4,
+  "visual_review": "All three PDFs rendered via pdftoppm and inspected; labels, bounds, legends and diagnostic categories visible."
+}

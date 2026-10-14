@@ -1,0 +1,20 @@
+{
+  "artifact_sha256": {
+    "artifact_collection_manifest.tsv": "5b30527a49e23115795cc93287fbf3d35923094c1d98eca2acf5c0b560ef1bd4",
+    "band_rank_mechanism_comparison.tsv": "d2a96fb172b0c9ee3b2b9a189ad8591c91a7ef5715089d51b9d2574e1c99c97f",
+    "band_rank_mechanism_stability.tsv": "dc4bd26b370cc9d393948e4d427df7b4747a0b3679c6b569e64b63263e10c2e4",
+    "key_ploidy_ST_repeat_diagnostics.tsv": "289e125c87c4ae4e515bc959088abb2221c337f0e6c9125b5bc840954be66efe",
+    "key_ploidy_ST_resolution_diagnostics.tsv": "074de93f28e1607d21e917773913bdb425489bd7fbc65da9450a34b5ed9e3088",
+    "oxygen_curve_summary.tsv.gz": "f550715b02c3ee40600f2a695e6123d509f394ca402aaa62f106301361945d79",
+    "repeat_diagnostics.tsv": "2835258814a6d700c421c1f16cf99d877f41114502b37aa8bbb2e78ff52fd60e",
+    "resolution_diagnostics.tsv": "003cc714d145f90ad161bc6dbfe32afede8effc00d48d6ba1dbcb49a7c8e00f7",
+    "seed_selection.tsv": "1256bdf2556110c64e52a3e8d67332f40c902d4165a60e558b80af02c2323d42",
+    "selection_diagnostics_all500.tsv": "45f6476cc4a3c6050a0a0a8210e80c0a7bff83b3a6e6bdf08264640927e718e1"
+  },
+  "completed_utc": "2026-10-13T22:10:33.387622+00:00",
+  "diagnostic_only": true,
+  "interpretation": "Threshold passes are practical checks; localized failures and undefined cells require review. Selected pilot is not a population estimate.",
+  "n_seed_N_summaries": 24,
+  "n_tasks": 1680,
+  "status": "complete"
+}

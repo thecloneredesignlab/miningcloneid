@@ -1,5 +1,60 @@
 # N=1025/2049 five-phase neighborhood eFAST pilot
 
+## Completed results collected and reviewed on 2026-10-14
+
+All 1,680 trajectory jobs and 24 seed/N summaries completed with Slurm exit
+`0:0`; comparison job 20833840 completed at 18:10 EDT on 2026-10-13. The new
+results have now been collected locally and reconciled against the phase NPZ
+sources. This section supersedes the pending status in the historical submission
+snapshot below.
+
+**Read [the detailed Chinese interpretation](interpretation_zh.md).**
+For ploidy ST, only 23/60 key endpoint–parameter combinations pass both the
+N2049 repeat-range p90 and 1025-to-2049 mean-curve-change p90 checks; eight pass
+both maximum-deviation checks. No endpoint passes both maximum checks for all
+five key parameters. This pilot does not establish complete ploidy ST curve
+convergence. Growth ST and ploidy S1 are substantially more stable.
+
+Collected source files are listed in `completed_results_manifest.tsv`; its
+receipt is `results_collection_receipt.json`. Original preflight/collection
+receipts remain historical records. Reconciliation of 405,216 curve rows, 6,048
+repeat-diagnostic rows, 4,032 resolution-diagnostic rows and associated mechanism
+tables is recorded in `analysis_validation.json` (maximum absolute numeric
+difference `1.2212453270876722e-15`). `slurm/completed_hpc_audit.json` records the
+read-only audit of all trajectory caches and 11 recovery trajectories (12 points).
+
+New review products:
+
+- `ploidy_ST_key_parameter_details.tsv`: all 60 focal endpoint–parameter cases.
+- `seed_convergence_summary.tsv`: endpoint-level pass counts and worst changes.
+- `convergence_pass_summary.tsv`: both outputs, S1/ST, windows and parameter scopes.
+- `mechanism_endpoint_summary.tsv`, `mechanism_phase_summary.tsv`: process criteria
+  and phase-level robustness; group means are descriptive, not group ST indices.
+- `spectral_gap_summary.tsv`: cached spectral-gap QC, covering all design rows.
+- `numerical_recovery_summary.tsv`: residuals, precision differences and output impacts.
+- `runtime_and_N_projection.tsv`: observed runtimes and explicitly labeled projections.
+- `figures/ploidy_ST_convergence_overview.pdf` and `.png`: repeat/mean-change diagnostics;
+  the numbers and colors describe convergence diagnostics, not ST magnitudes.
+
+The recommendation is a staged, six-endpoint N4097 check, then a decision about
+N8193 and frequency-setting checks. **No new computation was submitted during
+collection or interpretation.** The calculation source and original 500-seed
+results remain the reference records.
+
+Reproduce the local review (NumPy 2.0.2 and Matplotlib 3.9.4, also in the SIF):
+
+```bash
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/report_resolution_pilot.py \
+  --root oxygen/results/eFAST/neighborhood10pct/pilot/N1025_N2049
+python3 -m unittest discover -s oxygen/code/O2_supply_demand_MAP/analysis/eFAST \
+  -p test_resolution_report.py
+```
+
+`collect_resolution_results.py` provides read-only `manifest`, `audit`, `gap-qc`
+and `verify-local` commands. Run remote `audit` in a login shell for Slurm PATH;
+redirect manifest output outside the result directory. Large raw trajectory
+outputs and recovery matrices remain on HPC and were not re-evaluated locally.
+
 ## Submission on 2026-10-13
 
 Scientific code commit: `47055427002b86bc8796d4fb3ee0df218d3ac530`.

@@ -1,0 +1,5 @@
+N	type	n_observed_trajectory_jobs	trajectory_median_hours	trajectory_p95_hours	trajectory_max_hours	n_seeds_proposed	n_phases	n_sampled_parameters	n_oxygen	projected_operator_evaluations	new_jobs_submitted
+1025	observed	840	0.6341666666666667	0.6839027777777777	0.8866666666666667	12	5	14	201	173061000	False
+2049	observed	840	1.2558333333333334	1.3477916666666667	1.5425	12	5	14	201	345953160	False
+4097	linear_projection_not_measured	840	2.511053766064747	2.694925553115341	3.0842471937530505	6	5	14	201	345868740	False
+8193	linear_projection_not_measured	840	5.021494631527575	5.389193326012689	6.1677415812591505	6	5	14	201	691653060	False

@@ -60,6 +60,12 @@ bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_resolution_4097.sh s
 bash oxygen/code/O2_supply_demand_MAP/analysis/eFAST/submit_resolution_4097.sh submit
 ```
 
+If smoke is waiting for xxlarge capacity, the alternative
+`queue_resolution_4097_after_smoke.sh` queues the same arrays with an
+`afterok` dependency on smoke. Evaluation still requires a successful smoke
+job. Its source hash and submission commit are recorded separately so the
+already prepared scientific source hashes remain intact.
+
 The submitter requests `--qos=xxlarge --time=12:00:00`, uses `--array=1-420`
 without a concurrency suffix, and requests no named node. Each 1-CPU/4G task
 evaluates one complete 4097-vector focal FAST trajectory at all 201 O2 points.

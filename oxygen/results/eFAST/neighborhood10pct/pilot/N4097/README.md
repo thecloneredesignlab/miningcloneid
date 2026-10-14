@@ -16,6 +16,16 @@ only by `slurm/submission_jobs.tsv` and live Slurm accounting. A passed
 and final tables/figures complete. Numerical recovery records are retained
 in the summary receipts. Convergence failures do not exclude an endpoint.
 
+Smoke job **20863802** was queued after source commit
+`bb4f60998134ace2a3d150257030521a350a87bb` reached HPC. It initially waited
+with `QOSMaxCpuPerUserLimit`. `queue_resolution_4097_after_smoke.sh` allows
+the 420 main trajectories to queue with an `afterok` dependency on smoke;
+they run only after smoke succeeds. It validates the frozen plan, comparison
+sources, image identity and smoke job state. Its source hash and submission
+commit are recorded in `slurm/deferred_submission.json`. Both submitters
+share a lock and duplicate-submission marker. This changes queue timing;
+the frozen numerical sources and mandatory compute-node preflight stay intact.
+
 - SIF: `/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif`.
 - Runtime: SALib 1.5.2 in the existing Python environment.
 - Main array: 420 tasks = 6 endpoints x 5 phases x 14 complete focal trajectories.

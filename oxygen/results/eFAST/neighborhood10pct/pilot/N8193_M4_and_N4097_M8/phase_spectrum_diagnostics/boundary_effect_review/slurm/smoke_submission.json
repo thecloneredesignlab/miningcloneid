@@ -1,0 +1,33 @@
+{
+  "job_id": "21140535",
+  "role": "smoke",
+  "array_ids": [],
+  "command": [
+    "sbatch",
+    "--parsable",
+    "--qos=xxlarge",
+    "--time=12:00:00",
+    "--cpus-per-task=1",
+    "--mem=4G",
+    "--job-name=efast_boundary_smoke",
+    "--export=ALL,BOUNDARY_ROLE=smoke",
+    "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/slurm/smoke_%A_%a.out",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/boundary_review/run.sbatch"
+  ],
+  "git_commit": "944c4c20673f91c3a39abde510ecbb1044e1c6a8",
+  "selection_sha256": "82dcd39a4d4b1b0b8ff8e69840b860d93a693691168a541f7fb10ed232ac5b57",
+  "code_sha256": {
+    "analyze.py": "975a53a6ca89e3efd7fb080c97793f1f27cf70c8dabe47b270b0088af7cc8dfb",
+    "boundary.py": "790b2707f5dcf3ff600e7a71ce155b2e41104ec0e44b94ce16d373f88627a0b6",
+    "finish.py": "0ef2ec7ea199b6127039ffa40225fbdd1ca4e67ee7640e3796c3e660d0447c83",
+    "point.R": "4f426b0aa4601cbd744a440f2d6a9cc0cfed020f97377ab800e2ac3050e5b43c",
+    "run.sbatch": "59a8fbd9f2ec22490b125f1f86878f8c703e8804523305d4687d1f0c235b3064",
+    "submit.py": "9fe2b9a0d2923251976cf615ecc9af02ac3d520510743645e6ae18ce0f691a59",
+    "test_boundary.py": "845731ad29618053a632ef5664968ced7b0068b061649577c8c9e628ad5581e4"
+  },
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "qos": "xxlarge",
+  "time": "12:00:00",
+  "specified_node": null,
+  "array_concurrency_limit": null
+}

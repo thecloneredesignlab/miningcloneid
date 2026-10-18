@@ -36,6 +36,19 @@ roundoff is checked against the canonical total, without altering the operator.
    The 24 smoke tasks are reused; the main array has 640 independent tasks.
 6. Save Slurm terminal accounting and collection hashes, sync outputs locally,
    then `boundary.py collect`, `analyze.py verify`, `analyze.py figures`.
+7. Run `mechanisms.py --root <result-root>` for diagonal/net-growth diagnostics
+   and per-case domain classifications. This supplementary postprocessor is
+   recorded separately from the frozen HPC evaluation code.
+8. Run `finish.py collection --root <result-root>` to link every runtime job to
+   completed Slurm accounting, then render/review all four PDFs and run
+   `finish.py final --visual-render-reviewed --root <result-root>`.
+
+Local postprocessing requires NumPy, Matplotlib and pypdf; the saved matrices and
+decimal vectors suffice for repeating verification and plots. Repeating the
+HPC evaluation additionally requires the original fitted-input and raw-sample
+paths whose hashes are frozen in the manifests. Full parameter/config contexts
+are also saved per task. Complete decimal source tables retain very small
+components even when a plot uses a display floor (10^-120 in boundary-mass plots).
 
 Every job uses qos=xxlarge, 12 hours, 1 CPU/4GB, no specified node and no array
 concurrency cap. The original SALib1.5.2 SIF is hash-verified. Main tasks use

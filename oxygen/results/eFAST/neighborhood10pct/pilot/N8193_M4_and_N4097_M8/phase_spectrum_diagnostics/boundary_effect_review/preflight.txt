@@ -1,0 +1,9 @@
+test_boundary_mass_prevents_false_stability (test_boundary.BoundaryChecks) ... ok
+test_escaped_mass_is_not_renormalized_away (test_boundary.BoundaryChecks) ... ok
+test_only_approved_seeds_and_roles (test_boundary.BoundaryChecks) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK
+R syntax OK

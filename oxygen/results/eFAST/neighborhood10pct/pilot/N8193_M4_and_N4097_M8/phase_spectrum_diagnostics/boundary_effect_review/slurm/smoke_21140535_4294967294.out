@@ -1,0 +1,61 @@
+role=smoke host=hpctpa3pc0024 job=21140535 start=2026-10-18T17:37:20-04:00
+Known-root, tiny-component and invalid-matrix checks passed
+[1] TRUE
+Completed boundary task 5 ploidy double 1.1449391970172953 elapsed 0.0080000000000000071 0.0059999999999997833 
+[1] TRUE
+Completed boundary task 6 ploidy double 1.1449394825252861 elapsed 2.0659999999999998 4.5229999999999997 
+[1] TRUE
+Completed boundary task 7 ploidy double 1.1449394932729631 elapsed 5.4049999999999994 11.870000000000003 
+[1] TRUE
+Completed boundary task 8 ploidy double 1.1449394934658421 elapsed 14.949999999999999 32.620000000000005 
+[1] TRUE
+Completed boundary task 65 ploidy double 6.9999999992891837 elapsed 0.0070000000000001172 0.0070000000000001172 
+[1] TRUE
+Completed boundary task 66 ploidy double 7.1363636362674239 elapsed 1.7170000000000001 3.6160000000000005 
+[1] TRUE
+Completed boundary task 67 ploidy double 7.1363636363562613 elapsed 4.4749999999999996 9.4550000000000018 
+[1] TRUE
+Completed boundary task 68 ploidy double 7.1393345881758909 elapsed 12.280000000000001 28.216000000000001 
+[1] TRUE
+Completed boundary task 69 ploidy double 6.7272727272716848 elapsed 0.008999999999999897 0.0070000000000001172 
+[1] TRUE
+Completed boundary task 70 ploidy double 6.7272727272724495 elapsed 1.4340000000000002 3.0789999999999997 
+[1] TRUE
+Completed boundary task 71 ploidy double 6.7302670113754708 elapsed 4.476 9.5719999999999992 
+[1] TRUE
+Completed boundary task 72 ploidy double 6.7302670113759211 elapsed 12.268000000000001 26.346999999999998 
+[1] TRUE
+Completed boundary task 73 ploidy double 1.1557434492885221 elapsed 0.0059999999999997833 0.0070000000000001172 
+[1] TRUE
+Completed boundary task 74 ploidy double 1.1557434493898084 elapsed 1.9830000000000005 4.3359999999999994 
+[1] TRUE
+Completed boundary task 75 ploidy double 1.1557434493901555 elapsed 5.335 11.692 
+[1] TRUE
+Completed boundary task 76 ploidy double 1.1557434493901715 elapsed 16.173999999999999 33.174999999999997 
+[1] TRUE
+Completed boundary task 89 ploidy double 6.9999999999999458 elapsed 0.0070000000000001172 0.0059999999999997833 
+[1] TRUE
+Completed boundary task 90 ploidy double 8.4545454545451619 elapsed 1.2850000000000001 2.5279999999999996 
+[1] TRUE
+Completed boundary task 91 ploidy double 8.4545454545456042 elapsed 3.3329999999999997 6.697000000000001 
+[1] TRUE
+Completed boundary task 92 ploidy double 8.4546830380849105 elapsed 11.806000000000001 22.299999999999997 
+[1] TRUE
+Completed boundary task 449 ploidy double 6.5454545437256115 elapsed 0.0059999999999997833 0.0070000000000001172 
+[1] TRUE
+Completed boundary task 450 ploidy double 6.5454545459540583 elapsed 1.5130000000000003 3.4809999999999999 
+[1] TRUE
+Completed boundary task 451 ploidy double 6.5455143859142453 elapsed 4.2829999999999995 9.049000000000003 
+[1] TRUE
+Completed boundary task 452 ploidy double 6.5455143859136449 elapsed 11.709000000000001 24.803000000000004 
+Known-root, tiny-component and invalid-matrix checks passed
+{
+  "status": "passed",
+  "n_tasks": 24,
+  "n_precision_verified": 24,
+  "n_unique_vectors_certified": 24,
+  "selection_sha256": "82dcd39a4d4b1b0b8ff8e69840b860d93a693691168a541f7fb10ed232ac5b57",
+  "new_FAST_samples": 0,
+  "n_baseline_exact": 6
+}
+Completed at 2026-10-18T17:44:59-04:00

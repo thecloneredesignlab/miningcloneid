@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "n_tasks": 24,
+  "n_precision_verified": 24,
+  "n_unique_vectors_certified": 24,
+  "selection_sha256": "82dcd39a4d4b1b0b8ff8e69840b860d93a693691168a541f7fb10ed232ac5b57",
+  "new_FAST_samples": 0,
+  "n_baseline_exact": 6,
+  "compiled_template_sha256": "2c2a56006183736fdf0df7ea583a313a489c9f27c44988647f03093b237eed8e"
+}

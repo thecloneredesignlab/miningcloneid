@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "n_tasks": 664,
+  "independent_shared_blocks_equal": true,
+  "script_sha256": "12db9d60676d9c2d86905d632994c10cff3641b4514712a53b2b74c1df3372d7",
+  "task_evidence_sha256": "9b532d6ca9aab8984d0b79adec5b0f311c1e180feb4fca297dd7ae385fda2947",
+  "explanation": "Matrix diagonal is a local self-state rate, not the eigenvalue. Net balance is evaluated with the complete eigenvector.",
+  "rate_scope": "Model builder and saved transition rates are double precision; vector arithmetic is Decimal. Retained inflow is a balance estimate from printed double rates. Cancellation can yield signed roundoff near zero; the sign-resolution flag and roundoff threshold identify these cases. It is not an independent biological estimate."
+}

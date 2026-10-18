@@ -1,0 +1,4 @@
+role=main host=hpctpa3pc0002 job=21140783 start=2026-10-18T17:47:03-04:00
+[1] TRUE
+Completed boundary task 239 ploidy double 1.1563884919423755 elapsed 6.157 12.673000000000002 
+Completed at 2026-10-18T17:47:27-04:00

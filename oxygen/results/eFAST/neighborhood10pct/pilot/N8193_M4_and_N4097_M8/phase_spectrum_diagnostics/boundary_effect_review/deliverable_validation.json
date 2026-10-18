@@ -1,0 +1,29 @@
+{
+  "status": "passed",
+  "n_cases": 166,
+  "n_tasks": 664,
+  "n_precision_verified": 664,
+  "pdf_checks": [
+    {
+      "path": "figures/boundary_mass.pdf",
+      "pages": 1
+    },
+    {
+      "path": "figures/ceiling_responses.pdf",
+      "pages": 1
+    },
+    {
+      "path": "figures/state_distributions.pdf",
+      "pages": 1
+    },
+    {
+      "path": "figures/state_distributions_log.pdf",
+      "pages": 1
+    }
+  ],
+  "independent_matrix_residual_checks": 2656,
+  "visual_render_reviewed": true,
+  "new_FAST_samples": 0,
+  "FAST_N_M_unchanged": true,
+  "original_outputs_preserved": true
+}

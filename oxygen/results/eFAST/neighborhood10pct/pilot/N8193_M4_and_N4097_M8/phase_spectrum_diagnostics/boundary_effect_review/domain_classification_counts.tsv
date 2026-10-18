@@ -1,0 +1,7 @@
+fit_seed	role	classification	n_cases
+seed101	abnormal	boundary_sensitive_then_stable	74
+seed101	abnormal	little_ploidy_change_domain_stable	6
+seed101	ordinary_control	little_ploidy_change_domain_stable	68
+seed138	abnormal	boundary_sensitive_then_stable	4
+seed138	abnormal	little_ploidy_change_domain_stable	7
+seed138	ordinary_control	little_ploidy_change_domain_stable	7

@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "n_tasks": 664,
+  "main_completed_exit0": 640,
+  "smoke_completed_tasks": 24,
+  "scheduler_runtime_ids_match": true,
+  "n_files": 7297,
+  "n_bytes": 875705915,
+  "n_prior_artifacts_unchanged": 4511
+}

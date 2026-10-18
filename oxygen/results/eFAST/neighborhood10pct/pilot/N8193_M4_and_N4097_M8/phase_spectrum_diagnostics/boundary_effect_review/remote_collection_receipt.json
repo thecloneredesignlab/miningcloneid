@@ -1,0 +1,8 @@
+{
+  "status": "frozen",
+  "manifest_sha256": "f4872d10b02a2e481b6ec03e8a0d6992d3f4ed185baaf1e758fa95a14309fa6f",
+  "n_files": 7297,
+  "n_bytes": 875705915,
+  "smoke_job": "21140535",
+  "main_job": "21140564"
+}

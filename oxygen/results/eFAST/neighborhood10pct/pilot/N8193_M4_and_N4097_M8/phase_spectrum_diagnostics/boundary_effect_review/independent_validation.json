@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "n_tasks": 664,
+  "n_precision_verified": 664,
+  "n_residual_checks": 2656,
+  "n_leading_root_bound_checks": 2656,
+  "n_comparisons": 664,
+  "new_FAST_samples": 0,
+  "matrix_source": "17-digit round-trip matrix parsed to exact binary double; Decimal.from_float, 160 digits",
+  "state_domain": "Only N_MAX changed. Wide transition kernels are flux diagnostics, not eigensolve domains."
+}

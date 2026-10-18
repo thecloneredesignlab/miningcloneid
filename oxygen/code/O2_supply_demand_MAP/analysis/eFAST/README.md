@@ -317,3 +317,13 @@ does not imply that the model evaluations were recomputed. The collector
 requires all 35,000 tasks, all 500 seed summaries and a passed numerical audit;
 it checks every collection-manifest hash before archiving. Raw trajectories,
 matrix proof artifacts, compiled caches and execution logs remain on HPC.
+
+## N8193/M4 and N4097/M8 follow-up
+
+`resolution_nm.py` and `submit_resolution_nm.sh` run five phases for seed25/138
+at N8193, M4 and seed101/174 at N4097, M8. The first pair tests N resolution;
+the second tests M-setting robustness at fixed N. All stages include M in
+identity and FFT calculations, including targeted-recovery diagnostics.
+See [the follow-up protocol](../../../../results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/README.md)
+for settings, outputs and scheduling. The previous scientific modules remain
+unchanged and are validated by their existing SHA-256 manifests.

@@ -312,3 +312,10 @@ Raw model outputs, caches, repeated NPZ arrays and checkpoints remain on HPC.
 Completed case tables/figures use their original `neighborhood10pct/full/seed*/`
 locations. A final audit requires all 501 domains and unchanged reused cases,
 not convergence. Volatile work after the last old checkpoint cannot be recovered.
+
+If preparation completed successfully but the driver stopped before submitting
+any computation, restart the driver with `SOBOL_RESUME_PREPARED=1`. This mode
+requires a ledger containing exactly the existing preparation job and preserves
+its snapshot/checkpoints. The driver waits for shared-filesystem visibility of
+the complete plan rather than rerunning preparation. Runtime and controller
+Git revisions are recorded separately.

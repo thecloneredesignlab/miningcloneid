@@ -8,20 +8,33 @@ sif=${SOBOL_SIF:-/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact
 mkdir -p "$rec/slurm/logs"
 exec 8>"$rec/slurm/submission.lock"
 flock -n 8 || { echo 'Recovery submission already active' >&2; exit 1; }
-[[ ! -e "$rec/slurm/submission_jobs.tsv" ]] || { echo 'Existing recovery ledger; inspect before resubmitting' >&2; exit 1; }
 snapshot="$rec/slurm/code_snapshot"
-[[ ! -e "$snapshot" ]] || { echo 'Recovery snapshot exists; inspect interrupted preparation' >&2; exit 1; }
-mkdir -p "$snapshot"
 revision=$(git -C "$repo" rev-parse HEAD)
-git -C "$repo" archive "$revision" oxygen/code/O2_supply_demand_MAP | tar -xf - -C "$snapshot"
-python3 - "$snapshot" <<'PY'
+controller_revision=$revision
+if [[ "${SOBOL_RESUME_PREPARED:-0}" = 1 ]]; then
+  [[ -d "$snapshot" && -s "$rec/slurm/submission_jobs.tsv" ]] || exit 1
+  prepare=$(python3 - "$rec/slurm/submission_jobs.tsv" <<'PY'
+import csv,sys
+with open(sys.argv[1]) as h: rows=list(csv.DictReader(h,delimiter='\t'))
+if len(rows)!=1 or rows[0]['role']!='prepare':
+    raise SystemExit('Prepared-only resume requires exactly one preparation job; no computation may have been submitted')
+print(rows[0]['job_id'])
+PY
+)
+else
+  [[ ! -e "$rec/slurm/submission_jobs.tsv" ]] || { echo 'Existing recovery ledger; inspect before resubmitting' >&2; exit 1; }
+  [[ ! -e "$snapshot" ]] || { echo 'Recovery snapshot exists; inspect interrupted preparation' >&2; exit 1; }
+  mkdir -p "$snapshot"
+  git -C "$repo" archive "$revision" oxygen/code/O2_supply_demand_MAP | tar -xf - -C "$snapshot"
+  python3 - "$snapshot" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1])
 for q in p.rglob('*'): q.chmod(0o555 if q.is_dir() else 0o444)
 p.chmod(0o555)
 PY
+  printf 'role\tjob_id\tarray_spec\tqos\ttime\tcpus\tmem\tdependency\tsubmitted_utc\n' > "$rec/slurm/submission_jobs.tsv"
+fi
 code="$snapshot/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol"
-printf 'role\tjob_id\tarray_spec\tqos\ttime\tcpus\tmem\tdependency\tsubmitted_utc\n' > "$rec/slurm/submission_jobs.tsv"
 common=(--parsable --qos=xxlarge --time=12:00:00 --cpus-per-task=1)
 exports="ALL,SOBOL_OUT_DIR=$out,SOBOL_RECOVERY_DIR=$rec,SOBOL_SIF=$sif,RECOVERY_REVISION=$revision"
 submit() {
@@ -35,7 +48,7 @@ submit() {
   echo "Submitted $role $job" >&2
   printf '%s' "$job"
 }
-prepare=$(submit prepare '' 8G '')
+if [[ "${SOBOL_RESUME_PREPARED:-0}" != 1 ]]; then prepare=$(submit prepare '' 8G ''); fi
 while :; do
   state=$(sacct -X -n -P -j "$prepare" --format=State | head -1 | cut -d '|' -f 1)
   case "$state" in
@@ -44,9 +57,25 @@ while :; do
   esac
   sleep 30
 done
-[[ -s "$rec/plan.json" ]] || { echo 'Preparation did not create a plan' >&2; exit 1; }
+# Slurm completion can precede visibility of a compute-node rename on the
+# login node. Wait for the complete JSON instead of repeating preparation.
+visible=0
+for attempt in $(seq 1 60); do
+  if python3 - "$rec/plan.json" <<'PY'
+import json,sys
+try:
+    with open(sys.argv[1]) as h: p=json.load(h)
+    assert len(p['cases'])==355 and len(p['model_tasks'])==14
+except (OSError,ValueError,KeyError,AssertionError):
+    raise SystemExit(1)
+PY
+  then visible=1; break; fi
+  sleep 2
+done
+[[ "$visible" = 1 ]] || { echo 'Prepared plan remains unavailable; preserve preparation and inspect visibility' >&2; exit 1; }
+revision=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["recovery_git_commit"])' "$rec/plan.json")
 RECOVERY_PLAN_SHA256=$(sha256sum "$rec/plan.json"); RECOVERY_PLAN_SHA256=${RECOVERY_PLAN_SHA256%% *}
-exports="$exports,RECOVERY_PLAN_SHA256=$RECOVERY_PLAN_SHA256"
+exports="ALL,SOBOL_OUT_DIR=$out,SOBOL_RECOVERY_DIR=$rec,SOBOL_SIF=$sif,RECOVERY_REVISION=$revision,RECOVERY_PLAN_SHA256=$RECOVERY_PLAN_SHA256"
 read -r ready total seeds model_ids < <(python3 - "$rec/plan.json" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1]))
@@ -68,11 +97,11 @@ text=subprocess.check_output(['squeue','-h','-j','20839426,20839427','-o','%T'],
 if any(s.strip()!='PENDING' for s in text.splitlines()): raise SystemExit('Old downstream stage is no longer pending; inspect before cancelling')
 PY
 scancel 20839426 20839427
-python3 - "$rec" "$revision" <<'PY'
+python3 - "$rec" "$revision" "$controller_revision" <<'PY'
 import csv,datetime,json,pathlib,sys
 r=pathlib.Path(sys.argv[1]); p=json.load(open(str(r/'plan.json')))
 with open(str(r/'slurm/submission_jobs.tsv')) as h: jobs=list(csv.DictReader(h,delimiter='\t'))
-s=dict(status='submitted',git_commit=sys.argv[2],n_pending_seeds=len(p['cases']),n_shards=len(p['tasks']),
+s=dict(status='submitted',git_commit=sys.argv[2],controller_git_commit=sys.argv[3],n_pending_seeds=len(p['cases']),n_shards=len(p['tasks']),
        n_model_blocks=len(p['model_tasks']),jobs=jobs,replaced_pending_jobs=['20839426','20839427'],
        convergence_policy='diagnostic_only',submitted_utc=datetime.datetime.utcnow().isoformat()+'Z')
 (r/'slurm/launch_receipt.json').write_text(json.dumps(s,indent=2)+'\n')

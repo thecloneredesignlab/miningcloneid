@@ -1,8 +1,14 @@
 {
-  "status": "validated_ready_for_full_array",
-  "n_cases": 501,
-  "n_tasks": 75150,
-  "all_seeds_included": true,
+  "status": "complete",
+  "method": "Sobol_second_order",
+  "N": 4096,
+  "n_repeats": 5,
+  "oxygen_points": 201,
+  "n_global_designs": 1,
+  "n_neighborhoods": 500,
+  "n_pairs": 91,
+  "n_response_surfaces": 54,
+  "all_500_neighborhoods_run": true,
   "convergence_policy": "diagnostic_only",
-  "updated_utc": "2026-10-13T22:58:00.562553+00:00"
+  "completed_utc": "2026-10-18T18:04:08.945660+00:00"
 }

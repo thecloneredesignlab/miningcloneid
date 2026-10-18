@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "n_cases": 501,
+  "n_neighborhoods": 500,
+  "original_completed_cases_unchanged": true,
+  "n_saved_cells": 345516,
+  "N": 4096,
+  "repeats": 5,
+  "oxygen_points": 201,
+  "convergence_policy": "diagnostic_only",
+  "validated_utc": "2026-10-18T17:56:37.011289+00:00"
+}

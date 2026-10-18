@@ -1,0 +1,11 @@
+{
+  "case_index": 1,
+  "scope": "global",
+  "case_id": "global",
+  "fit_seed": "seed25",
+  "bounds_sha256": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97",
+  "best_params_sha256": "f4737eb06217d1eb8d8681b5650ee925ed9d970107911e61da380696212c671e",
+  "fit_config_sha256": "c594a915bce543cb9c884430063cd2239360a20e45287a4dd3a8e4e69e4c764d",
+  "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+  "included_in_full_analysis": true
+}

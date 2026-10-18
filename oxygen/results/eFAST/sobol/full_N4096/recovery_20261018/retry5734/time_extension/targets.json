@@ -1,0 +1,12 @@
+{
+  "target_jobs": [
+    "21139597",
+    "21139598",
+    "21139599",
+    "21139600",
+    "21139601",
+    "21139602"
+  ],
+  "recovery": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/recovery_20261018",
+  "recovery_plan_sha256": "003099fa549fdf68814272dc334e9962e6187269ff07e4cf4f60c0d5ec652317"
+}

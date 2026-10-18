@@ -1,0 +1,36 @@
+{
+  "validated_utc": "2026-10-18T18:17:43.176312+00:00",
+  "reviewed_files": [
+    {
+      "pdf": "global/figures/s1_parameter_by_oxygen.pdf",
+      "pdf_sha256": "6fbfd1e556df13bdd66e55b6ae717f3c43568d18d36158087f364048ef1036d5",
+      "preview_png_sha256": "73980df48b756d47b790a27f0320e371550ac41ba1f6ff4014df785689a5ce2b",
+      "pages_reviewed": [
+        1
+      ],
+      "review": "Readable labels, ticks and colorbars; no clipping or overlap observed"
+    },
+    {
+      "pdf": "neighborhood10pct/figures/s2_pair_by_oxygen.pdf",
+      "pdf_sha256": "3653eb4f58079435decc033ada684c7ae614d3b4c05d48a8fffd916efca0f711",
+      "preview_png_sha256": "d30624c0774a5a31378d906535dd1a0970243220c9c123214254751ee9742b16",
+      "pages_reviewed": [
+        1
+      ],
+      "review": "Readable labels, ticks and colorbars; no clipping or overlap observed"
+    },
+    {
+      "pdf": "global/full/global/figures/responses/buffer_smax__buffer_beta.pdf",
+      "pdf_sha256": "9ec33cc4134534d3db452c738408296a0979537fcbd7325f11cc3e9b7b8f5f05",
+      "preview_png_sha256": "906239ee283cdb085bdb8487f704f542fe5da915217b225005673ad8efc460b9",
+      "pages_reviewed": [
+        1
+      ],
+      "review": "Readable labels, ticks and colorbars; no clipping or overlap observed"
+    }
+  ],
+  "renderer": "pdftoppm",
+  "corrected_colorbar_job": "21139663",
+  "sensitivity_arrays_unchanged": true,
+  "scope": "Representative main heatmaps and one conditional response surface; not every individual endpoint figure"
+}

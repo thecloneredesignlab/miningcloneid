@@ -1,0 +1,39 @@
+{
+  "collected_utc": "2026-10-18T18:15:19.295795+00:00",
+  "source": "4482173@red.moffitt.org:/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096",
+  "source_manifest_sha256": "78f2b7b768d67b130764c2b0b800aea9df055be9505452c6cb9c04e5ebbfc30d",
+  "final_job_id": "21139602",
+  "final_accounting": "COMPLETED|0:0",
+  "n_verified_files": 19828,
+  "verified_bytes": 1619105148,
+  "n_preexisting_domains_unchanged": 500,
+  "figure_layout_job_id": "21139663",
+  "figure_layout_accounting": "COMPLETED|0:0",
+  "status": {
+    "status": "complete",
+    "method": "Sobol_second_order",
+    "N": 4096,
+    "n_repeats": 5,
+    "oxygen_points": 201,
+    "n_global_designs": 1,
+    "n_neighborhoods": 500,
+    "n_pairs": 91,
+    "n_response_surfaces": 54,
+    "all_500_neighborhoods_run": true,
+    "convergence_policy": "diagnostic_only",
+    "completed_utc": "2026-10-18T18:04:08.945660+00:00"
+  },
+  "audit": {
+    "status": "passed",
+    "n_cases": 501,
+    "n_neighborhoods": 500,
+    "original_completed_cases_unchanged": true,
+    "n_saved_cells": 345516,
+    "N": 4096,
+    "repeats": 5,
+    "oxygen_points": 201,
+    "convergence_policy": "diagnostic_only",
+    "validated_utc": "2026-10-18T17:56:37.011289+00:00"
+  },
+  "collector_sha256": "c41d4ad12bf413b021c7ba66a4d8bfbd052519de4ede01b81e0b2aef294eb350"
+}

@@ -1,0 +1,109 @@
+{
+  "status": "submitted",
+  "jobs": [
+    {
+      "role": "shard",
+      "job_id": "21139597",
+      "array_spec": "5734",
+      "memory": "8G",
+      "dependency": "",
+      "submitted_utc": "2026-10-18T17:52:16.909116Z"
+    },
+    {
+      "role": "case",
+      "job_id": "21139598",
+      "array_spec": "173",
+      "memory": "8G",
+      "dependency": "afterok:21139597",
+      "submitted_utc": "2026-10-18T17:52:16.945419Z"
+    },
+    {
+      "role": "audit",
+      "job_id": "21139599",
+      "array_spec": "",
+      "memory": "8G",
+      "dependency": "afterok:21139598",
+      "submitted_utc": "2026-10-18T17:52:16.978010Z"
+    },
+    {
+      "role": "aggregate",
+      "job_id": "21139600",
+      "array_spec": "",
+      "memory": "16G",
+      "dependency": "afterok:21139599",
+      "submitted_utc": "2026-10-18T17:52:17.008050Z"
+    },
+    {
+      "role": "response",
+      "job_id": "21139601",
+      "array_spec": "1-54",
+      "memory": "4G",
+      "dependency": "afterok:21139600",
+      "submitted_utc": "2026-10-18T17:52:17.039013Z"
+    },
+    {
+      "role": "finish",
+      "job_id": "21139602",
+      "array_spec": "",
+      "memory": "8G",
+      "dependency": "afterok:21139601",
+      "submitted_utc": "2026-10-18T17:52:17.069827Z"
+    }
+  ],
+  "monitors": [
+    {
+      "target_job_id": "21139597",
+      "monitor_job_id": "21139603",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T17:52:17.161368Z"
+    },
+    {
+      "target_job_id": "21139598",
+      "monitor_job_id": "21139604",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T17:52:17.204864Z"
+    },
+    {
+      "target_job_id": "21139599",
+      "monitor_job_id": "21139605",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T17:52:17.245907Z"
+    },
+    {
+      "target_job_id": "21139600",
+      "monitor_job_id": "21139606",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T17:52:17.287806Z"
+    },
+    {
+      "target_job_id": "21139601",
+      "monitor_job_id": "21139607",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T17:52:17.330709Z"
+    },
+    {
+      "target_job_id": "21139602",
+      "monitor_job_id": "21139608",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T17:52:17.370286Z"
+    }
+  ],
+  "cancelled_old_jobs": [
+    "21129866",
+    "21129867",
+    "21129868"
+  ],
+  "cancelled_old_monitors": [
+    "21138286",
+    "21138287",
+    "21138288"
+  ],
+  "source_revision": "5c598f7221f90085ae4d8e364f28ec659bd3dfc2",
+  "initial_qos": "xxlarge",
+  "initial_time": "12:00:00",
+  "cpus": 1,
+  "specified_node": null,
+  "array_concurrency_limit": null,
+  "submitted_utc": "2026-10-18T17:52:22.455627Z",
+  "convergence_policy": "diagnostic_only"
+}

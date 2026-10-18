@@ -1,0 +1,7 @@
+pair_id	parameter_i	parameter_j	selection_origin	peak_oxygen	peak_estimate	peak_pass_fraction	interpretation
+1	lam_max	p_misseg	global/dominant_mean_ploidy	0.1	0.09876122922184714	1.0	candidate; peak stability shown explicitly
+2	lam_max	p_mis_base	global/dominant_growth_rate	5.0	0.14130001945170395	1.0	candidate; peak stability shown explicitly
+3	buffer_smax	buffer_beta	neighborhood10pct/dominant_mean_ploidy	2.625	0.030780218180318633	0.72	candidate; peak stability shown explicitly
+4	p_mis_base	buffer_smax	neighborhood10pct/dominant_growth_rate	5.0	0.012292184669818865	1.0	candidate; peak stability shown explicitly
+5	lam_max	O2_crit	global/dominant_growth_rate	1.0	0.10106290525230513	0.0	candidate; peak stability shown explicitly
+6	lam_max	mu_hp	global/dominant_growth_rate	0.45	0.07581755928384737	0.0	candidate; peak stability shown explicitly

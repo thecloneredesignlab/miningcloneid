@@ -1,0 +1,5 @@
+index	output	n_total	n_evaluable	n_hypothesis_pattern	fraction_of_all_500	convergence_exclusion	interpretation
+S1	dominant_mean_ploidy	500	500	28	0.056	none	optimizer-endpoint robustness; not biological confidence or formal group Sobol indices
+S1	dominant_growth_rate	500	500	20	0.04	none	optimizer-endpoint robustness; not biological confidence or formal group Sobol indices
+ST	dominant_mean_ploidy	500	500	31	0.062	none	optimizer-endpoint robustness; not biological confidence or formal group Sobol indices
+ST	dominant_growth_rate	500	500	19	0.038	none	optimizer-endpoint robustness; not biological confidence or formal group Sobol indices

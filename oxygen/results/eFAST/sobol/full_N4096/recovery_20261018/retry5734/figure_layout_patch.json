@@ -1,0 +1,86 @@
+{
+  "status": "complete",
+  "job_id": "21139663",
+  "source_revision": "125a1432a948f22a1ab73799bb5c35463ac33369",
+  "plot_source_sha256": "42fe5760767d7dfe75ababc682db489ba36ca822cf90d4154dded39d90477d23",
+  "input_arrays_sha256": {
+    "global": "32c674aed72b570e88d9bba934cd1a407b4471863eda6525adbea6f35fa2889f",
+    "neighborhood10pct": "66bd12148e26c1edc4062eea9d28d749e477ba454d09cee8786c5a8f8181a445"
+  },
+  "input_arrays_unchanged": true,
+  "sensitivity_calculations_repeated": 0,
+  "n_redrawn_figures": 7,
+  "files": [
+    {
+      "path": "global/figures/s1_parameter_by_oxygen.pdf",
+      "bytes": 31746,
+      "sha256": "6fbfd1e556df13bdd66e55b6ae717f3c43568d18d36158087f364048ef1036d5"
+    },
+    {
+      "path": "global/figures/s1_parameter_by_oxygen.png",
+      "bytes": 98333,
+      "sha256": "cb1f74bf516d491d5f9a16b60eae0d9f74072e6a31637bf158aec8f4145ea44c"
+    },
+    {
+      "path": "global/figures/st_parameter_by_oxygen.pdf",
+      "bytes": 32449,
+      "sha256": "20395748e45f36d2c3cb48567db0279d1b8967c9b4882d7365f8a84e2992b3e5"
+    },
+    {
+      "path": "global/figures/st_parameter_by_oxygen.png",
+      "bytes": 95345,
+      "sha256": "48d08962226291e6114509b5fe35c4ec7d7abd6e1cf8698f671c94bd2888102a"
+    },
+    {
+      "path": "global/figures/s2_pair_by_oxygen.pdf",
+      "bytes": 73762,
+      "sha256": "b1842e9b3cb7c52aec2f616d1093ac8f7cc9d8f33a9722fa76e0e0eae6cf599c"
+    },
+    {
+      "path": "global/figures/s2_pair_by_oxygen.png",
+      "bytes": 363211,
+      "sha256": "fee1d4aec8cf34282b4727b32d63484945d8cf3148e0344c6d157b1b12af700b"
+    },
+    {
+      "path": "neighborhood10pct/figures/s1_parameter_by_oxygen.pdf",
+      "bytes": 30021,
+      "sha256": "faee343216745620362ddf0f22fde4db5fe3125e708fa824ce35dd70fb27c183"
+    },
+    {
+      "path": "neighborhood10pct/figures/s1_parameter_by_oxygen.png",
+      "bytes": 93802,
+      "sha256": "e5120aa2e5a04078dad091b590bba91ce601d40abc1e489e33bea8388eb6de94"
+    },
+    {
+      "path": "neighborhood10pct/figures/st_parameter_by_oxygen.pdf",
+      "bytes": 31129,
+      "sha256": "5c4c6b344faeb96cf02aac2010b069abe1bd0564c297eb7a71be891e480f765b"
+    },
+    {
+      "path": "neighborhood10pct/figures/st_parameter_by_oxygen.png",
+      "bytes": 92790,
+      "sha256": "c81b673516d45925970e545aadf9d72ae60d38156e94db012d378a7ee60bcc88"
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_pair_by_oxygen.pdf",
+      "bytes": 64848,
+      "sha256": "3653eb4f58079435decc033ada684c7ae614d3b4c05d48a8fffd916efca0f711"
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_pair_by_oxygen.png",
+      "bytes": 333826,
+      "sha256": "9cf14b55891c9ad2672088bd8e2279ccb2b51cf177fb8c6fecb05d1602a6a333"
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_diagnostic_fraction.pdf",
+      "bytes": 56715,
+      "sha256": "bcf6bf1b517eddee1abe5a8919d28840aac8a1b973c84af2d9eea9d29352df95"
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_diagnostic_fraction.png",
+      "bytes": 324481,
+      "sha256": "2eb7b56f0edbdf5d60c6b8a73c7e64d0f3249abfa752c202b1cd228715b8bca2"
+    }
+  ],
+  "completed_utc": "2026-10-18T18:11:52.579463+00:00"
+}

@@ -1,0 +1,11 @@
+{
+  "case_index": 396,
+  "scope": "neighborhood10pct",
+  "case_id": "seed395",
+  "fit_seed": "seed395",
+  "bounds_sha256": "f457d69c5a483ed8d6be1f12d174d31db96b0d8e30506215eada1ddb981cfc39",
+  "best_params_sha256": "7aef111420273e167dbda16deca9b06296a0d01009b41bf622c0d15e9fa8a86d",
+  "fit_config_sha256": "8b8ee815f2359da8bd4f5dde6c05fd06cc1612694ca08d67b819fff1851e5d9d",
+  "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+  "included_in_full_analysis": true
+}

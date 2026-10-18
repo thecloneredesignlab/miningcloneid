@@ -1,0 +1,28 @@
+{
+  "job_id": "21139663",
+  "monitor_job_id": "21139664",
+  "source_revision": "125a1432a948f22a1ab73799bb5c35463ac33369",
+  "code_sha256": {
+    "full_report.py": "42fe5760767d7dfe75ababc682db489ba36ca822cf90d4154dded39d90477d23",
+    "refresh_scope_figures.py": "ab6ab50af74759ada197f7657fd7437e855222000f7a79ccbd17fa3a6dabafd9",
+    "retry_container_startup.sh": "c18e52a5a00f2da595099a3b8ae772c14e80cb8bf0132225cc6e3bfa1615ab1a"
+  },
+  "submission": [
+    "sbatch",
+    "--parsable",
+    "--hold",
+    "--qos=xxlarge",
+    "--time=12:00:00",
+    "--ntasks=1",
+    "--cpus-per-task=1",
+    "--mem=8G",
+    "--job-name=sobol_scope_figure_layout",
+    "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/recovery_20261018/retry5734/layout_patch/layout_%j.out",
+    "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/recovery_20261018/retry5734/layout_patch/layout_%j.err",
+    "--dependency=afterok:21139602",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/recovery_20261018/retry5734/layout_patch/run_layout.sbatch"
+  ],
+  "parent_report": "21139602",
+  "sensitivity_calculations_repeated": 0,
+  "submitted_utc": "2026-10-18T18:08:50.294468Z"
+}

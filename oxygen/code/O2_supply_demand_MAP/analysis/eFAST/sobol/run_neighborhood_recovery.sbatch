@@ -10,7 +10,8 @@ trap 'rm -rf "$scratch"' EXIT
 trap 'exit 143' TERM INT
 
 # Operational launch helper is versioned separately from the frozen analysis.
-source "$(dirname -- "${BASH_SOURCE[0]}")/retry_container_startup.sh"
+# Slurm spools the batch script; resolve the helper from the frozen snapshot.
+source "${SOBOL_STARTUP_HELPER:-$code/retry_container_startup.sh}"
 
 echo "recovery role=$SOBOL_ROLE job=$SLURM_JOB_ID task=${SLURM_ARRAY_TASK_ID:-none} host=$(hostname -s) start=$(date -Is)"
 getent passwd "$(id -u)" || true

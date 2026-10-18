@@ -121,7 +121,9 @@ def prepare(repo, revision):
 def arguments(repo, stage, predecessor=None, hold=False):
     root, rec, retry = locations(repo); role, array, mem = stage
     env = ('ALL,SOBOL_OUT_DIR={},SOBOL_RECOVERY_DIR={},SOBOL_SIF={},'
-           'SOBOL_ROLE={},RECOVERY_PLAN_SHA256={}').format(root, rec, SIF, role, sha(rec / 'plan.json'))
+           'SOBOL_ROLE={},RECOVERY_PLAN_SHA256={},SOBOL_STARTUP_HELPER={}').format(
+               root, rec, SIF, role, sha(rec / 'plan.json'),
+               retry / 'slurm/code_snapshot/retry_container_startup.sh')
     args = ['sbatch', '--parsable', '--qos=xxlarge', '--time=12:00:00', '--ntasks=1',
             '--cpus-per-task=1', '--mem=' + mem, '--job-name=sobol_retry5734_' + role,
             '--chdir=' + str(repo), '--export=' + env,

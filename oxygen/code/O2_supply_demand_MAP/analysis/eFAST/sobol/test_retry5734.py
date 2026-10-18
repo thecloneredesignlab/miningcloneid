@@ -50,6 +50,24 @@ print('payload completed')
     def test_initial_success(self):
         self.run_case('unused', 0, 1, 0)
 
+    def test_worker_helper_survives_slurm_spooling(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); here = Path(__file__).parent
+            (root/'bin').mkdir(); (root/'spool').mkdir()
+            for name in ('apptainer', 'getent'):
+                fake = root/'bin'/name
+                fake.write_text('#!/bin/bash\nexit 0\n'); fake.chmod(0o755)
+            script = root/'spool'/'slurm_script'
+            script.write_text((here/'run_neighborhood_recovery.sbatch').read_text())
+            env = dict(os.environ, SOBOL_OUT_DIR=str(root/'out'), SOBOL_RECOVERY_DIR=str(root/'rec'),
+                       SOBOL_SIF=str(root/'original.sif'), SOBOL_ROLE='audit', SLURM_JOB_ID='123',
+                       SOBOL_STARTUP_HELPER=str(here/'retry_container_startup.sh'), TMPDIR=str(root))
+            env['PATH'] = str(root/'bin')+':'+env['PATH']
+            result = subprocess.run(['bash', str(script)], env=env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('Completed at', result.stdout)
+
     def test_minimal_tasks_and_scheduler_options(self):
         self.assertEqual([s[1] for s in driver.STAGES], ['5734','173','','','1-54',''])
         with patch.object(driver, 'sha', return_value='original-plan'):
@@ -60,6 +78,7 @@ print('payload completed')
                 self.assertIn('--qos=xxlarge', args)
                 self.assertIn('--time=12:00:00', args)
                 self.assertIn('--dependency=afterok:123', args)
+                self.assertTrue(any('SOBOL_STARTUP_HELPER=/tmp/repo/' in x for x in args))
                 self.assertFalse(any(x.startswith(('--nodelist', '--exclude')) for x in args))
                 self.assertFalse(any('%' in x for x in args if x.startswith('--array=')))
 

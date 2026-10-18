@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "n_trajectories": 190,
+  "n_raw_response_rows": 193512750,
+  "n_formal_index_cells": 152760,
+  "n_parameter_coordinates": 13478500,
+  "max_cached_index_absolute_error": 1.1657341758564144e-14,
+  "max_variance_relative_error": 1.698529103280788e-14,
+  "max_parseval_relative_error": 1.6985291032808167e-14,
+  "max_design_coordinate_absolute_error": 7.548406344426439e-13,
+  "code_sha256": "0bc15ca1bdcdfc7f63c3c6ce39a4c39ba3d90fd7eb2d0bfb10801dd79f6b264f",
+  "python": "3.12.14",
+  "numpy": "2.0.2",
+  "new_model_evaluations": 0,
+  "new_jobs_submitted": 0,
+  "original_certified_status_flags_rechecked": false,
+  "original_status_flags_scope": "Original analyzer certification plus complete raw SHA256; local numeric parse uses first five columns"
+}

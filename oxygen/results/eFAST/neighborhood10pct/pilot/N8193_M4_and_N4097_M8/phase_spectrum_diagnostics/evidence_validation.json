@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "n_preserved_historical_manifest_entries": 202,
+  "excluded_finder_metadata": [
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/.DS_Store",
+      "matches_historical_hash": false,
+      "scope": "Finder folder metadata; excluded from scientific preservation gate"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N4097_M8/.DS_Store",
+      "matches_historical_hash": true,
+      "scope": "Finder folder metadata; excluded from scientific preservation gate"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N8193_M4/.DS_Store",
+      "matches_historical_hash": true,
+      "scope": "Finder folder metadata; excluded from scientific preservation gate"
+    }
+  ],
+  "n_all_parameter_screen_rows": 112,
+  "n_representative_phase_rows": 190,
+  "n_paired_configuration_phase_rows": 95,
+  "exact_ST_decomposition_max_error": 1.9984014443252818e-15,
+  "matched_phase_radians_max_difference": 0,
+  "new_model_evaluations": 0,
+  "new_jobs_submitted": 0,
+  "phase_code_sha256": "0bc15ca1bdcdfc7f63c3c6ce39a4c39ba3d90fd7eb2d0bfb10801dd79f6b264f",
+  "report_code_sha256": "a19ce3f1abc775f39331b7fd2a53bb2eb20e484ad010a4d245f98604af86fabd"
+}

@@ -254,3 +254,16 @@ data/DrugResponseData_PDX/.DS_Store
 /oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N*_M*/figures/*
 !/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N*_M*/figures/*.pdf
 !/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N*_M*/figures/*.png
+
+# Existing-output phase/spectrum diagnostics: compact evidence only.
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/
+/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/*
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/*.md
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/*.json
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/*.tsv
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/*.tsv.gz
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/rsync_files.txt
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/figures/
+/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/figures/*
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/figures/*.pdf
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/figures/*.png

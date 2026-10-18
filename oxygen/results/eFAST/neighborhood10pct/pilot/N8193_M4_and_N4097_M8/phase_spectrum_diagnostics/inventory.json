@@ -1,0 +1,122 @@
+{
+  "created_utc": "2026-10-18T18:10:48.486262+00:00",
+  "source_repo": "/share/lab_crd/taoli/Project/soft_couping_eFAST",
+  "n_trajectories": 190,
+  "n_source_files": 1148,
+  "total_compressed_bytes": 5385624163,
+  "plans": {
+    "N4097": {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/slurm/submission_plan.json",
+      "sha256": "4e254547b3fb85a1b57bd1e7b2e9e02c18fa8b3edf6c9e4371690d5b9d89ab4d",
+      "code_sha256": {
+        "../../model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+        "../../model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+        "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+        "efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+        "evaluate_fixed_o2.R": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+        "neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+        "neighborhood_slurm.py": "fae27eee2b7f1bb5f8441fbb84b84cafb0d9d9bc10019e91a4132dcade07e4d7",
+        "perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+        "repair_eigen_points_safe.R": "8c54b507f7fc3262313699637e5fd848b4f7d00cde8f224f6dc1175f3bb5783c",
+        "resolution_4097.py": "d670e4090902d51ec9b12c6242d2afa8b964fea2ed0e85681f1d8b7ba9d35230",
+        "resolution_pilot.py": "5e1107b3bcf31dde091c545c08b4d55dc155e53745982ed55bf9ed5e2925034d",
+        "resolution_pilot_smoke.R": "1d977d5c82e1d2f54638d41653f9b504cd781d2ea365ff468591c2f5244db581",
+        "run_resolution_4097.sbatch": "e62921d5a6ba8f80d512d22311713126e7dcdba9f84b96559208529c0e4f7131",
+        "run_resolution_pilot.sbatch": "0e3b5d2727693a78fed84b49c8c495b93a66c2a8f034013c37ab9c6c3f628638",
+        "submit_resolution_4097.sh": "9284f8ac36358ffd836270d09b7033f4bbecc91502c109eef3b8c0e077ea1413",
+        "submit_resolution_pilot.sh": "0344e07a61a25fe0279b19b4309dd40740441421e13bb25b06df852adc010549",
+        "test_resolution_4097.py": "91fe606c8caa3ce65dd9d0d97f9dff5ad0525f4c5e7e89a20c09311f995354ee",
+        "test_resolution_pilot.py": "9b51455fada1bb0dbaf8f57e36945523a448d51568138ecc5facba3f9ccd5e84"
+      }
+    },
+    "N8193_M4_and_N4097_M8/N8193_M4": {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N8193_M4/slurm/submission_plan.json",
+      "sha256": "92363327852774f616b054477a7612609429637f52142cac0a680b86ea330f6f",
+      "code_sha256": {
+        "../../model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+        "../../model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+        "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+        "efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+        "evaluate_fixed_o2.R": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+        "neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+        "neighborhood_slurm.py": "fae27eee2b7f1bb5f8441fbb84b84cafb0d9d9bc10019e91a4132dcade07e4d7",
+        "perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+        "repair_eigen_points_safe.R": "8c54b507f7fc3262313699637e5fd848b4f7d00cde8f224f6dc1175f3bb5783c",
+        "resolution_4097.py": "d670e4090902d51ec9b12c6242d2afa8b964fea2ed0e85681f1d8b7ba9d35230",
+        "resolution_nm.py": "c2e54810f7c2fb9a13e21a028a24d922e2a2b1255060c6890165452750cbb262",
+        "resolution_pilot.py": "5e1107b3bcf31dde091c545c08b4d55dc155e53745982ed55bf9ed5e2925034d",
+        "resolution_pilot_smoke.R": "1d977d5c82e1d2f54638d41653f9b504cd781d2ea365ff468591c2f5244db581",
+        "run_resolution_4097.sbatch": "e62921d5a6ba8f80d512d22311713126e7dcdba9f84b96559208529c0e4f7131",
+        "run_resolution_nm.sbatch": "ca58703e53f3585e27d0c1d541022dd886d2524b429c2986c1c9b6a527fc6302",
+        "run_resolution_pilot.sbatch": "0e3b5d2727693a78fed84b49c8c495b93a66c2a8f034013c37ab9c6c3f628638",
+        "submit_resolution_4097.sh": "9284f8ac36358ffd836270d09b7033f4bbecc91502c109eef3b8c0e077ea1413",
+        "submit_resolution_nm.sh": "c5bc55de456fc3e35a7b8e6e211f86720fd4ca72afe42d99cf27bffd6a615ab7",
+        "submit_resolution_pilot.sh": "0344e07a61a25fe0279b19b4309dd40740441421e13bb25b06df852adc010549",
+        "test_resolution_4097.py": "91fe606c8caa3ce65dd9d0d97f9dff5ad0525f4c5e7e89a20c09311f995354ee",
+        "test_resolution_nm.py": "a977d42fb78bb227056625c3c1a0580e3bef139acfd278f13a5dfddbd7f78761",
+        "test_resolution_pilot.py": "9b51455fada1bb0dbaf8f57e36945523a448d51568138ecc5facba3f9ccd5e84"
+      }
+    },
+    "N8193_M4_and_N4097_M8/N4097_M8": {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N4097_M8/slurm/submission_plan.json",
+      "sha256": "921d65f2bed8120996c184eecc458daf8a8b1f9b57a12a2f2c7a8975cd007720",
+      "code_sha256": {
+        "../../model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+        "../../model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+        "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+        "efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+        "evaluate_fixed_o2.R": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+        "neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+        "neighborhood_slurm.py": "fae27eee2b7f1bb5f8441fbb84b84cafb0d9d9bc10019e91a4132dcade07e4d7",
+        "perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+        "repair_eigen_points_safe.R": "8c54b507f7fc3262313699637e5fd848b4f7d00cde8f224f6dc1175f3bb5783c",
+        "resolution_4097.py": "d670e4090902d51ec9b12c6242d2afa8b964fea2ed0e85681f1d8b7ba9d35230",
+        "resolution_nm.py": "c2e54810f7c2fb9a13e21a028a24d922e2a2b1255060c6890165452750cbb262",
+        "resolution_pilot.py": "5e1107b3bcf31dde091c545c08b4d55dc155e53745982ed55bf9ed5e2925034d",
+        "resolution_pilot_smoke.R": "1d977d5c82e1d2f54638d41653f9b504cd781d2ea365ff468591c2f5244db581",
+        "run_resolution_4097.sbatch": "e62921d5a6ba8f80d512d22311713126e7dcdba9f84b96559208529c0e4f7131",
+        "run_resolution_nm.sbatch": "ca58703e53f3585e27d0c1d541022dd886d2524b429c2986c1c9b6a527fc6302",
+        "run_resolution_pilot.sbatch": "0e3b5d2727693a78fed84b49c8c495b93a66c2a8f034013c37ab9c6c3f628638",
+        "submit_resolution_4097.sh": "9284f8ac36358ffd836270d09b7033f4bbecc91502c109eef3b8c0e077ea1413",
+        "submit_resolution_nm.sh": "c5bc55de456fc3e35a7b8e6e211f86720fd4ca72afe42d99cf27bffd6a615ab7",
+        "submit_resolution_pilot.sh": "0344e07a61a25fe0279b19b4309dd40740441421e13bb25b06df852adc010549",
+        "test_resolution_4097.py": "91fe606c8caa3ce65dd9d0d97f9dff5ad0525f4c5e7e89a20c09311f995354ee",
+        "test_resolution_nm.py": "a977d42fb78bb227056625c3c1a0580e3bef139acfd278f13a5dfddbd7f78761",
+        "test_resolution_pilot.py": "9b51455fada1bb0dbaf8f57e36945523a448d51568138ecc5facba3f9ccd5e84"
+      }
+    }
+  },
+  "collector_sha256": "d88476b1471b661c67fb7f020717c8dac190747ccb65e3ad92e24cc1f1e8de58",
+  "output_hash_scope": "Original output receipt SHA256; complete local files must match after transfer",
+  "n_parameters_in_each_design": 14,
+  "diagnostic_focal_parameters": {
+    "seed25": [
+      "p_mis_base",
+      "mu_hp",
+      "O2_crit",
+      "buffer_beta"
+    ],
+    "seed138": [
+      "buffer_beta",
+      "buffer_smax",
+      "p_mis_base",
+      "mu_hp",
+      "O2_crit"
+    ],
+    "seed101": [
+      "buffer_beta",
+      "buffer_smax",
+      "p_mis_base",
+      "mu_hp",
+      "O2_crit"
+    ],
+    "seed174": [
+      "buffer_beta",
+      "buffer_smax",
+      "p_mis_base",
+      "mu_hp",
+      "O2_crit"
+    ]
+  },
+  "new_jobs_submitted": false
+}

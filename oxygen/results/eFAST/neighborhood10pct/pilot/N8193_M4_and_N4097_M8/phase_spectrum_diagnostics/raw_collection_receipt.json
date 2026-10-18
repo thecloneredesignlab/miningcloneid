@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-18T18:16:53.466635+00:00",
+  "n_source_files": 1148,
+  "total_bytes": 5385624163,
+  "n_trajectories": 190,
+  "raw_manifest_sha256": "8b5b783e40980d9f5872ffeb6ae16f8a7ab09b5cf15a748cc8befd3d12fd2a84",
+  "full_raw_output_SHA256_checked": true,
+  "new_jobs_submitted": false
+}

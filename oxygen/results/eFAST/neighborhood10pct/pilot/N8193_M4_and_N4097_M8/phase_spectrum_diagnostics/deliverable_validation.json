@@ -1,0 +1,45 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-18T18:25:26.558647+00:00",
+  "independent_full_fft_numeric_checks": 1140,
+  "independent_full_fft_max_absolute_difference": 4.551914400963142e-15,
+  "n_complete_representative_input_bin_groups": 190,
+  "n_raw_figure_source_response_rows": 122900,
+  "pdf_text_and_page_checks": [
+    {
+      "path": "figures/diagnostic_overview.pdf",
+      "pages": 1,
+      "text_characters": 1303
+    },
+    {
+      "path": "figures/phase_response_sequences.pdf",
+      "pages": 1,
+      "text_characters": 1156
+    },
+    {
+      "path": "figures/seed101_phase_spectrum.pdf",
+      "pages": 1,
+      "text_characters": 2458
+    },
+    {
+      "path": "figures/seed138_phase_spectrum.pdf",
+      "pages": 1,
+      "text_characters": 2472
+    },
+    {
+      "path": "figures/seed174_phase_spectrum.pdf",
+      "pages": 1,
+      "text_characters": 2481
+    },
+    {
+      "path": "figures/seed25_phase_spectrum.pdf",
+      "pages": 1,
+      "text_characters": 1983
+    }
+  ],
+  "visual_render_reviewed": true,
+  "visual_review_scope": "Six Poppler-rendered PDF pages manually inspected for labels, legends, clipping and layout",
+  "unit_tests": "4 passed: known sinusoid, independent full FFT, phase/design identity, undefined output rejection",
+  "no_new_model_evaluations": true,
+  "no_new_jobs_submitted": true
+}

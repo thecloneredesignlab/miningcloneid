@@ -1,0 +1,20 @@
+fit_seed	parameter	O2_pct	N_test	M_test	test_ST_range	selection
+seed25	p_mis_base	1.925	8193	4	0.16439386746228424	maximum test phase range within focus among fixed cached candidate O2 values
+seed25	mu_hp	0.75	8193	4	0.11392295527338758	maximum test phase range within focus among fixed cached candidate O2 values
+seed25	O2_crit	1.7750000000000001	8193	4	0.14380807756771308	maximum test phase range within focus among fixed cached candidate O2 values
+seed25	buffer_beta	4.3500000000000005	8193	4	0.047134243698041645	maximum test phase range within focus among fixed cached candidate O2 values
+seed138	buffer_beta	2.1	8193	4	0.09337627656509118	maximum test phase range within focus among fixed cached candidate O2 values
+seed138	buffer_smax	2.575	8193	4	0.4746779383755648	maximum test phase range within focus among fixed cached candidate O2 values
+seed138	p_mis_base	2.475	8193	4	0.4936496723243208	maximum test phase range within focus among fixed cached candidate O2 values
+seed138	mu_hp	1.625	8193	4	0.3499478555608878	maximum test phase range within focus among fixed cached candidate O2 values
+seed138	O2_crit	1.975	8193	4	0.48833783842577383	maximum test phase range within focus among fixed cached candidate O2 values
+seed101	buffer_beta	4.3500000000000005	4097	8	0.10765562913160176	maximum test phase range within focus among fixed cached candidate O2 values
+seed101	buffer_smax	4.025	4097	8	0.5450605372800682	maximum test phase range within focus among fixed cached candidate O2 values
+seed101	p_mis_base	4.025	4097	8	0.5588379601696062	maximum test phase range within focus among fixed cached candidate O2 values
+seed101	mu_hp	3.35	4097	8	0.41045236944393926	maximum test phase range within focus among fixed cached candidate O2 values
+seed101	O2_crit	4.95	4097	8	0.7649102368387413	maximum test phase range within focus among fixed cached candidate O2 values
+seed174	buffer_beta	0.0	4097	8	0.31236187599283205	maximum test phase range within focus among fixed cached candidate O2 values
+seed174	buffer_smax	0.55	4097	8	0.46379320160857196	maximum test phase range within focus among fixed cached candidate O2 values
+seed174	p_mis_base	0.42500000000000004	4097	8	0.5132794026306882	maximum test phase range within focus among fixed cached candidate O2 values
+seed174	mu_hp	0.55	4097	8	0.45316954449607405	maximum test phase range within focus among fixed cached candidate O2 values
+seed174	O2_crit	0.55	4097	8	0.6722606083399325	maximum test phase range within focus among fixed cached candidate O2 values

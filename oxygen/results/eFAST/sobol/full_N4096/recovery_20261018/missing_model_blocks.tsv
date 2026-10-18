@@ -1,0 +1,15 @@
+task_id	case_id	repeat	block	model_checkpoint
+25318	seed168	4	BA_O2_crit	False
+27551	seed183	4	AB_gamma_growth	False
+27552	seed183	4	AB_mu_hp	False
+33636	seed224	2	AB_buffer_smax	False
+33637	seed224	2	AB_buffer_beta	False
+41044	seed273	4	AB_p_misseg	False
+45450	seed302	5	B	False
+48408	seed322	4	BA_p_misseg	False
+53810	seed358	4	BA_buffer_smax	False
+63791	seed425	2	AB_gamma_growth	False
+68684	seed457	5	AB_O2_crit	False
+69826	seed465	3	BA_lam_max	False
+71559	seed477	1	AB_p_wgd	False
+74956	seed499	4	BA_lam_max	False

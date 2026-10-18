@@ -1,0 +1,31 @@
+{
+  "case": {
+    "case_index": 261,
+    "scope": "neighborhood10pct",
+    "case_id": "seed260",
+    "fit_seed": "seed260",
+    "bounds_sha256": "7b70696d318b1b8137d1c9dc56c5def018f22bc46027a536453e3fc2f999927c",
+    "best_params_sha256": "87467438388857009124fa8f1faaa875be7f86e21afad6b68da87aea862bce21",
+    "fit_config_sha256": "fc7aedaf628d0dbd2b21e3164bf62a63dbe54693ded2c2643ea9e170ebb2c2be",
+    "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+    "included_in_full_analysis": true
+  },
+  "legacy": {
+    "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/neighborhood10pct/full/seed260/indices_checkpoint.npz",
+    "sha256": "b271fbb6a88c82de93c4728d4b02148c2cbce571fb6e1bad22ad857cd07b855b",
+    "legacy_identity": "704374dc059dcc521c9f9005a503dffc2dc3eb4e49507b905d34a1dbcd227132",
+    "n_done": 1784,
+    "rejected_temporary": []
+  },
+  "checkpoint_sha256": "527034cd74ca83577e250792ea5872f5294d3a5e19123c69683c58c991e31cef",
+  "task_ids": [
+    4410,
+    4411,
+    4412,
+    4413,
+    4414,
+    4415,
+    4416,
+    4417
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "checked_utc": "2026-10-18T03:50:54.665474Z",
+  "queue_counts": {
+    "21126823|COMPLETING": 6,
+    "21126823|PENDING": 8849,
+    "21129868|PENDING": 1,
+    "21129867|PENDING": 54,
+    "21129866|PENDING": 1,
+    "21129865|PENDING": 1,
+    "21129864|PENDING": 355,
+    "21126824|PENDING": 156,
+    "21126823|RUNNING": 2984,
+    "21126822|RUNNING": 14
+  },
+  "resource_samples": [
+    {
+      "job_id": "21126822_25318",
+      "fields": {
+        "QOS": "xxlarge",
+        "TimeLimit": "12:00:00",
+        "ReqNodeList": "(null)",
+        "ExcNodeList": "(null)",
+        "NumCPUs": "1"
+      }
+    },
+    {
+      "job_id": "21126823_1",
+      "fields": {
+        "QOS": "xxlarge",
+        "TimeLimit": "12:00:00",
+        "ReqNodeList": "(null)",
+        "ExcNodeList": "(null)",
+        "NumCPUs": "1"
+      }
+    },
+    {
+      "job_id": "21126824_11904",
+      "fields": {
+        "QOS": "xxlarge",
+        "TimeLimit": "12:00:00",
+        "ReqNodeList": "(null)",
+        "ExcNodeList": "(null)",
+        "NumCPUs": "1"
+      }
+    }
+  ],
+  "all_submission_requests_xxlarge_12h": true,
+  "array_concurrency_cap_specified": false,
+  "failed_model_or_ready_shard_accounting_rows": [],
+  "completed_ready_shards": 70,
+  "internal_failure_records": 0,
+  "first_shard_has_saved_results": true
+}

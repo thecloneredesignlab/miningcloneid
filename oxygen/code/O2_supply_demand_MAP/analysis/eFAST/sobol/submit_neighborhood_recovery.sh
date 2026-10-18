@@ -11,13 +11,14 @@ flock -n 8 || { echo 'Recovery submission already active' >&2; exit 1; }
 snapshot="$rec/slurm/code_snapshot"
 revision=$(git -C "$repo" rev-parse HEAD)
 controller_revision=$revision
-if [[ "${SOBOL_RESUME_PREPARED:-0}" = 1 ]]; then
+if [[ "${SOBOL_RESUME_PREPARED:-0}" = 1 || "${SOBOL_RESUME_SUBMITTED:-0}" = 1 ]]; then
   [[ -d "$snapshot" && -s "$rec/slurm/submission_jobs.tsv" ]] || exit 1
-  prepare=$(python3 - "$rec/slurm/submission_jobs.tsv" <<'PY'
+  prepare=$(python3 - "$rec/slurm/submission_jobs.tsv" "${SOBOL_RESUME_SUBMITTED:-0}" <<'PY'
 import csv,sys
 with open(sys.argv[1]) as h: rows=list(csv.DictReader(h,delimiter='\t'))
-if len(rows)!=1 or rows[0]['role']!='prepare':
-    raise SystemExit('Prepared-only resume requires exactly one preparation job; no computation may have been submitted')
+expected=['prepare','model','shard','shard'] if sys.argv[2]=='1' else ['prepare']
+if [r['role'] for r in rows]!=expected:
+    raise SystemExit('Resume ledger does not match the exact completed submission prefix')
 print(rows[0]['job_id'])
 PY
 )
@@ -48,7 +49,7 @@ submit() {
   echo "Submitted $role $job" >&2
   printf '%s' "$job"
 }
-if [[ "${SOBOL_RESUME_PREPARED:-0}" != 1 ]]; then prepare=$(submit prepare '' 8G ''); fi
+if [[ "${SOBOL_RESUME_PREPARED:-0}" != 1 && "${SOBOL_RESUME_SUBMITTED:-0}" != 1 ]]; then prepare=$(submit prepare '' 8G ''); fi
 while :; do
   state=$(sacct -X -n -P -j "$prepare" --format=State | head -1 | cut -d '|' -f 1)
   case "$state" in
@@ -82,10 +83,25 @@ p=json.load(open(sys.argv[1]))
 print(p['n_ready_tasks'],len(p['tasks']),len(p['cases']),','.join(str(x['task_id']) for x in p['model_tasks']))
 PY
 )
-model=$(submit model "$model_ids" 4G '')
-ready_job=$(submit shard "1-$ready" 8G '')
-waiting_job=$(submit shard "$((ready+1))-$total" 8G "afterok:$model")
-cases=$(submit case "1-$seeds" 8G "afterany:$ready_job:$waiting_job")
+if [[ "${SOBOL_RESUME_SUBMITTED:-0}" = 1 ]]; then
+  read -r model ready_job waiting_job < <(python3 - "$rec/slurm/submission_jobs.tsv" "$rec/plan.json" <<'PY'
+import csv,json,sys
+with open(sys.argv[1]) as h: rows=list(csv.DictReader(h,delimiter='\t'))
+with open(sys.argv[2]) as h: p=json.load(h)
+expected=[','.join(str(x['task_id']) for x in p['model_tasks']),
+          '1-%d'%p['n_ready_tasks'],'%d-%d'%(p['n_ready_tasks']+1,len(p['tasks']))]
+if [x['array_spec'] for x in rows[1:]]!=expected:
+    raise SystemExit('Existing arrays differ from the authorized plan')
+print(' '.join(r['job_id'] for r in rows[1:]))
+PY
+)
+else
+  model=$(submit model "$model_ids" 4G '')
+  ready_job=$(submit shard "1-$ready" 8G '')
+  waiting_job=$(submit shard "$((ready+1))-$total" 8G "afterok:$model")
+fi
+# Quote the role: older RED Bash misparses a bare case token inside $(...).
+cases=$(submit 'case' "1-$seeds" 8G "afterany:$ready_job:$waiting_job")
 audit=$(submit audit '' 8G "afterany:$cases")
 aggregate=$(submit aggregate '' 16G "afterok:$audit")
 responses=$(submit response 1-54 4G "afterok:$aggregate")

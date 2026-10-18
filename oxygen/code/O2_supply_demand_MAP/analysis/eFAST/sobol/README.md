@@ -319,3 +319,8 @@ requires a ledger containing exactly the existing preparation job and preserves
 its snapshot/checkpoints. The driver waits for shared-filesystem visibility of
 the complete plan rather than rerunning preparation. Runtime and controller
 Git revisions are recorded separately.
+
+If the ledger contains exactly preparation, model, ready-shard and waiting-shard
+rows, `SOBOL_RESUME_SUBMITTED=1` continues only the missing downstream stages.
+It validates the existing array specifications against the plan and retains
+their job IDs. The quoted `'case'` role is required by RED's older Bash parser.

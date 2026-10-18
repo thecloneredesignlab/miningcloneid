@@ -125,7 +125,12 @@ def plot_indices(values,oxygen,directory,title,fraction=None):
             ax.set_xticks(ticks,[format(oxygen[i],'.2g') for i in ticks]); ax.set_xlabel('Oxygen (%)')
             ax.set_yticks(range(len(labels)),labels,fontsize=7)
             ax.set_title('Dominant mean ploidy' if k==0 else 'Net live-cell growth rate')
-            fig.colorbar(image,ax=ax,orientation='horizontal',pad=.025,fraction=.025,label=index+' (raw estimates; blue = negative sampling estimates)')
+            colorbar=fig.colorbar(image,ax=ax,orientation='horizontal',pad=.025,fraction=.025,label=index+' (raw estimates; blue = negative sampling estimates)')
+            # TwoSlopeNorm gives each sign half of the short bar. Endpoint/zero
+            # ticks stay legible even when automatic ticks crowd one half.
+            color_ticks=[lo,0.,hi] if lo<0 else [0.,hi/2,hi]
+            colorbar.set_ticks(color_ticks)
+            colorbar.set_ticklabels([format(value,'.3g') for value in color_ticks])
         fig.suptitle(title+'; N4096\nAll estimates retained; gray = undefined; diagnostics in source tables',fontsize=11)
         name='s2_pair_by_oxygen' if index=='S2' else index.lower()+'_parameter_by_oxygen'
         fig.savefig(directory/(name+'.pdf')); fig.savefig(directory/(name+'.png'),dpi=120); plt.close(fig)

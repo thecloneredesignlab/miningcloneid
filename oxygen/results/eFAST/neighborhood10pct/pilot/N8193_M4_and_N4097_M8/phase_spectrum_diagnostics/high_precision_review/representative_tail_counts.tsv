@@ -1,0 +1,16 @@
+fit_seed	N	M	replicate	parameter	O2_pct	tail_definition	n_samples	n_tail	tail_fraction	n_tail_points_in_this_precision_review	scope
+seed138	8193	4	1	p_mis_base	2.475	ploidy>=6.5	8193	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed138	8193	4	2	p_mis_base	2.475	ploidy>=6.5	8193	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed138	8193	4	3	p_mis_base	2.475	ploidy>=6.5	8193	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed138	8193	4	4	p_mis_base	2.475	ploidy>=6.5	8193	2	0.00024411082631514708	2	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed138	8193	4	5	p_mis_base	2.475	ploidy>=6.5	8193	3	0.0003661662394727206	3	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed101	4097	8	1	p_mis_base	4.025	ploidy>=6.5	4097	1	0.000244081034903588	1	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed101	4097	8	2	p_mis_base	4.025	ploidy>=6.5	4097	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed101	4097	8	3	p_mis_base	4.025	ploidy>=6.5	4097	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed101	4097	8	4	p_mis_base	4.025	ploidy>=6.5	4097	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed101	4097	8	5	p_mis_base	4.025	ploidy>=6.5	4097	0	0.0	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed174	4097	8	1	O2_crit	0.55	ploidy>1.01	4097	132	0.03221869660727361	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed174	4097	8	2	O2_crit	0.55	ploidy>1.01	4097	135	0.03295093971198438	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed174	4097	8	3	O2_crit	0.55	ploidy>1.01	4097	188	0.04588723456187454	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed174	4097	8	4	O2_crit	0.55	ploidy>1.01	4097	135	0.03295093971198438	0	Descriptive existing sequence counts; only stated covered points were precision reevaluated
+seed174	4097	8	5	O2_crit	0.55	ploidy>1.01	4097	34	0.008298755186721992	3	Descriptive existing sequence counts; only stated covered points were precision reevaluated

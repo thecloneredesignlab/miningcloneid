@@ -1,0 +1,29 @@
+role=smoke host=hpctpa3pc0024 job=21140097 start=2026-10-18T14:55:21-04:00
+Known-root, tiny-component and invalid-matrix checks passed
+[1] TRUE
+Completed point 15 ploidy double 6.6818181754721246 elapsed 0.62800000000000011 1.4190000000000005 
+[1] TRUE
+Completed point 12 ploidy double 1.1376053348985942 elapsed 0.72599999999999998 1.5919999999999996 
+[1] TRUE
+Completed point 256 ploidy double 6.9999999999966569 elapsed 0.54800000000000004 1.1149999999999998 
+[1] TRUE
+Completed point 258 ploidy double 1.156934659912622 elapsed 0.52499999999999991 1.1400000000000001 
+[1] TRUE
+Completed point 393 ploidy double 2.29301959460475 elapsed 0.36699999999999999 0.77400000000000002 
+[1] TRUE
+Completed point 391 ploidy double 1.005186214333281 elapsed 0.28000000000000025 0.625 
+Known-root, tiny-component and invalid-matrix checks passed
+{
+  "status": "passed",
+  "n_points": 6,
+  "n_precision_verified": 6,
+  "classifications": {
+    "high_ploidy_retained": 2,
+    "response_retained": 4
+  },
+  "selection_sha256": "23cf52385a96127416099c197ac63695efdc2b8f30f4ead348d54c19521ad6d1",
+  "point_manifest_sha256": "328499de527ad5577fb4fa13fed6a5bec39eee21f942fac425d037e8b20d193f",
+  "new_FAST_samples": 0,
+  "note": "Workflow completeness is separate from per-point precision convergence and original-double agreement"
+}
+Completed at 2026-10-18T14:56:16-04:00

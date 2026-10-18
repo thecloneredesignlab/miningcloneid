@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "n_points": 401,
+  "n_precision_verified": 401,
+  "independent_matrix_residual_checks": 1604,
+  "pdf_checks": [
+    {
+      "path": "figures/complete_vectors.pdf",
+      "pages": 1,
+      "text_characters": 1634
+    },
+    {
+      "path": "figures/oxygen_neighbors.pdf",
+      "pages": 1,
+      "text_characters": 413
+    },
+    {
+      "path": "figures/ploidy_before_after.pdf",
+      "pages": 1,
+      "text_characters": 328
+    },
+    {
+      "path": "figures/residuals_normalization.pdf",
+      "pages": 1,
+      "text_characters": 1104
+    }
+  ],
+  "visual_render_reviewed": true,
+  "unit_tests_passed": 3,
+  "cache_relocation_smoke": "passed",
+  "new_FAST_samples": 0,
+  "N_or_M_increased": false,
+  "original_sensitivity_outputs_modified": false,
+  "precision_scope": "50/100-digit eigensolves of original fixed double matrices; decimal vectors retained",
+  "historical_failures": "21139700 mathematical fixture; 21139702 cache loading; both preserved and superseded"
+}

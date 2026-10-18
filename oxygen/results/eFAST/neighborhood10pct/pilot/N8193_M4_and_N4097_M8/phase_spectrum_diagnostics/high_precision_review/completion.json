@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "n_points": 401,
+  "n_precision_verified": 401,
+  "classifications": {
+    "high_ploidy_retained": 265,
+    "response_retained": 136
+  },
+  "selection_sha256": "23cf52385a96127416099c197ac63695efdc2b8f30f4ead348d54c19521ad6d1",
+  "point_manifest_sha256": "328499de527ad5577fb4fa13fed6a5bec39eee21f942fac425d037e8b20d193f",
+  "new_FAST_samples": 0,
+  "note": "Workflow completeness is separate from per-point precision convergence and original-double agreement"
+}

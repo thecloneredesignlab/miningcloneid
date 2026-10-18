@@ -1,0 +1,6 @@
+role=main host=hpctpa3pc0003 job=21139775 start=2026-10-18T14:53:23-04:00
+Error: file io error: '/tmp/efast_precision_21139701_0.DRvPbU/perron/sourceCpp-x86_64-pc-linux-gnu-1.1.1.1.1/sourcecpp_2b5305ae515ec/perron_review.cpp'
+In addition: Warning message:
+In file.create(to[okay]) :
+  cannot create file '/tmp/efast_precision_21139701_0.DRvPbU/perron/sourceCpp-x86_64-pc-linux-gnu-1.1.1.1.1/sourcecpp_2b5305ae515ec/perron_review.cpp', reason 'No such file or directory'
+Execution halted

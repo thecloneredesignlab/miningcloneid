@@ -1,0 +1,3 @@
+role=smoke host=hpctpa3pc0024 job=21139700 start=2026-10-18T14:47:21-04:00
+Error: as.numeric(v$vector_decimal[[2L]]) < 1e-90 is not TRUE
+Execution halted

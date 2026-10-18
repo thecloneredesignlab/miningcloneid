@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "n_files": 4481,
+  "n_bytes": 158732442,
+  "complete_final_point_count": 401,
+  "n_main_completed_exit0": 395,
+  "n_smoke_completed_points": 6,
+  "all_runtime_jobs_match_accounting": true,
+  "n_prior_phase_artifacts_preserved": 43,
+  "main_job": "21140098",
+  "smoke_job": "21140097",
+  "failed_history_retained": true
+}

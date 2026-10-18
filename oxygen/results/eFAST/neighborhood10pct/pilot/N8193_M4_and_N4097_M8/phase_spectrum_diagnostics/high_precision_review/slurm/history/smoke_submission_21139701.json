@@ -1,0 +1,33 @@
+{
+  "job_id": "21139701",
+  "role": "smoke",
+  "array_ids": [],
+  "command": [
+    "sbatch",
+    "--parsable",
+    "--qos=xxlarge",
+    "--time=12:00:00",
+    "--cpus-per-task=1",
+    "--mem=4G",
+    "--job-name=efast_hp_smoke",
+    "--export=ALL,REVIEW_ROLE=smoke",
+    "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/high_precision_review/slurm/smoke_%A_%a.out",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/high_precision_review/run.sbatch"
+  ],
+  "git_commit": "511cb1e7a5fcbbc984c1bb63bce65db062656ba7",
+  "selection_sha256": "76de8ae6c555024ee6c60d4853293605486ebb0bb8050bdb29a5f19140b0c223",
+  "code_sha256": {
+    "fixtures.R": "bdf9e5c05edf0fd17a629b37212fa3013db1ea0ba974ebe7f9d299f5a8e969b8",
+    "perron_review.cpp": "ed5bf3e1ccc416c895eb9a5059c50fe5e85c01a4aaab93575e013c1470540c19",
+    "point.R": "356f0bdfea0c6953002b67e74249acd175823a7edae0b1268620b630ba71eb5f",
+    "review.py": "48f669316cc185eb5490abbbda8281875f5470b659a9032f73e05a7e4e8391fe",
+    "run.sbatch": "40359ffeae2536bf4e2095d212747701ff5e257ab94c5a16bd91da8814d928b3",
+    "submit.py": "c3042301b319b8f072ff0633cdcb3c4f1a47a13cc7d2a292fb960ca0600619a7",
+    "test_review.py": "30fe4bf858b5103ce484b1455a46ebde7a7074bc72492823bf1f3af6fe2e89e7"
+  },
+  "qos": "xxlarge",
+  "time": "12:00:00",
+  "specified_node": null,
+  "array_concurrency_limit": null,
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad"
+}

@@ -1,0 +1,4 @@
+role=main host=hpctpa3pc0062 job=21140420 start=2026-10-18T14:57:44-04:00
+[1] TRUE
+Completed point 326 ploidy double 6.9999999999999289 elapsed 0.61300000000000043 1.2979999999999992 
+Completed at 2026-10-18T14:57:50-04:00

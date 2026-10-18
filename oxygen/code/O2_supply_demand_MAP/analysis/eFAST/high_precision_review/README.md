@@ -42,6 +42,8 @@ Slurm: qos=xxlarge, 12 hours, one CPU and 4 GB per point, no specified node and
 no array-concurrency cap. The six smoke points are reused by the main collection.
 Compiled code is shared through a smoke-built archive and copied to each task's
 scratch. The submitted selection/code hashes must match the prepared snapshot.
+The cache has a stable container bind target, and smoke explicitly reloads it
+from a different scratch directory before main-array submission.
 
 Each point has original-vs-high-precision results, full vectors, matrix/context
 RDS, text matrix, residuals, graph information, timing, host, job and hashes.

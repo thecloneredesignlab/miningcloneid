@@ -1,0 +1,18 @@
+{
+  "status": "complete",
+  "n_files": 4481,
+  "n_bytes": 158732442,
+  "excluded_compiled_archives": [
+    {
+      "path": "compiled_review_template.tar.gz",
+      "bytes": 1834883,
+      "sha256": "ed17f89d2aa614fd3c4dd374761481aa650a4ba64bb98e8f50983c5f286a5fcc"
+    },
+    {
+      "path": "history/smoke_21139701/compiled_review_template.tar.gz",
+      "bytes": 1835467,
+      "sha256": "dee3ba75f653035e8bdb7da212a6af859825e1a0e9d72791a2fef0946b65a1e0"
+    }
+  ],
+  "manifest_sha256": "fccbc45f2f249d2f4ddb4deab3109c8ee0c245237845dadfa068dd6166c38a54"
+}

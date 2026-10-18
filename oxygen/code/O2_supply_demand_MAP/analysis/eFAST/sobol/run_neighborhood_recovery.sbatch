@@ -9,23 +9,8 @@ scratch=$(mktemp -d "${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/sobol_resume_${SLURM_JOB_I
 trap 'rm -rf "$scratch"' EXIT
 trap 'exit 143' TERM INT
 
-# Retry only the known Apptainer startup failure, before Python/model execution.
-launch() {
-  local attempt rc
-  for attempt in 1 2 3; do
-    set +e
-    "$@" 2>&1 | tee "$scratch/launch.log"
-    rc=${PIPESTATUS[0]}
-    set -e
-    [[ "$rc" = 0 ]] && return 0
-    if ! grep -q 'Couldn.t determine user account information: user: unknown userid' "$scratch/launch.log"; then
-      return "$rc"
-    fi
-    echo "Container user lookup failed before execution; attempt $attempt/3" >&2
-    [[ "$attempt" = 3 ]] || sleep "$((attempt*10))"
-  done
-  return "$rc"
-}
+# Operational launch helper is versioned separately from the frozen analysis.
+source "$(dirname -- "${BASH_SOURCE[0]}")/retry_container_startup.sh"
 
 echo "recovery role=$SOBOL_ROLE job=$SLURM_JOB_ID task=${SLURM_ARRAY_TASK_ID:-none} host=$(hostname -s) start=$(date -Is)"
 getent passwd "$(id -u)" || true

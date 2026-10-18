@@ -324,3 +324,40 @@ If the ledger contains exactly preparation, model, ready-shard and waiting-shard
 rows, `SOBOL_RESUME_SUBMITTED=1` continues only the missing downstream stages.
 It validates the existing array specifications against the plan and retains
 their job IDs. The quoted `'case'` role is required by RED's older Bash parser.
+
+### Restore only shard 5734 and seed283
+
+`submit_retry5734.py` restores the remaining 16 oxygen points in repeat 2 of
+seed283, then case task 173, the all-case audit, aggregation, the 54 response
+surfaces and final reporting. It requires that exactly shard 5734 and seed283
+are incomplete. It certifies 12,058 existing shards, 499 neighborhoods, the
+completed global analysis and the 14 repaired model blocks before submission.
+The original recovery plan, caches and frozen analysis source remain the inputs.
+
+The new operational launcher retries both observed `FATAL: ... user: unknown
+userid` variants, up to six attempts with 15/30/60/120/120-second backoff. Other
+errors exit immediately. `test_retry5734.py` exercises these real shell paths
+using simulated container failures; no scientific calculation is run by it.
+
+On RED, after committing and syncing the branch:
+
+```bash
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_retry5734.py prepare
+```
+
+Run `test_retry5734.py` and `test_time_extension.py` in the newly frozen
+`recovery_20261018/retry5734/slurm/code_snapshot/` directory, then launch
+`submit_retry5734.py submit` with `nohup` and a persistent log. The first shard
+is initially held. Six scoped monitors are registered from the new job ledger
+and started before release. Their `targets.json` registry prevents extension
+of unrelated jobs. They use small/1 CPU/1G with 30-day-12-hour walltime, check
+every five minutes and add six hours below six hours remaining. Monitor handover
+and exact internal array-task ID readback are retained from the original monitor.
+
+After replacement registration, only blocked jobs 21129866/21129867/21129868
+and their monitors 21138286/21138287/21138288 are cancelled. All new analysis
+stages use xxlarge/12 hours/1 CPU, success dependencies, no requested node and
+no array concurrency cap. The driver has a submission lock and a prefix ledger
+so restarting it does not duplicate already submitted stages. Provenance,
+initial completion hashes, logs and job mappings are in
+`recovery_20261018/retry5734/`. Scientific results retain their canonical paths.

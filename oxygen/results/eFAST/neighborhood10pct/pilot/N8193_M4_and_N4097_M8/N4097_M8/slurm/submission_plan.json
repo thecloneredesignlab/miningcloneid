@@ -1,0 +1,115 @@
+{
+  "M": 8,
+  "archives": {
+    "perron_safe_template.tar.gz": {
+      "bytes": 1802305,
+      "mtime_ns": 1791600408262801000,
+      "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/slurm/perron_safe_template.tar.gz",
+      "sha256": "427b6dd7b24e5fde65612c4523adf185bbd0e6c7fb0643d323ab7e803160c2f5"
+    },
+    "rcpp_template.tar.gz": {
+      "bytes": 2853302,
+      "mtime_ns": 1791569238200248000,
+      "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/slurm/rcpp_template.tar.gz",
+      "sha256": "abef1512ec14ea81474faead226c9601c9e0e7b8eb830bb2521d5a7c12323307"
+    }
+  },
+  "array_concurrency_limit": null,
+  "baseline_config": {
+    "M": 4,
+    "N": 4097
+  },
+  "baseline_dir": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct",
+  "baseline_input_manifest_sha256": "8064b46a84c51ea2e531296f2e44312c8d556164fbc36332b31ed74481dbd6a9",
+  "code_sha256": {
+    "../../model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+    "../../model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+    "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+    "efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+    "evaluate_fixed_o2.R": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+    "neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+    "neighborhood_slurm.py": "fae27eee2b7f1bb5f8441fbb84b84cafb0d9d9bc10019e91a4132dcade07e4d7",
+    "perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+    "repair_eigen_points_safe.R": "8c54b507f7fc3262313699637e5fd848b4f7d00cde8f224f6dc1175f3bb5783c",
+    "resolution_4097.py": "d670e4090902d51ec9b12c6242d2afa8b964fea2ed0e85681f1d8b7ba9d35230",
+    "resolution_nm.py": "c2e54810f7c2fb9a13e21a028a24d922e2a2b1255060c6890165452750cbb262",
+    "resolution_pilot.py": "5e1107b3bcf31dde091c545c08b4d55dc155e53745982ed55bf9ed5e2925034d",
+    "resolution_pilot_smoke.R": "1d977d5c82e1d2f54638d41653f9b504cd781d2ea365ff468591c2f5244db581",
+    "run_resolution_4097.sbatch": "e62921d5a6ba8f80d512d22311713126e7dcdba9f84b96559208529c0e4f7131",
+    "run_resolution_nm.sbatch": "ca58703e53f3585e27d0c1d541022dd886d2524b429c2986c1c9b6a527fc6302",
+    "run_resolution_pilot.sbatch": "0e3b5d2727693a78fed84b49c8c495b93a66c2a8f034013c37ab9c6c3f628638",
+    "submit_resolution_4097.sh": "9284f8ac36358ffd836270d09b7033f4bbecc91502c109eef3b8c0e077ea1413",
+    "submit_resolution_nm.sh": "c5bc55de456fc3e35a7b8e6e211f86720fd4ca72afe42d99cf27bffd6a615ab7",
+    "submit_resolution_pilot.sh": "0344e07a61a25fe0279b19b4309dd40740441421e13bb25b06df852adc010549",
+    "test_resolution_4097.py": "91fe606c8caa3ce65dd9d0d97f9dff5ad0525f4c5e7e89a20c09311f995354ee",
+    "test_resolution_nm.py": "a977d42fb78bb227056625c3c1a0580e3bef139acfd278f13a5dfddbd7f78761",
+    "test_resolution_pilot.py": "9b51455fada1bb0dbaf8f57e36945523a448d51568138ecc5facba3f9ccd5e84"
+  },
+  "comparison_indices_sha256": "ca0f26130ac5922cfaae3cd9c4197c100ccf0a3c8fcc511ffd99de0808ee1581",
+  "comparison_kind": "M_robustness",
+  "comparison_source_sha256": {
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/baseline_indices.npz": "3cbd358e0f0dad8edcd25a0484ee7b725b82935de068b965d0958ce62f1d1aa0",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/completion.json": "a6ea819a8d3a23f24aadbed309efe08c66fab2a7ad035bb3a95aaa200eeec44a",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/seed_selection.tsv": "d7840ade0a56735a87705a48e554eb86393f9e0d6242291e914863629a80cc50",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/slurm/submission_plan.json": "4e254547b3fb85a1b57bd1e7b2e9e02c18fa8b3edf6c9e4371690d5b9d89ab4d",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed101_N4097.npz": "002cb13d234b64bbcd30d8e94796c883902700f1c53d6a7e50942337f27777a0",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed101_N4097.receipt.json": "7207e5b814f213d795b1bb577dbeb71ce66ead61d93d56e4fbbb043752bee3f1",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed101_N4097_repeat_diagnostics.tsv": "159d5de76e5b0333b3be2f148b83e81e12c101c6d214ff0766418a759fe1e033",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed174_N4097.npz": "2f7a54ba7c81e8db6c208c4a01bbf7792cf3c2fabdca6f97a92004dfc38523b5",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed174_N4097.receipt.json": "5c87da3a96e7136e46049793e36b764283e2bc20bb1572eb86bfb527d83a0f62",
+    "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed174_N4097_repeat_diagnostics.tsv": "fe2a5e6ea7426625a245863e765a479df6746bdfd76f10674f786df926693aa0"
+  },
+  "config": "N4097_M8",
+  "contextual_baseline_config": {
+    "M": 4,
+    "N": 2049
+  },
+  "convergence_policy": "diagnostic_only",
+  "figure4_dir": "/share/lab_crd/taoli/Project/HypoxiaLTEEFigures/revised/iteration4/data/Figures/Figure4",
+  "final_cpus": 4,
+  "final_mem": "32G",
+  "fit_root": "/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253",
+  "fit_seeds": [
+    "seed101",
+    "seed174"
+  ],
+  "git_commit": "9cea6b22feee20cae9dea2cc64467c8b2199bc05",
+  "granularity": "seed x N x phase x one complete focal FAST trajectory; all 201 oxygen points",
+  "key_parameters": [
+    "buffer_beta",
+    "buffer_smax",
+    "p_mis_base",
+    "mu_hp",
+    "O2_crit"
+  ],
+  "n_oxygen": 201,
+  "n_parameters": 14,
+  "n_phases": 5,
+  "n_seeds": 2,
+  "n_summaries": 2,
+  "n_tasks": 140,
+  "prepared_utc": "2026-10-18T06:19:50.151838+00:00",
+  "previous_pilot_dir": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N4097",
+  "qos": "xxlarge",
+  "repeat_range_p90_threshold": 0.1,
+  "resolution_delta_p90_threshold": 0.05,
+  "resolutions": [
+    4097
+  ],
+  "result_root": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N4097_M8",
+  "scope": "two selected diagnostic endpoints per configuration; all 14 parameters; no population estimate",
+  "seed_selection_sha256": "0a2a0e36a6189d4940e67df0e162fbeff6d42d67ba4725d76bbdd26d2fad401d",
+  "sif": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+  "sif_bytes": 4968341504,
+  "sif_mtime_ns": 1790179231988363000,
+  "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "specified_compute_node": null,
+  "summary_cpus": 1,
+  "summary_manifest_sha256": "9206a28481ee991a8ddb026b5b6228d44ae5e4dd836aec58283c9b4f2fd9e0a6",
+  "summary_mem": "8G",
+  "task_manifest_sha256": "19c621e5b92f8ee831d375320b7c7e276870fe2cbb3f689fe5cb934f99d55c55",
+  "tasks_cpus": 1,
+  "tasks_mem": "4G",
+  "time": "12:00:00",
+  "total_operator_evaluations": 115289580
+}

@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-18T06:19:31.213638+00:00",
+  "git_commit": "9cea6b22feee20cae9dea2cc64467c8b2199bc05",
+  "python": "3.9.25 (main, Dec 18 2025, 08:36:10) \n[GCC 8.5.0 20210514 (Red Hat 8.5.0-28)]",
+  "salib_version": "1.5.2",
+  "tests_total": 9,
+  "tests_passed": 9,
+  "tests_skipped": 0,
+  "log": "test_Fourier_recovery_diagnostic_uses_M8_frequency (test_resolution_nm.NMChecks) ... ok\ntest_M_comparison_never_labelled_N_convergence_and_local_max_retained (test_resolution_nm.NMChecks) ... ok\ntest_actual_trajectory_analyzer_matches_M8_orders_and_undefined_policy (test_resolution_nm.NMChecks) ... ok\ntest_frequency_depends_on_M (test_resolution_nm.NMChecks) ... ok\ntest_full_sampler_and_SALib_analyzer_known_variance_fractions (test_resolution_nm.NMChecks) ... ok\ntest_prepared_signature_and_parent_identity_include_M (test_resolution_nm.NMChecks) ... ok\ntest_scope_and_phase_mapping (test_resolution_nm.NMChecks) ... ok\ntest_submit_resources_dependencies_and_idempotency (test_resolution_nm.NMChecks) ... ok\ntest_targeted_fallback_M8_impact_has_no_spurious_frequency_change (test_resolution_nm.NMChecks) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 2.668s\n\nOK\n",
+  "log_sha256": "8e474807a9341776894c475f609999cb56ae5018f8b4b66b4a94e49aa02091bc",
+  "source_sha256": {
+    "resolution_nm.py": "c2e54810f7c2fb9a13e21a028a24d922e2a2b1255060c6890165452750cbb262",
+    "test_resolution_nm.py": "a977d42fb78bb227056625c3c1a0580e3bef139acfd278f13a5dfddbd7f78761",
+    "submit_resolution_nm.sh": "c5bc55de456fc3e35a7b8e6e211f86720fd4ca72afe42d99cf27bffd6a615ab7",
+    "run_resolution_nm.sbatch": "ca58703e53f3585e27d0c1d541022dd886d2524b429c2986c1c9b6a527fc6302"
+  },
+  "model_smoke_status": "not_yet_run; submitted separately to compute nodes"
+}

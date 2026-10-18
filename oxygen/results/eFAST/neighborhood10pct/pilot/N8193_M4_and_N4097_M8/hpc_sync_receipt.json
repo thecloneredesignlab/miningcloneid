@@ -1,0 +1,219 @@
+{
+  "target": "9cea6b22feee20cae9dea2cc64467c8b2199bc05",
+  "adopted": [
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/band_rank_mechanism_comparison.tsv",
+      "mode": "100644",
+      "blob": "4b68e8d429857519bd493d9a1354404183d9a456"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/band_rank_mechanism_stability.tsv",
+      "mode": "100644",
+      "blob": "2d6fef171ec5d2ef094c7ad375e35810096ab257"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/completed_results_manifest.tsv",
+      "mode": "100644",
+      "blob": "869d90b3db63d764b33b8474e8531cae5d687d17"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/completion.json",
+      "mode": "100644",
+      "blob": "f1aba8c77ab3a0a7e3901ee14004bb557ca62128"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/figures/growth_ST_resolution_comparison.pdf",
+      "mode": "100644",
+      "blob": "37efb9b69073ca82548402eef9edb1e0113adb5d"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/figures/growth_ST_resolution_comparison.png",
+      "mode": "100644",
+      "blob": "d58b105fe4fb8f2d4379be577d1bb3abbccfb0ca"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/figures/ploidy_ST_convergence_overview.pdf",
+      "mode": "100644",
+      "blob": "f5a5ff36fb1900bc5d14613855747a8b68b304e9"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/figures/ploidy_ST_convergence_overview.png",
+      "mode": "100644",
+      "blob": "7e7b4ea9fea6abd63920348ec55650de10728e70"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/figures/ploidy_ST_resolution_comparison.pdf",
+      "mode": "100644",
+      "blob": "74bb67dd0af29290392b011fcae104e748a9410e"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/figures/ploidy_ST_resolution_comparison.png",
+      "mode": "100644",
+      "blob": "cc93816e8cd7605b4e347ed13f82d9288f688134"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/key_ploidy_ST_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "3b14dbe343cbbe704a046115337915c20b994066"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/key_ploidy_ST_resolution_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "fc0d981c280516fd98c8201d75f6ea7685b0b415"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/oxygen_curve_summary.tsv.gz",
+      "mode": "100644",
+      "blob": "f57632f5182a2f2aac1408699298247bd7ca8b13"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "973df492f6c4a04e1d127e650aa5aaeadfdf2f20"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/resolution_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "dca13d60d09684aa632a7772463e782ab139c3ff"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/slurm/completed_hpc_audit.json",
+      "mode": "100644",
+      "blob": "8262cce7c8a11d952ca12bfce8236d88cbcb3a87"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/slurm/completed_slurm_accounting.tsv",
+      "mode": "100644",
+      "blob": "8b49b87f270a390b3c2295c52780ee30307654cf"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/slurm/completed_trajectory_audit.tsv",
+      "mode": "100644",
+      "blob": "0f49e524344666d67f9e26578376d163c73800f8"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/slurm/status.json",
+      "mode": "100644",
+      "blob": "807d7dcfd8f017a710532900967dde71640a1eef"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/smoke/perron_validation.json",
+      "mode": "100644",
+      "blob": "dbf189a90e5a1ae3aa1a7ed98083e78c15813e17"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/smoke/smoke_receipt.json",
+      "mode": "100644",
+      "blob": "1abe8c54cb695f8d9ace2e7d0fee4429123c2c10"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/spectral_gap_summary.tsv",
+      "mode": "100644",
+      "blob": "5034af01b1fc148cab904dbdfd813db6f0889267"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed101_N4097.npz",
+      "mode": "100644",
+      "blob": "92894e9867320c2413922b6728ad48b143fab057"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed101_N4097.receipt.json",
+      "mode": "100644",
+      "blob": "4cf10e92b4512ab302fdbc4e4d9e2108cf511d0c"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed101_N4097_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "68d57feac0345171cf05fe27f444d4099e1783c0"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed138_N4097.npz",
+      "mode": "100644",
+      "blob": "241fcdd66ef6637d2f12fdfcc1125bcffe956e81"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed138_N4097.receipt.json",
+      "mode": "100644",
+      "blob": "059a04b160ece34d880cf2f53a65ff365b445013"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed138_N4097_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "a4e7a43594722aba2cd6c2238db4a7cbe4e9ed74"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed174_N4097.npz",
+      "mode": "100644",
+      "blob": "e63a8aaf278cb595160cfd39b1d085308d3cf9ea"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed174_N4097.receipt.json",
+      "mode": "100644",
+      "blob": "143c73387417cfa8dfa2001589b766f7724dada0"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed174_N4097_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "23b87e283dad3ae1d47cf63f21ec68b3a110990d"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed25_N4097.npz",
+      "mode": "100644",
+      "blob": "b1b71610ebf398ff731e51724a00bf811c4b5aef"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed25_N4097.receipt.json",
+      "mode": "100644",
+      "blob": "59b145a06069441d5411006335ca7b7b06dfd085"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed25_N4097_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "c8b8e8944cb8efc9d224fe55d4fc5fe401825962"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed311_N4097.npz",
+      "mode": "100644",
+      "blob": "968f1cae9289482ef4e381ef253c9cd270fdec4a"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed311_N4097.receipt.json",
+      "mode": "100644",
+      "blob": "c6fa42bbba0793eefe866a004ef9a1ea56c5d788"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed311_N4097_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "db26c8e132962c729bce0b26ab0f18a0a36c4b9e"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed66_N4097.npz",
+      "mode": "100644",
+      "blob": "f7553e961f1825629c11a9bc57fb74f77f7ae59d"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed66_N4097.receipt.json",
+      "mode": "100644",
+      "blob": "a522f7094dfa12c147a60090be8c305200195ac3"
+    },
+    {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N4097/summaries/seed66_N4097_repeat_diagnostics.tsv",
+      "mode": "100644",
+      "blob": "769aa2128459e5437dc63459050a8acda73a7e83"
+    }
+  ],
+  "synchronized_commit": "9cea6b22feee20cae9dea2cc64467c8b2199bc05",
+  "checked_utc": "2026-10-18T06:20:17.149445+00:00",
+  "current_branch": "soft_couping_eFAST",
+  "method": "explicit branch fetch and fast-forward; byte-identical prior output blobs adopted without altering data",
+  "all_job_ids": [
+    "21138912",
+    "21138913",
+    "21138914",
+    "21138915",
+    "21138916",
+    "21138917",
+    "21138918",
+    "21138919"
+  ]
+}

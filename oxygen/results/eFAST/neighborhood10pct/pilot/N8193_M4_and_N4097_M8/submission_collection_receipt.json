@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-18T06:21:25.032210+00:00",
+  "source_manifest": "submission_collection_manifest.tsv",
+  "n_source_files_verified": 19,
+  "source_bytes_verified": 3443863,
+  "baseline_numeric_cells_compared": 450240,
+  "exact_baseline_arrays_match": true,
+  "n_main_trajectories": 280,
+  "n_phase_repeats": 5,
+  "n_seeds": 4,
+  "sif_tests_passed": 9,
+  "sif_tests_skipped": 0,
+  "status_scope": "Submission and provenance verified; model smoke and scientific analysis not yet complete."
+}

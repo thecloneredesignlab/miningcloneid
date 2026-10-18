@@ -30,6 +30,7 @@ def main():
         receipt=json.loads((root/'smoke_receipt.json').read_text())
         assert receipt['status']=='passed' and receipt['selection_sha256']==sha(root/'selection.json')
         assert (root/'compiled_review_template.tar.gz').stat().st_size>0
+        assert json.loads((root/'cache_portability.json').read_text())['status']=='passed'
         smoke=json.loads((root/'smoke_points.json').read_text())
         ids=[int(r['point_id']) for r in read(root/'point_manifest.tsv') if int(r['point_id']) not in smoke]
     else:ids=[]

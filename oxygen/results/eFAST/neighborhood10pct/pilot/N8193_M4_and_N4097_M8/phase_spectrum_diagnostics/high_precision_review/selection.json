@@ -138,8 +138,8 @@
     "perron_review.cpp": "ed5bf3e1ccc416c895eb9a5059c50fe5e85c01a4aaab93575e013c1470540c19",
     "point.R": "356f0bdfea0c6953002b67e74249acd175823a7edae0b1268620b630ba71eb5f",
     "review.py": "48f669316cc185eb5490abbbda8281875f5470b659a9032f73e05a7e4e8391fe",
-    "run.sbatch": "40359ffeae2536bf4e2095d212747701ff5e257ab94c5a16bd91da8814d928b3",
-    "submit.py": "c3042301b319b8f072ff0633cdcb3c4f1a47a13cc7d2a292fb960ca0600619a7",
+    "run.sbatch": "a2cffcc71a78bcf62d675d22bb057b949e040c177112f8331790731422d184cd",
+    "submit.py": "0146748cc51376ff371214e36627a8146ad3a009e3d5b123f840650bc870026f",
     "test_review.py": "30fe4bf858b5103ce484b1455a46ebde7a7074bc72492823bf1f3af6fe2e89e7"
   },
   "qos": "xxlarge",
@@ -154,6 +154,12 @@
       "reason": "Known tiny-component fixture requires componentwise relative convergence, beyond overall residual/L1 convergence",
       "created_utc": "2026-10-18T18:50:02.732484+00:00",
       "verification": "Added componentwise convergence and 50-vs-100 relative component agreement; three revised unit tests passed"
+    },
+    {
+      "previous_selection_sha256": "76de8ae6c555024ee6c60d4853293605486ebb0bb8050bdb29a5f19140b0c223",
+      "failed_array_job": "21139702",
+      "reason": "Bind per-task compiled cache to a stable container target; add relocation fixture check before main array",
+      "created_utc": "2026-10-18T18:54:35.136868+00:00"
     }
   ]
 }

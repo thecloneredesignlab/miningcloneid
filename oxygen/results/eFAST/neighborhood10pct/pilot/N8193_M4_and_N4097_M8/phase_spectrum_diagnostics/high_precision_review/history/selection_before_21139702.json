@@ -1,0 +1,159 @@
+{
+  "created_utc": "2026-10-18T18:45:15.235262+00:00",
+  "n_points": 401,
+  "n_abnormal_candidates": 106,
+  "abnormal_counts": {
+    "seed138": 11,
+    "seed101": 80,
+    "seed174": 15
+  },
+  "role_counts": {
+    "abnormal": 106,
+    "ordinary_control": 86,
+    "oxygen_neighbor": 209
+  },
+  "selection_scope": "All qualifying top-three influential points at previously disclosed representative O2 cases; not a census across all O2",
+  "near_seven_threshold": 6.5,
+  "seed174_scope": "M8 phase 5, all five focused parameters, response >1.01",
+  "ordinary_control": "Closest normalized 14D vector among middle 40-60% ploidy <2; seed174 |ploidy-1|<.01",
+  "oxygen_neighbors": "Same exact parameter vector at existing O2 grid index +/-1",
+  "point_manifest_sha256": "328499de527ad5577fb4fa13fed6a5bec39eee21f942fac425d037e8b20d193f",
+  "relationships_sha256": "74fbd0aabf768123bb8f4ec338cac48d00a1ef16bc7eece4dfc3071bff0def95",
+  "source_figure_table_sha256": "9c84caff11497975b2ec296af7e0d019c86d8dcd7e0e3ecd68bd84ef468e824f",
+  "source_trajectory_manifest_sha256": "eb7a9ea6d5276053e889b65b18bd8e09afb1297b5ac8bf2e4c405e325f1047af",
+  "source_plans": {
+    "N8193_M4": {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N8193_M4/slurm/submission_plan.json",
+      "sha256": "92363327852774f616b054477a7612609429637f52142cac0a680b86ea330f6f",
+      "fit_root": "/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253",
+      "sif": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+      "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+      "archives": {
+        "perron_safe_template.tar.gz": {
+          "bytes": 1802305,
+          "mtime_ns": 1791600408262801000,
+          "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/slurm/perron_safe_template.tar.gz",
+          "sha256": "427b6dd7b24e5fde65612c4523adf185bbd0e6c7fb0643d323ab7e803160c2f5"
+        },
+        "rcpp_template.tar.gz": {
+          "bytes": 2853302,
+          "mtime_ns": 1791569238200248000,
+          "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/slurm/rcpp_template.tar.gz",
+          "sha256": "abef1512ec14ea81474faead226c9601c9e0e7b8eb830bb2521d5a7c12323307"
+        }
+      },
+      "code_sha256": {
+        "../../model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+        "../../model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+        "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+        "efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+        "evaluate_fixed_o2.R": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+        "neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+        "neighborhood_slurm.py": "fae27eee2b7f1bb5f8441fbb84b84cafb0d9d9bc10019e91a4132dcade07e4d7",
+        "perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+        "repair_eigen_points_safe.R": "8c54b507f7fc3262313699637e5fd848b4f7d00cde8f224f6dc1175f3bb5783c",
+        "resolution_4097.py": "d670e4090902d51ec9b12c6242d2afa8b964fea2ed0e85681f1d8b7ba9d35230",
+        "resolution_nm.py": "c2e54810f7c2fb9a13e21a028a24d922e2a2b1255060c6890165452750cbb262",
+        "resolution_pilot.py": "5e1107b3bcf31dde091c545c08b4d55dc155e53745982ed55bf9ed5e2925034d",
+        "resolution_pilot_smoke.R": "1d977d5c82e1d2f54638d41653f9b504cd781d2ea365ff468591c2f5244db581",
+        "run_resolution_4097.sbatch": "e62921d5a6ba8f80d512d22311713126e7dcdba9f84b96559208529c0e4f7131",
+        "run_resolution_nm.sbatch": "ca58703e53f3585e27d0c1d541022dd886d2524b429c2986c1c9b6a527fc6302",
+        "run_resolution_pilot.sbatch": "0e3b5d2727693a78fed84b49c8c495b93a66c2a8f034013c37ab9c6c3f628638",
+        "submit_resolution_4097.sh": "9284f8ac36358ffd836270d09b7033f4bbecc91502c109eef3b8c0e077ea1413",
+        "submit_resolution_nm.sh": "c5bc55de456fc3e35a7b8e6e211f86720fd4ca72afe42d99cf27bffd6a615ab7",
+        "submit_resolution_pilot.sh": "0344e07a61a25fe0279b19b4309dd40740441421e13bb25b06df852adc010549",
+        "test_resolution_4097.py": "91fe606c8caa3ce65dd9d0d97f9dff5ad0525f4c5e7e89a20c09311f995354ee",
+        "test_resolution_nm.py": "a977d42fb78bb227056625c3c1a0580e3bef139acfd278f13a5dfddbd7f78761",
+        "test_resolution_pilot.py": "9b51455fada1bb0dbaf8f57e36945523a448d51568138ecc5facba3f9ccd5e84"
+      }
+    },
+    "N4097_M8": {
+      "path": "oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/N4097_M8/slurm/submission_plan.json",
+      "sha256": "921d65f2bed8120996c184eecc458daf8a8b1f9b57a12a2f2c7a8975cd007720",
+      "fit_root": "/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253",
+      "sif": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+      "sif_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+      "archives": {
+        "perron_safe_template.tar.gz": {
+          "bytes": 1802305,
+          "mtime_ns": 1791600408262801000,
+          "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/slurm/perron_safe_template.tar.gz",
+          "sha256": "427b6dd7b24e5fde65612c4523adf185bbd0e6c7fb0643d323ab7e803160c2f5"
+        },
+        "rcpp_template.tar.gz": {
+          "bytes": 2853302,
+          "mtime_ns": 1791569238200248000,
+          "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/neighborhood10pct/slurm/rcpp_template.tar.gz",
+          "sha256": "abef1512ec14ea81474faead226c9601c9e0e7b8eb830bb2521d5a7c12323307"
+        }
+      },
+      "code_sha256": {
+        "../../model/model_O2_supply_demand_MAP.R": "de2194878fe2acfddd021106b0d9e3ce4d5b438e189fc9ecd6e1088d64909df3",
+        "../../model/model_O2_supply_demand_MAP.cpp": "868f4abd6f62e0fdcb3cae5bf4c32985fb216cfa83fc0d80f8db648f01435bf4",
+        "../../simulation/o2/fixed_o2/run_fixed_o2_simulation.R": "cb9c78aa8d7734f50269f6db278c604705f4646607265cc7acee5e270f483600",
+        "efast.py": "9935207a5a7d95261c412a6b3ba6dc56a093e3b10029a48876f6e895a9dedc43",
+        "evaluate_fixed_o2.R": "051b4756e5c99e014b81e9923e2f2b372e5dc5240df7fa2bf5c4024e0a7871de",
+        "neighborhood.py": "8e9ca5ead24ccf645818f86965f32a29ae4a2438c9e078721d207474c4354ace",
+        "neighborhood_slurm.py": "fae27eee2b7f1bb5f8441fbb84b84cafb0d9d9bc10019e91a4132dcade07e4d7",
+        "perron_high_precision_safe.cpp": "806c444f83b06bcc167c78404ca380b6aae495216bab8e71bdf7640ff29347f9",
+        "repair_eigen_points_safe.R": "8c54b507f7fc3262313699637e5fd848b4f7d00cde8f224f6dc1175f3bb5783c",
+        "resolution_4097.py": "d670e4090902d51ec9b12c6242d2afa8b964fea2ed0e85681f1d8b7ba9d35230",
+        "resolution_nm.py": "c2e54810f7c2fb9a13e21a028a24d922e2a2b1255060c6890165452750cbb262",
+        "resolution_pilot.py": "5e1107b3bcf31dde091c545c08b4d55dc155e53745982ed55bf9ed5e2925034d",
+        "resolution_pilot_smoke.R": "1d977d5c82e1d2f54638d41653f9b504cd781d2ea365ff468591c2f5244db581",
+        "run_resolution_4097.sbatch": "e62921d5a6ba8f80d512d22311713126e7dcdba9f84b96559208529c0e4f7131",
+        "run_resolution_nm.sbatch": "ca58703e53f3585e27d0c1d541022dd886d2524b429c2986c1c9b6a527fc6302",
+        "run_resolution_pilot.sbatch": "0e3b5d2727693a78fed84b49c8c495b93a66c2a8f034013c37ab9c6c3f628638",
+        "submit_resolution_4097.sh": "9284f8ac36358ffd836270d09b7033f4bbecc91502c109eef3b8c0e077ea1413",
+        "submit_resolution_nm.sh": "c5bc55de456fc3e35a7b8e6e211f86720fd4ca72afe42d99cf27bffd6a615ab7",
+        "submit_resolution_pilot.sh": "0344e07a61a25fe0279b19b4309dd40740441421e13bb25b06df852adc010549",
+        "test_resolution_4097.py": "91fe606c8caa3ce65dd9d0d97f9dff5ad0525f4c5e7e89a20c09311f995354ee",
+        "test_resolution_nm.py": "a977d42fb78bb227056625c3c1a0580e3bef139acfd278f13a5dfddbd7f78761",
+        "test_resolution_pilot.py": "9b51455fada1bb0dbaf8f57e36945523a448d51568138ecc5facba3f9ccd5e84"
+      }
+    }
+  },
+  "fit_proofs": {
+    "seed138": {
+      "best_params_sha256": "d4f41beff4bfa3e6461a10f3b8bdb1b8563d866e1e3661df03f0b8493434b8c7",
+      "fit_config_sha256": "1342f6c2423fff3d75fee16ea23fb0a065b53112938d6f61e61ab74cd6fc0c72",
+      "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+      "bounds_sha256": "d6ddbd26af3bc39ca549652a4be4b6c30f0ea7c4d9d33a39684623577848abae"
+    },
+    "seed101": {
+      "best_params_sha256": "d85a49e6e236a2525dc80d2f1b49be29041fb168f12869a64244a2e397c0c3d3",
+      "fit_config_sha256": "b235e0390a38438c5a07e3eadcf0a5db2b006131eefbdfe89d0254ceeadb0172",
+      "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+      "bounds_sha256": "483330aaccd96ccd9c61eb7fd38063f4813d448b02ec5923fbb50fbce1b9483c"
+    },
+    "seed174": {
+      "best_params_sha256": "4a75d9826723692fea6251ecf43ed1e1e8a418341bcdd8c453e8bd7fc3e3c703",
+      "fit_config_sha256": "8363b783d7a9c36bfae9179756e0b027c8a428c9c101425ae20612052dab8ebf",
+      "parameter_table_sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe",
+      "bounds_sha256": "1bb2ff371734f286d8f209c95041e67ce757f87b34a4620e2840392cad128c50"
+    }
+  },
+  "code_sha256": {
+    "fixtures.R": "bdf9e5c05edf0fd17a629b37212fa3013db1ea0ba974ebe7f9d299f5a8e969b8",
+    "perron_review.cpp": "ed5bf3e1ccc416c895eb9a5059c50fe5e85c01a4aaab93575e013c1470540c19",
+    "point.R": "356f0bdfea0c6953002b67e74249acd175823a7edae0b1268620b630ba71eb5f",
+    "review.py": "48f669316cc185eb5490abbbda8281875f5470b659a9032f73e05a7e4e8391fe",
+    "run.sbatch": "40359ffeae2536bf4e2095d212747701ff5e257ab94c5a16bd91da8814d928b3",
+    "submit.py": "c3042301b319b8f072ff0633cdcb3c4f1a47a13cc7d2a292fb960ca0600619a7",
+    "test_review.py": "30fe4bf858b5103ce484b1455a46ebde7a7074bc72492823bf1f3af6fe2e89e7"
+  },
+  "qos": "xxlarge",
+  "time": "12:00:00",
+  "specified_node": null,
+  "array_concurrency_limit": null,
+  "new_FAST_samples": 0,
+  "revisions": [
+    {
+      "previous_selection_sha256": "cddb240db8d5e3442d0a2740960468437419c3af2050848459d4f7c50d8faf55",
+      "failed_smoke_job": "21139700",
+      "reason": "Known tiny-component fixture requires componentwise relative convergence, beyond overall residual/L1 convergence",
+      "created_utc": "2026-10-18T18:50:02.732484+00:00",
+      "verification": "Added componentwise convergence and 50-vs-100 relative component agreement; three revised unit tests passed"
+    }
+  ]
+}

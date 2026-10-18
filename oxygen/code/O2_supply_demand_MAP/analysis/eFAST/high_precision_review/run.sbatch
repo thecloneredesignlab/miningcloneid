@@ -13,11 +13,14 @@ if [[ "${REVIEW_ROLE:?}" == main ]]; then
   tar -xzf "$root/compiled_review_template.tar.gz" -C "$scratch/perron"
 fi
 model_cache="$repo/oxygen/code/O2_supply_demand_MAP/model/.rcpp_cache_o2_supply_demand_map"
+review_cache="$code/.rcpp_cache_review"
+review_scratch="$scratch/perron"
+mkdir -p "$review_cache"
 run_r() {
- apptainer exec --cleanenv --bind "$scratch/model:$model_cache" --bind "$scratch:$scratch" "$sif" env \
+ apptainer exec --cleanenv --bind "$scratch/model:$model_cache" --bind "$review_scratch:$review_cache" --bind "$scratch:$scratch" "$sif" env \
   R_HOME= R_ENVIRON_USER=/dev/null R_LIBS_USER=/opt/R/4.4.2/lib64/R/library \
   OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 MININGCLONEID_RCPP_REBUILD=FALSE \
-  EFAST_REVIEW_CACHE="$scratch/perron" SLURM_JOB_ID="$SLURM_JOB_ID" Rscript --vanilla "$@"
+  EFAST_REVIEW_CACHE="$review_cache" SLURM_JOB_ID="$SLURM_JOB_ID" Rscript --vanilla "$@"
 }
 cd "$repo"
 echo "role=$REVIEW_ROLE host=$(hostname -s) job=$SLURM_JOB_ID start=$(date -Is)"
@@ -26,8 +29,13 @@ case "$REVIEW_ROLE" in
   run_r "$code/fixtures.R" "$root"
   ids=$(python3 -c 'import json,sys;print(" ".join(map(str,json.load(open(sys.argv[1])))))' "$root/smoke_points.json")
   for id in $ids; do run_r "$code/point.R" "$root" "$id"; done
-  python3 "$code/review.py" smoke-audit --root "$root"
   tar -czf "$root/compiled_review_template.tar.gz" -C "$scratch/perron" .
+  mkdir "$scratch/relocated_perron"
+  tar -xzf "$root/compiled_review_template.tar.gz" -C "$scratch/relocated_perron"
+  review_scratch="$scratch/relocated_perron"
+  run_r "$code/fixtures.R" "$root"
+  python3 -c 'import json,sys;json.dump(dict(status="passed",cache_target=sys.argv[2],relocated_to_independent_scratch=True),open(sys.argv[1],"w"),indent=2)' "$root/cache_portability.json" "$review_cache"
+  python3 "$code/review.py" smoke-audit --root "$root"
   ;;
  main) run_r "$code/point.R" "$root" "${SLURM_ARRAY_TASK_ID:?}" ;;
  *) echo 'Unsupported role' >&2; exit 2 ;;

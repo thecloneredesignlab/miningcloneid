@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "n_points": 401,
+  "n_smoke": 6,
+  "unit_tests_passed": 3,
+  "shell_syntax_check": "passed",
+  "code_hashes_verified": true,
+  "role_counts": {
+    "abnormal": 106,
+    "ordinary_control": 86,
+    "oxygen_neighbor": 209
+  },
+  "abnormal_counts": {
+    "seed138": 11,
+    "seed101": 80,
+    "seed174": 15
+  }
+}

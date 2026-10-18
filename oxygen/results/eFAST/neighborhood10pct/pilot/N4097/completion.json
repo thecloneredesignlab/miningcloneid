@@ -1,0 +1,29 @@
+{
+  "artifact_sha256": {
+    "artifact_collection_manifest.tsv": "5eb45ea6470ecb4c59e4d028857e8c2f4ccf1cf34f32dfb114e74718b3fed532",
+    "band_rank_mechanism_comparison.tsv": "9f993bb9ce01f6237d2deeb7e755f159b55d4c696c846c9ea0d5eae9dc9551c4",
+    "band_rank_mechanism_stability.tsv": "7b3fdaec48617facbcbd487f4bd6cf4aed8e7f3457c4f1aa64c17d2f96343fa2",
+    "figures/growth_ST_resolution_comparison.pdf": "32523b6c459f0635fb274862a6fc98c807015a71968fda05c6570342275271a8",
+    "figures/growth_ST_resolution_comparison.png": "2a67fce63463a6bf0e5e71524d5442aed200491f3b492d97ca6e45d6fa33c4f5",
+    "figures/ploidy_ST_convergence_overview.pdf": "fb3007f31b5b91c88213939c8756ff496aa1af62d422f5e8d5e2492b057d6cb7",
+    "figures/ploidy_ST_convergence_overview.png": "9e33915de10cee65ccc519c490d0e3a83e8d56c148e27ed4d9cdf346f6578ae5",
+    "figures/ploidy_ST_resolution_comparison.pdf": "c2b122f4ba504695c78e3257cf6d8e211d48235773aa606119593cc23ff114f0",
+    "figures/ploidy_ST_resolution_comparison.png": "ac65d2ef95ee2ed10a623fd6bfff88f659c9c9ebb469f772034cd1caf89bb15f",
+    "key_ploidy_ST_repeat_diagnostics.tsv": "37338b9d3328a764b5d1d744c7816eca28a87741f4bb8365246bcd9b7ae18d8b",
+    "key_ploidy_ST_resolution_diagnostics.tsv": "bdc54ff7d528340865587ab9af7f67299b5af4dc07e0d2ed0f1445cc3cbdeb52",
+    "oxygen_curve_summary.tsv.gz": "133d67bffbe4481ee7d660d6cc2b0bcb25e86e43c0d344b9add615aa1045c79a",
+    "repeat_diagnostics.tsv": "79b87421d64119d93a58981343ad1cc204e49d08f27cba2272d343d9f853e366",
+    "resolution_diagnostics.tsv": "82f46518e998ef1da29d07c9ceef58336cbee5d54f93a86507b7f0ea9728f75b",
+    "seed_selection.tsv": "d7840ade0a56735a87705a48e554eb86393f9e0d6242291e914863629a80cc50"
+  },
+  "completed_utc": "2026-10-16T14:07:46.535662+00:00",
+  "diagnostic_only": true,
+  "interpretation": "Practical repeat/resolution diagnostics; selected endpoints are not a population sample.",
+  "n_seed_N_summaries": 6,
+  "n_tasks": 420,
+  "primary_comparison": [
+    2049,
+    4097
+  ],
+  "status": "complete"
+}

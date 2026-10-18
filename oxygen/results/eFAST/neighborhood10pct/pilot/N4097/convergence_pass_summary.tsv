@@ -1,0 +1,169 @@
+diagnostic	parameter_scope	N_low	N_high	index	output	oxygen_window	n_parameter_seed_cells	p90_pass	passed_by_threshold	localized_review	not_passed	undefined_or_incomplete
+repeat	all14	513		S1	dominant_mean_ploidy	overall_0_to_5pct	84	77	67	10	7	0
+repeat	key5	513		S1	dominant_mean_ploidy	overall_0_to_5pct	30	23	16	7	7	0
+repeat	all14	513		S1	dominant_mean_ploidy	low_0_to_1pct	84	76	73	3	8	0
+repeat	key5	513		S1	dominant_mean_ploidy	low_0_to_1pct	30	23	21	2	7	0
+repeat	all14	513		S1	dominant_mean_ploidy	high_3_to_5pct	84	80	79	1	4	0
+repeat	key5	513		S1	dominant_mean_ploidy	high_3_to_5pct	30	26	25	1	4	0
+repeat	all14	513		S1	dominant_growth_rate	overall_0_to_5pct	84	78	77	1	6	0
+repeat	key5	513		S1	dominant_growth_rate	overall_0_to_5pct	30	27	27	0	3	0
+repeat	all14	513		S1	dominant_growth_rate	low_0_to_1pct	84	82	82	0	2	0
+repeat	key5	513		S1	dominant_growth_rate	low_0_to_1pct	30	28	28	0	2	0
+repeat	all14	513		S1	dominant_growth_rate	high_3_to_5pct	84	79	78	1	5	0
+repeat	key5	513		S1	dominant_growth_rate	high_3_to_5pct	30	28	28	0	2	0
+repeat	all14	513		ST	dominant_mean_ploidy	overall_0_to_5pct	84	33	3	30	51	0
+repeat	key5	513		ST	dominant_mean_ploidy	overall_0_to_5pct	30	11	1	10	19	0
+repeat	all14	513		ST	dominant_mean_ploidy	low_0_to_1pct	84	32	18	14	52	0
+repeat	key5	513		ST	dominant_mean_ploidy	low_0_to_1pct	30	9	5	4	21	0
+repeat	all14	513		ST	dominant_mean_ploidy	high_3_to_5pct	84	56	52	4	28	0
+repeat	key5	513		ST	dominant_mean_ploidy	high_3_to_5pct	30	17	16	1	13	0
+repeat	all14	513		ST	dominant_growth_rate	overall_0_to_5pct	84	77	73	4	7	0
+repeat	key5	513		ST	dominant_growth_rate	overall_0_to_5pct	30	26	25	1	4	0
+repeat	all14	513		ST	dominant_growth_rate	low_0_to_1pct	84	81	79	2	3	0
+repeat	key5	513		ST	dominant_growth_rate	low_0_to_1pct	30	28	27	1	2	0
+repeat	all14	513		ST	dominant_growth_rate	high_3_to_5pct	84	78	77	1	6	0
+repeat	key5	513		ST	dominant_growth_rate	high_3_to_5pct	30	27	27	0	3	0
+repeat	all14	1025		S1	dominant_mean_ploidy	overall_0_to_5pct	84	79	71	8	5	0
+repeat	key5	1025		S1	dominant_mean_ploidy	overall_0_to_5pct	30	25	18	7	5	0
+repeat	all14	1025		S1	dominant_mean_ploidy	low_0_to_1pct	84	77	74	3	7	0
+repeat	key5	1025		S1	dominant_mean_ploidy	low_0_to_1pct	30	24	21	3	6	0
+repeat	all14	1025		S1	dominant_mean_ploidy	high_3_to_5pct	84	80	80	0	4	0
+repeat	key5	1025		S1	dominant_mean_ploidy	high_3_to_5pct	30	26	26	0	4	0
+repeat	all14	1025		S1	dominant_growth_rate	overall_0_to_5pct	84	84	82	2	0	0
+repeat	key5	1025		S1	dominant_growth_rate	overall_0_to_5pct	30	30	29	1	0	0
+repeat	all14	1025		S1	dominant_growth_rate	low_0_to_1pct	84	83	82	1	1	0
+repeat	key5	1025		S1	dominant_growth_rate	low_0_to_1pct	30	30	29	1	0	0
+repeat	all14	1025		S1	dominant_growth_rate	high_3_to_5pct	84	84	84	0	0	0
+repeat	key5	1025		S1	dominant_growth_rate	high_3_to_5pct	30	30	30	0	0	0
+repeat	all14	1025		ST	dominant_mean_ploidy	overall_0_to_5pct	84	32	6	26	52	0
+repeat	key5	1025		ST	dominant_mean_ploidy	overall_0_to_5pct	30	11	2	9	19	0
+repeat	all14	1025		ST	dominant_mean_ploidy	low_0_to_1pct	84	42	25	17	42	0
+repeat	key5	1025		ST	dominant_mean_ploidy	low_0_to_1pct	30	16	8	8	14	0
+repeat	all14	1025		ST	dominant_mean_ploidy	high_3_to_5pct	84	58	53	5	26	0
+repeat	key5	1025		ST	dominant_mean_ploidy	high_3_to_5pct	30	18	16	2	12	0
+repeat	all14	1025		ST	dominant_growth_rate	overall_0_to_5pct	84	81	77	4	3	0
+repeat	key5	1025		ST	dominant_growth_rate	overall_0_to_5pct	30	27	24	3	3	0
+repeat	all14	1025		ST	dominant_growth_rate	low_0_to_1pct	84	78	78	0	6	0
+repeat	key5	1025		ST	dominant_growth_rate	low_0_to_1pct	30	25	25	0	5	0
+repeat	all14	1025		ST	dominant_growth_rate	high_3_to_5pct	84	83	82	1	1	0
+repeat	key5	1025		ST	dominant_growth_rate	high_3_to_5pct	30	29	28	1	1	0
+repeat	all14	2049		S1	dominant_mean_ploidy	overall_0_to_5pct	84	83	78	5	1	0
+repeat	key5	2049		S1	dominant_mean_ploidy	overall_0_to_5pct	30	29	24	5	1	0
+repeat	all14	2049		S1	dominant_mean_ploidy	low_0_to_1pct	84	82	80	2	2	0
+repeat	key5	2049		S1	dominant_mean_ploidy	low_0_to_1pct	30	28	26	2	2	0
+repeat	all14	2049		S1	dominant_mean_ploidy	high_3_to_5pct	84	83	83	0	1	0
+repeat	key5	2049		S1	dominant_mean_ploidy	high_3_to_5pct	30	29	29	0	1	0
+repeat	all14	2049		S1	dominant_growth_rate	overall_0_to_5pct	84	82	82	0	2	0
+repeat	key5	2049		S1	dominant_growth_rate	overall_0_to_5pct	30	29	29	0	1	0
+repeat	all14	2049		S1	dominant_growth_rate	low_0_to_1pct	84	84	84	0	0	0
+repeat	key5	2049		S1	dominant_growth_rate	low_0_to_1pct	30	30	30	0	0	0
+repeat	all14	2049		S1	dominant_growth_rate	high_3_to_5pct	84	82	82	0	2	0
+repeat	key5	2049		S1	dominant_growth_rate	high_3_to_5pct	30	29	29	0	1	0
+repeat	all14	2049		ST	dominant_mean_ploidy	overall_0_to_5pct	84	45	21	24	39	0
+repeat	key5	2049		ST	dominant_mean_ploidy	overall_0_to_5pct	30	14	6	8	16	0
+repeat	all14	2049		ST	dominant_mean_ploidy	low_0_to_1pct	84	60	46	14	24	0
+repeat	key5	2049		ST	dominant_mean_ploidy	low_0_to_1pct	30	22	18	4	8	0
+repeat	all14	2049		ST	dominant_mean_ploidy	high_3_to_5pct	84	66	63	3	18	0
+repeat	key5	2049		ST	dominant_mean_ploidy	high_3_to_5pct	30	21	19	2	9	0
+repeat	all14	2049		ST	dominant_growth_rate	overall_0_to_5pct	84	82	81	1	2	0
+repeat	key5	2049		ST	dominant_growth_rate	overall_0_to_5pct	30	29	28	1	1	0
+repeat	all14	2049		ST	dominant_growth_rate	low_0_to_1pct	84	83	83	0	1	0
+repeat	key5	2049		ST	dominant_growth_rate	low_0_to_1pct	30	29	29	0	1	0
+repeat	all14	2049		ST	dominant_growth_rate	high_3_to_5pct	84	82	82	0	2	0
+repeat	key5	2049		ST	dominant_growth_rate	high_3_to_5pct	30	29	29	0	1	0
+repeat	all14	4097		S1	dominant_mean_ploidy	overall_0_to_5pct	84	83	80	3	1	0
+repeat	key5	4097		S1	dominant_mean_ploidy	overall_0_to_5pct	30	29	26	3	1	0
+repeat	all14	4097		S1	dominant_mean_ploidy	low_0_to_1pct	84	84	82	2	0	0
+repeat	key5	4097		S1	dominant_mean_ploidy	low_0_to_1pct	30	30	28	2	0	0
+repeat	all14	4097		S1	dominant_mean_ploidy	high_3_to_5pct	84	83	83	0	1	0
+repeat	key5	4097		S1	dominant_mean_ploidy	high_3_to_5pct	30	29	29	0	1	0
+repeat	all14	4097		S1	dominant_growth_rate	overall_0_to_5pct	84	83	83	0	1	0
+repeat	key5	4097		S1	dominant_growth_rate	overall_0_to_5pct	30	29	29	0	1	0
+repeat	all14	4097		S1	dominant_growth_rate	low_0_to_1pct	84	84	84	0	0	0
+repeat	key5	4097		S1	dominant_growth_rate	low_0_to_1pct	30	30	30	0	0	0
+repeat	all14	4097		S1	dominant_growth_rate	high_3_to_5pct	84	84	84	0	0	0
+repeat	key5	4097		S1	dominant_growth_rate	high_3_to_5pct	30	30	30	0	0	0
+repeat	all14	4097		ST	dominant_mean_ploidy	overall_0_to_5pct	84	60	29	31	24	0
+repeat	key5	4097		ST	dominant_mean_ploidy	overall_0_to_5pct	30	20	12	8	10	0
+repeat	all14	4097		ST	dominant_mean_ploidy	low_0_to_1pct	84	73	61	12	11	0
+repeat	key5	4097		ST	dominant_mean_ploidy	low_0_to_1pct	30	25	22	3	5	0
+repeat	all14	4097		ST	dominant_mean_ploidy	high_3_to_5pct	84	70	67	3	14	0
+repeat	key5	4097		ST	dominant_mean_ploidy	high_3_to_5pct	30	25	22	3	5	0
+repeat	all14	4097		ST	dominant_growth_rate	overall_0_to_5pct	84	83	83	0	1	0
+repeat	key5	4097		ST	dominant_growth_rate	overall_0_to_5pct	30	29	29	0	1	0
+repeat	all14	4097		ST	dominant_growth_rate	low_0_to_1pct	84	84	84	0	0	0
+repeat	key5	4097		ST	dominant_growth_rate	low_0_to_1pct	30	30	30	0	0	0
+repeat	all14	4097		ST	dominant_growth_rate	high_3_to_5pct	84	83	83	0	1	0
+repeat	key5	4097		ST	dominant_growth_rate	high_3_to_5pct	30	29	29	0	1	0
+resolution	all14	513	1025	S1	dominant_mean_ploidy	overall_0_to_5pct	84	70	65	5	14	0
+resolution	key5	513	1025	S1	dominant_mean_ploidy	overall_0_to_5pct	30	16	14	2	14	0
+resolution	all14	513	1025	S1	dominant_mean_ploidy	low_0_to_1pct	84	73	71	2	11	0
+resolution	key5	513	1025	S1	dominant_mean_ploidy	low_0_to_1pct	30	21	19	2	9	0
+resolution	all14	513	1025	S1	dominant_mean_ploidy	high_3_to_5pct	84	78	78	0	6	0
+resolution	key5	513	1025	S1	dominant_mean_ploidy	high_3_to_5pct	30	24	24	0	6	0
+resolution	all14	513	1025	S1	dominant_growth_rate	overall_0_to_5pct	84	67	62	5	17	0
+resolution	key5	513	1025	S1	dominant_growth_rate	overall_0_to_5pct	30	20	17	3	10	0
+resolution	all14	513	1025	S1	dominant_growth_rate	low_0_to_1pct	84	70	68	2	14	0
+resolution	key5	513	1025	S1	dominant_growth_rate	low_0_to_1pct	30	21	20	1	9	0
+resolution	all14	513	1025	S1	dominant_growth_rate	high_3_to_5pct	84	78	77	1	6	0
+resolution	key5	513	1025	S1	dominant_growth_rate	high_3_to_5pct	30	28	27	1	2	0
+resolution	all14	513	1025	ST	dominant_mean_ploidy	overall_0_to_5pct	84	17	1	16	67	0
+resolution	key5	513	1025	ST	dominant_mean_ploidy	overall_0_to_5pct	30	3	1	2	27	0
+resolution	all14	513	1025	ST	dominant_mean_ploidy	low_0_to_1pct	84	21	12	9	63	0
+resolution	key5	513	1025	ST	dominant_mean_ploidy	low_0_to_1pct	30	5	2	3	25	0
+resolution	all14	513	1025	ST	dominant_mean_ploidy	high_3_to_5pct	84	55	48	7	29	0
+resolution	key5	513	1025	ST	dominant_mean_ploidy	high_3_to_5pct	30	17	15	2	13	0
+resolution	all14	513	1025	ST	dominant_growth_rate	overall_0_to_5pct	84	63	57	6	21	0
+resolution	key5	513	1025	ST	dominant_growth_rate	overall_0_to_5pct	30	17	14	3	13	0
+resolution	all14	513	1025	ST	dominant_growth_rate	low_0_to_1pct	84	64	62	2	20	0
+resolution	key5	513	1025	ST	dominant_growth_rate	low_0_to_1pct	30	18	16	2	12	0
+resolution	all14	513	1025	ST	dominant_growth_rate	high_3_to_5pct	84	75	73	2	9	0
+resolution	key5	513	1025	ST	dominant_growth_rate	high_3_to_5pct	30	25	24	1	5	0
+resolution	all14	1025	2049	S1	dominant_mean_ploidy	overall_0_to_5pct	84	80	76	4	4	0
+resolution	key5	1025	2049	S1	dominant_mean_ploidy	overall_0_to_5pct	30	26	23	3	4	0
+resolution	all14	1025	2049	S1	dominant_mean_ploidy	low_0_to_1pct	84	80	79	1	4	0
+resolution	key5	1025	2049	S1	dominant_mean_ploidy	low_0_to_1pct	30	27	26	1	3	0
+resolution	all14	1025	2049	S1	dominant_mean_ploidy	high_3_to_5pct	84	82	82	0	2	0
+resolution	key5	1025	2049	S1	dominant_mean_ploidy	high_3_to_5pct	30	28	28	0	2	0
+resolution	all14	1025	2049	S1	dominant_growth_rate	overall_0_to_5pct	84	84	83	1	0	0
+resolution	key5	1025	2049	S1	dominant_growth_rate	overall_0_to_5pct	30	30	30	0	0	0
+resolution	all14	1025	2049	S1	dominant_growth_rate	low_0_to_1pct	84	84	84	0	0	0
+resolution	key5	1025	2049	S1	dominant_growth_rate	low_0_to_1pct	30	30	30	0	0	0
+resolution	all14	1025	2049	S1	dominant_growth_rate	high_3_to_5pct	84	84	83	1	0	0
+resolution	key5	1025	2049	S1	dominant_growth_rate	high_3_to_5pct	30	30	30	0	0	0
+resolution	all14	1025	2049	ST	dominant_mean_ploidy	overall_0_to_5pct	84	42	17	25	42	0
+resolution	key5	1025	2049	ST	dominant_mean_ploidy	overall_0_to_5pct	30	16	4	12	14	0
+resolution	all14	1025	2049	ST	dominant_mean_ploidy	low_0_to_1pct	84	57	38	19	27	0
+resolution	key5	1025	2049	ST	dominant_mean_ploidy	low_0_to_1pct	30	20	12	8	10	0
+resolution	all14	1025	2049	ST	dominant_mean_ploidy	high_3_to_5pct	84	65	62	3	19	0
+resolution	key5	1025	2049	ST	dominant_mean_ploidy	high_3_to_5pct	30	22	21	1	8	0
+resolution	all14	1025	2049	ST	dominant_growth_rate	overall_0_to_5pct	84	84	82	2	0	0
+resolution	key5	1025	2049	ST	dominant_growth_rate	overall_0_to_5pct	30	30	29	1	0	0
+resolution	all14	1025	2049	ST	dominant_growth_rate	low_0_to_1pct	84	84	83	1	0	0
+resolution	key5	1025	2049	ST	dominant_growth_rate	low_0_to_1pct	30	30	29	1	0	0
+resolution	all14	1025	2049	ST	dominant_growth_rate	high_3_to_5pct	84	84	83	1	0	0
+resolution	key5	1025	2049	ST	dominant_growth_rate	high_3_to_5pct	30	30	30	0	0	0
+resolution	all14	2049	4097	S1	dominant_mean_ploidy	overall_0_to_5pct	84	82	81	1	2	0
+resolution	key5	2049	4097	S1	dominant_mean_ploidy	overall_0_to_5pct	30	28	27	1	2	0
+resolution	all14	2049	4097	S1	dominant_mean_ploidy	low_0_to_1pct	84	83	82	1	1	0
+resolution	key5	2049	4097	S1	dominant_mean_ploidy	low_0_to_1pct	30	29	28	1	1	0
+resolution	all14	2049	4097	S1	dominant_mean_ploidy	high_3_to_5pct	84	83	83	0	1	0
+resolution	key5	2049	4097	S1	dominant_mean_ploidy	high_3_to_5pct	30	29	29	0	1	0
+resolution	all14	2049	4097	S1	dominant_growth_rate	overall_0_to_5pct	84	84	84	0	0	0
+resolution	key5	2049	4097	S1	dominant_growth_rate	overall_0_to_5pct	30	30	30	0	0	0
+resolution	all14	2049	4097	S1	dominant_growth_rate	low_0_to_1pct	84	84	84	0	0	0
+resolution	key5	2049	4097	S1	dominant_growth_rate	low_0_to_1pct	30	30	30	0	0	0
+resolution	all14	2049	4097	S1	dominant_growth_rate	high_3_to_5pct	84	84	84	0	0	0
+resolution	key5	2049	4097	S1	dominant_growth_rate	high_3_to_5pct	30	30	30	0	0	0
+resolution	all14	2049	4097	ST	dominant_mean_ploidy	overall_0_to_5pct	84	60	35	25	24	0
+resolution	key5	2049	4097	ST	dominant_mean_ploidy	overall_0_to_5pct	30	21	12	9	9	0
+resolution	all14	2049	4097	ST	dominant_mean_ploidy	low_0_to_1pct	84	73	58	15	11	0
+resolution	key5	2049	4097	ST	dominant_mean_ploidy	low_0_to_1pct	30	25	22	3	5	0
+resolution	all14	2049	4097	ST	dominant_mean_ploidy	high_3_to_5pct	84	69	69	0	15	0
+resolution	key5	2049	4097	ST	dominant_mean_ploidy	high_3_to_5pct	30	25	25	0	5	0
+resolution	all14	2049	4097	ST	dominant_growth_rate	overall_0_to_5pct	84	84	84	0	0	0
+resolution	key5	2049	4097	ST	dominant_growth_rate	overall_0_to_5pct	30	30	30	0	0	0
+resolution	all14	2049	4097	ST	dominant_growth_rate	low_0_to_1pct	84	84	84	0	0	0
+resolution	key5	2049	4097	ST	dominant_growth_rate	low_0_to_1pct	30	30	30	0	0	0
+resolution	all14	2049	4097	ST	dominant_growth_rate	high_3_to_5pct	84	84	84	0	0	0
+resolution	key5	2049	4097	ST	dominant_growth_rate	high_3_to_5pct	30	30	30	0	0	0

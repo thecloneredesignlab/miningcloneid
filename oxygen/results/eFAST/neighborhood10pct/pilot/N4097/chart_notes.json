@@ -1,0 +1,42 @@
+{
+  "surface": "standalone scientific PDFs and PNGs in Git repository",
+  "charts": [
+    {
+      "file": "figures/ploidy_ST_resolution_comparison.pdf",
+      "family": "line small multiples",
+      "question": "How do ploidy ST mean curves and phase ranges change with N?",
+      "grain": "6 endpoints x 5 parameters x 4 N x 5 phases x 201 O2 points",
+      "source": "baseline_indices.npz and summaries/seed*_N4097.npz",
+      "palette": "grey N513, purple N1025, orange N2049, teal N4097; direct legend",
+      "notes": "Means and min/max ribbons, not confidence intervals; inspect in PDF at zoom"
+    },
+    {
+      "file": "figures/ploidy_ST_convergence_overview.pdf",
+      "family": "categorical diagnostic matrix",
+      "question": "Which percentile and maximum error checks pass?",
+      "grain": "6 endpoints x 5 parameters x 3 diagnostics",
+      "source": "key_ploidy_ST_repeat_diagnostics.tsv and key_ploidy_ST_resolution_diagnostics.tsv",
+      "palette": "grey full pass; purple star localized failure; orange p90 failure; dark grey incomplete",
+      "notes": "Cell numbers are p90 errors, not ST; classification uses unrounded values"
+    },
+    {
+      "file": "figures/growth_ST_resolution_comparison.pdf",
+      "family": "line small multiples",
+      "question": "How does the companion growth output behave under the same designs?",
+      "grain": "6 endpoints x 5 parameters x 4 N x 5 phases x 201 O2 points",
+      "source": "baseline_indices.npz and summaries/seed*_N4097.npz",
+      "palette": "same resolution mapping as ploidy",
+      "notes": "A necessary companion-output comparison on a continuous O2 axis"
+    },
+    {
+      "file": "figures/ploidy_ST_pass_comparison.pdf",
+      "family": "grouped bars",
+      "question": "Did convergence pass counts improve in the same endpoint cohort?",
+      "grain": "4 check criteria x 2 resolution stages, denominator 30",
+      "source": "ploidy_ST_pass_comparison.tsv",
+      "palette": "grey hatched old stage, teal solid current stage; labels and outlines",
+      "notes": "Zero baseline; no population inference or confidence interpretation"
+    }
+  ],
+  "qa": "Render actual PDFs, inspect labels/legends/clipping and source agreement"
+}

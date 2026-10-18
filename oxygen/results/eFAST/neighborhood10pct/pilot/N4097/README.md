@@ -1,5 +1,31 @@
 # Six-endpoint N4097 eFAST pilot
 
+## Completed results and interpretation
+
+**Analysis completed on 2026-10-16 at 10:07:46 EDT.** All 420 trajectories,
+six summaries and final comparison completed with Slurm exit code 0:0.
+The finished 52-file bundle has been collected locally and reconciled with
+its HPC SHA-256 manifest. Independent phase-array reconciliation passed
+1,204,896 checks (maximum numeric discrepancy 1.55e-15). Seven report tests
+passed; the original three PDFs and new pass-count PDF were rendered and inspected.
+
+See [the detailed Chinese interpretation](interpretation_zh.md),
+[per-seed convergence summary](seed_convergence_summary.tsv),
+[key-parameter details](ploidy_ST_key_parameter_details.tsv), and
+[independent validation](analysis_validation.json).
+
+In the same 30 key-parameter/endpoint pairs, joint percentile passes improved
+from 12 at N2049 to 15 at N4097; joint full-grid maximum passes improved from
+2 to 9. Seed66 passed both maximum checks for all 14 inputs. Seed311 retains
+localized exceptions; seed25/138 need further resolution confirmation, while
+seed101/174 require additional methodological diagnostics. No new jobs were submitted.
+The 201-point full-grid maximum check is a practical tolerance, not a proof
+over every continuous oxygen value or an estimate of all 500 endpoints.
+
+For collection provenance, use `completed_results_manifest.tsv`,
+`results_collection_receipt.json`, and `slurm/completed_hpc_audit.json`.
+The submission-stage receipts below remain historical records.
+
 Approved scope: `seed25, seed101, seed138, seed174, seed66, seed311`, N=4097,
 M=4, five independent phase repeats, all 14 sampled parameters, and O2
 0:0.025:5% (201 points). This is a diagnostic subset of the original 500

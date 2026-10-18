@@ -45,6 +45,18 @@ eigenvector determines dominant mean ploidy.
 
 ### Six-endpoint N4097 resolution pilot
 
+Completed-result collection and independent interpretation use
+`collect_resolution_4097_results.py` and `report_resolution_4097.py`.
+The collector runs with Python 3.6+ standard libraries; the local report
+requires NumPy>=2.0 and Matplotlib. They read finished results and never
+execute the model or submit jobs. Complete commands and the detailed
+interpretation are in
+[`N4097/interpretation_zh.md`](../../../../results/eFAST/neighborhood10pct/pilot/N4097/interpretation_zh.md).
+The collector's `audit --repo-root ...` command runs on HPC; `manifest --root ...`
+writes an explicit compact-artifact allowlist, and `verify-local --root ...`
+checks the collected files against their original completion hashes. Original
+submission receipts are retained separately from the completed-results manifest.
+
 `resolution_4097.py` adds the approved N=4097 pilot for **seed25, seed101,
 seed138, seed174, seed66, seed311**, with all 14 inputs, M=4, five phases,
 and the full 201-point O2 grid. It reuses the unchanged `resolution_pilot.py`

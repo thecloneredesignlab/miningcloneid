@@ -1,0 +1,9 @@
+N	comparison_N	criterion	n_passed	n_parameter_seed_pairs	fit_seeds	parameter_scope	oxygen_window	repeat_threshold	resolution_threshold
+2049	1025	repeat_p90	14	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+2049	1025	resolution_p90	16	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+2049	1025	both_p90	12	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+2049	1025	both_maximum	2	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+4097	2049	repeat_p90	20	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+4097	2049	resolution_p90	21	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+4097	2049	both_p90	15	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05
+4097	2049	both_maximum	9	30	seed25,seed101,seed138,seed174,seed66,seed311	key5	overall_0_to_5pct	0.1	0.05

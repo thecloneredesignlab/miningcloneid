@@ -1,0 +1,45 @@
+{
+  "cohort_consistent": true,
+  "final_pass_chart_raster_identical_to_reviewed": true,
+  "frozen_code_files_rechecked": 18,
+  "independent_statistical_checks": 1204896,
+  "matplotlib": "3.9.4",
+  "new_jobs_submitted": false,
+  "numpy": "2.0.2",
+  "original_completion_hashes_matched": true,
+  "pdf_checks": [
+    {
+      "file": "growth_ST_resolution_comparison.pdf",
+      "n_pages": 1,
+      "rendered_and_visually_inspected": true,
+      "sha256": "32523b6c459f0635fb274862a6fc98c807015a71968fda05c6570342275271a8",
+      "text_length": 513
+    },
+    {
+      "file": "ploidy_ST_convergence_overview.pdf",
+      "n_pages": 1,
+      "rendered_and_visually_inspected": true,
+      "sha256": "fb3007f31b5b91c88213939c8756ff496aa1af62d422f5e8d5e2492b057d6cb7",
+      "text_length": 1151
+    },
+    {
+      "file": "ploidy_ST_pass_comparison.pdf",
+      "n_pages": 1,
+      "rendered_and_visually_inspected": true,
+      "sha256": "24370a2a4603d542a904c4c3a0b5a3cfc50630fceefff53bc9d3ad82d69d3d89",
+      "text_length": 463
+    },
+    {
+      "file": "ploidy_ST_resolution_comparison.pdf",
+      "n_pages": 1,
+      "rendered_and_visually_inspected": true,
+      "sha256": "c2b122f4ba504695c78e3257cf6d8e211d48235773aa606119593cc23ff114f0",
+      "text_length": 513
+    }
+  ],
+  "raw_output_audit_scope": "Original output receipts cross-linked to cached indices; full raw gzip files are not rehashed except recovery source artifacts",
+  "report_tests_passed": 7,
+  "source_figures_preserved": true,
+  "source_files_rechecked": 52,
+  "status": "passed"
+}

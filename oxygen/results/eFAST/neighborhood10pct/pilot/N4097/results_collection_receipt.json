@@ -1,0 +1,12 @@
+{
+  "all_hpc_sha256_matched": true,
+  "analysis_complete": true,
+  "collected_utc": "2026-10-18T03:43:34.938913+00:00",
+  "manifest_sha256": "664fadb643cb54930b084fbcd37a27aed6931bdfdc07e8823a7c6ff1f2fdf39e",
+  "n_hpc_artifacts": 52,
+  "new_jobs_submitted": false,
+  "original_completion_hashes_matched": true,
+  "raw_trajectories_location": "HPC only; cached indices, receipts and proofs audited on HPC",
+  "status": "passed",
+  "total_bytes": 25852845
+}

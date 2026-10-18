@@ -1,0 +1,44 @@
+{
+  "completed_utc": "2026-10-16T10:44:01.810706+00:00",
+  "host": "hpctpa3pc0057",
+  "perron_validation": {
+    "decimal_digits": [
+      50,
+      100
+    ],
+    "double_residual": 4.163336342344337e-17,
+    "growth_change": 1.887379141862766e-15,
+    "leading_root_bound_width": 1.1442591620450804e-46,
+    "matrix_sha256": "55c4deef4e9877aeed556cbb0f028979179af4ae74dd0745135f24a335f4681c",
+    "n_matrices": 1,
+    "ploidy_change": 1.3322676295501878e-15,
+    "status": "passed"
+  },
+  "slurm_job_id": "20863802",
+  "status": "passed",
+  "submission_plan_sha256": "4e254547b3fb85a1b57bd1e7b2e9e02c18fa8b3edf6c9e4371690d5b9d89ab4d",
+  "trajectory_checks": [
+    {
+      "N": 4097,
+      "elapsed_seconds": 136.11687274556607,
+      "focal_parameter": "p_mis_base",
+      "indices_shape": [
+        2,
+        3,
+        2
+      ],
+      "n_rows": 12291,
+      "output_sha256": "e825af768d5cf9c411e6e21b1fb2a03069e4f0160bd5cbad7289f36f899b809b",
+      "oxygen_points": [
+        0,
+        2.5,
+        5
+      ],
+      "seed": "seed138"
+    }
+  ],
+  "unit_tests": [
+    "test_resolution_pilot.py",
+    "test_resolution_4097.py"
+  ]
+}

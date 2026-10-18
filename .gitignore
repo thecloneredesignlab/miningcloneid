@@ -273,3 +273,8 @@ data/DrugResponseData_PDX/.DS_Store
 /oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/high_precision_review/compiled_review_template.tar.gz
 /oxygen/code/O2_supply_demand_MAP/analysis/eFAST/high_precision_review/.rcpp_cache_review/
 /oxygen/code/O2_supply_demand_MAP/analysis/eFAST/high_precision_review/__pycache__/
+
+# Chromosome-domain boundary audit: retain complete point-level evidence.
+!/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/
+/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/compiled_review_template.tar.gz
+/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/boundary_review/__pycache__/

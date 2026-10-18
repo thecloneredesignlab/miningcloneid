@@ -14,5 +14,7 @@
     "seed138": 11,
     "seed101": 80,
     "seed174": 15
-  }
+  },
+  "componentwise_revision_unit_tests_passed": 3,
+  "selection_sha256": "76de8ae6c555024ee6c60d4853293605486ebb0bb8050bdb29a5f19140b0c223"
 }

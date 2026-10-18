@@ -23,7 +23,8 @@ template<unsigned D> Rcpp::List solve(const Rcpp::NumericMatrix& input,
  const R shift_floor=norm*pow(R(10),-int(D*8/10));
  const R tolerance=pow(R(10),-int(D*65/100));
  const R vector_tolerance=pow(R(10),-int(D*6/10));
- R upper=0,lower=0,lambda=0,residual=0,relative=0,change=0,last_sum=1;
+ const R component_tolerance=pow(R(10),-int(D*4/10));
+ R upper=0,lower=0,lambda=0,residual=0,relative=0,change=0,component_change=0,last_sum=1;
  auto measure=[&](){lambda=0;residual=0;R xmax=0;
   for(int i=0;i<n;++i){mx[i]=0;for(int j=0;j<n;++j)mx[i]+=m[i*n+j]*x[j];
    if(!(x[i]>0))Rcpp::stop("Lost strict positivity");
@@ -41,9 +42,10 @@ template<unsigned D> Rcpp::List solve(const Rcpp::NumericMatrix& input,
   last_sum=0;
   for(int i=n-1;i>=0;--i){R value=rhs[i];for(int j=i+1;j<n;++j)value-=lu[i*n+j]*y[j];
    y[i]=value/lu[i*n+i];if(!(y[i]>0))Rcpp::stop("Inverse failed to preserve positivity");last_sum+=y[i];}
-  change=0;for(int i=0;i<n;++i){y[i]/=last_sum;change+=abs(y[i]-x[i]);x[i]=y[i];}
+  change=0;component_change=0;for(int i=0;i<n;++i){y[i]/=last_sum;R delta=abs(y[i]-x[i]);change+=delta;
+   R relative_component=delta/(y[i]>x[i]?y[i]:x[i]);if(relative_component>component_change)component_change=relative_component;x[i]=y[i];}
   measure();
-  if(relative<tolerance&&abs(upper-lambda)/norm<tolerance&&change<vector_tolerance){converged=true;break;}
+  if(relative<tolerance&&abs(upper-lambda)/norm<tolerance&&change<vector_tolerance&&component_change<component_tolerance){converged=true;break;}
   if(it%5==0)Rcpp::checkUserInterrupt();}
  auto str=[](const R& z){return z.str(D,std::ios_base::scientific);};
  R sum=0,ploidy=0;Rcpp::CharacterVector vector(n);
@@ -54,7 +56,8 @@ template<unsigned D> Rcpp::List solve(const Rcpp::NumericMatrix& input,
   Rcpp::Named("residual_inf")=str(residual),Rcpp::Named("relative_residual_inf")=str(relative),
   Rcpp::Named("matrix_norm_inf")=str(norm),Rcpp::Named("lower_bound")=str(lower),Rcpp::Named("upper_bound")=str(upper),
   Rcpp::Named("relative_upper_minus_lambda")=str(abs(upper-lambda)/norm),
-  Rcpp::Named("vector_change_l1")=str(change),Rcpp::Named("inverse_sum_before_normalization")=str(last_sum),
+  Rcpp::Named("vector_change_l1")=str(change),Rcpp::Named("max_relative_component_change")=str(component_change),
+  Rcpp::Named("component_tolerance")=str(component_tolerance),Rcpp::Named("inverse_sum_before_normalization")=str(last_sum),
   Rcpp::Named("relative_tolerance")=str(tolerance),Rcpp::Named("vector_tolerance")=str(vector_tolerance));
 }
 

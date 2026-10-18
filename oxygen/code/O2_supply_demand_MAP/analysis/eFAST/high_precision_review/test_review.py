@@ -14,7 +14,8 @@ class ReviewChecks(unittest.TestCase):
             clipped_ploidy=7,signed_ploidy=7,raw_relative_residual=1e-15,normalized_relative_residual=1e-15),matrix=dict(n=2,strongly_connected=True),files_sha256={})
         for digits in (50,100):
             side=dict(converged=True,vector_decimal=['0.5','0.5'],lambda_='0',ploidy='1.5',relative_residual_inf='1e-90',
-                      relative_tolerance='1e-32' if digits==50 else '1e-65',relative_upper_minus_lambda='1e-90',vector_change_l1='1e-90',vector_tolerance='1e-30')
+                      relative_tolerance='1e-32' if digits==50 else '1e-65',relative_upper_minus_lambda='1e-90',vector_change_l1='1e-90',vector_tolerance='1e-30',
+                      max_relative_component_change='1e-90',component_tolerance='1e-20')
             side['lambda']=side.pop('lambda_')
             p=root/('precision_%d.json'%digits);review.dump(p,dict(right=side,left=side));report['files_sha256'][p.name]=review.sha(p)
         (root/'matrix.rds').write_bytes(b'unit fixture');report['files_sha256']['matrix.rds']=review.sha(root/'matrix.rds')

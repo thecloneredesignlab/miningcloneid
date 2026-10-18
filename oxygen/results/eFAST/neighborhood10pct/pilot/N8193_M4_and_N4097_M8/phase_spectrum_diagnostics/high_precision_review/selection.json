@@ -135,16 +135,25 @@
   },
   "code_sha256": {
     "fixtures.R": "bdf9e5c05edf0fd17a629b37212fa3013db1ea0ba974ebe7f9d299f5a8e969b8",
-    "perron_review.cpp": "e8abe0c181182572ee5dfaabfbc758246edb1123892be13215fe18fdf4757a2c",
+    "perron_review.cpp": "ed5bf3e1ccc416c895eb9a5059c50fe5e85c01a4aaab93575e013c1470540c19",
     "point.R": "356f0bdfea0c6953002b67e74249acd175823a7edae0b1268620b630ba71eb5f",
-    "review.py": "0165b4610d88a327efbf7522646bffc6e017ec9f7668f3ed41c4f18d653b1b46",
+    "review.py": "48f669316cc185eb5490abbbda8281875f5470b659a9032f73e05a7e4e8391fe",
     "run.sbatch": "40359ffeae2536bf4e2095d212747701ff5e257ab94c5a16bd91da8814d928b3",
     "submit.py": "c3042301b319b8f072ff0633cdcb3c4f1a47a13cc7d2a292fb960ca0600619a7",
-    "test_review.py": "73a14f5883d46c6ef48e18768b0d63957b8450e278612291e16ff3d5556edafb"
+    "test_review.py": "30fe4bf858b5103ce484b1455a46ebde7a7074bc72492823bf1f3af6fe2e89e7"
   },
   "qos": "xxlarge",
   "time": "12:00:00",
   "specified_node": null,
   "array_concurrency_limit": null,
-  "new_FAST_samples": 0
+  "new_FAST_samples": 0,
+  "revisions": [
+    {
+      "previous_selection_sha256": "cddb240db8d5e3442d0a2740960468437419c3af2050848459d4f7c50d8faf55",
+      "failed_smoke_job": "21139700",
+      "reason": "Known tiny-component fixture requires componentwise relative convergence, beyond overall residual/L1 convergence",
+      "created_utc": "2026-10-18T18:50:02.732484+00:00",
+      "verification": "Added componentwise convergence and 50-vs-100 relative component agreement; three revised unit tests passed"
+    }
+  ]
 }

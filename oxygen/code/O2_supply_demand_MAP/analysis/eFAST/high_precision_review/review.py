@@ -133,13 +133,18 @@ def audit_point(path):
                 assert Decimal(v['relative_residual_inf'])<Decimal(v['relative_tolerance'])
                 assert abs(Decimal(v['relative_upper_minus_lambda']))<Decimal(v['relative_tolerance'])
                 assert Decimal(v['vector_change_l1'])<Decimal(v['vector_tolerance'])
+                assert Decimal(v['max_relative_component_change'])<Decimal(v['component_tolerance'])
                 result['residual_%s_%d'%(side,digits)]=v['relative_residual_inf']
         if all_solved:
             a,b=solved[50],solved[100]
             for side in ('right','left'):
                 l1=sum(abs(Decimal(x)-Decimal(y)) for x,y in zip(a[side]['vector_decimal'],b[side]['vector_decimal']))
                 result[side+'_precision_L1_difference']=str(l1)
+                relative=max(abs(Decimal(x)-Decimal(y))/max(abs(Decimal(x)),abs(Decimal(y)))
+                    for x,y in zip(a[side]['vector_decimal'],b[side]['vector_decimal']))
+                result[side+'_precision_max_relative_component_difference']=str(relative)
                 if l1>=Decimal('1e-10'):all_solved=False
+                if relative>=Decimal('1e-10'):all_solved=False
             delta=abs(Decimal(a['right']['ploidy'])-Decimal(b['right']['ploidy']))
             lam_delta=abs(Decimal(a['right']['lambda'])-Decimal(b['right']['lambda']))
             lr=abs(Decimal(b['right']['lambda'])-Decimal(b['left']['lambda']))

@@ -266,3 +266,49 @@ python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/collect_pilot.py \
   --remote-dir /share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/resolution_pilot/N2048_N4096 \
   --local-dir oxygen/results/eFAST/sobol/resolution_pilot/N2048_N4096
 ```
+# Resume the 355 unfinished N4096 neighborhoods
+
+The October 18 recovery uses `recover_neighborhood.py`,
+`run_neighborhood_recovery.sbatch`, and `submit_neighborhood_recovery.sh`.
+It preserves the original full sampling plan and frozen model snapshot.
+The 145 completed neighborhoods and completed global summaries are reused.
+
+The authorized missing original model task IDs are 25318, 27551, 27552,
+33636, 33637, 41044, 45450, 48408, 53810, 63791, 68684, 69826, 71559,
+and 74956. All failed during Apptainer user lookup before model execution.
+Only these 14 blocks are submitted again; existing valid model receipts
+also make the original worker return without model evaluation.
+
+Legacy statistical checkpoints store a B-block identity because the original
+summary code overwrote its analysis-identity variable. The recovery verifies
+the original plan, frozen code, runtime, unit designs, case bounds and B-block
+identity before importing any certified cells. A complete temporary NPZ is
+used only if it extends the durable checkpoint without conflicting values.
+Original checkpoints remain untouched. Undefined indices at zero variance
+remain certified results; convergence never excludes a seed or cell.
+
+Remaining work is split into one seed/repeat and at most 16 unfinished oxygen
+points, retaining both outputs, N2048/N4096 and the original 200-bootstrap
+seed formula using the **global** oxygen index. Each analyzer call is saved
+atomically. Workers lock their own shards, never a shared legacy checkpoint.
+An oxygen-major float64 cache is constructed once per needed seed/repeat;
+each source block is checksum/identity checked, and each consumed oxygen
+slice is SHA256 checked. Cache creation only rearranges existing outputs.
+
+Run the submission driver with `nohup` on RED after syncing the committed
+branch. It first runs all tests and preparation in the original SIF on an
+xxlarge compute allocation. After successful preparation, it submits only
+the missing model blocks, ready statistical shards, affected shards waiting
+for model repair, 355 case finalizers, a complete-input audit, aggregation,
+54 response surfaces and final reporting. All jobs request xxlarge/12 hours;
+no node or array concurrency cap is specified. Only the two obsolete pending
+downstream jobs 20839426 and 20839427 are cancelled after replacement submission.
+
+Default recovery directory:
+`oxygen/results/eFAST/sobol/full_N4096/recovery_20261018/`.
+Use `plan.json`, `missing_model_blocks.tsv`, `reused_cases.tsv`, `migrations/`,
+`slurm/submission_jobs.tsv` and `slurm/launch_receipt.json` for provenance.
+Raw model outputs, caches, repeated NPZ arrays and checkpoints remain on HPC.
+Completed case tables/figures use their original `neighborhood10pct/full/seed*/`
+locations. A final audit requires all 501 domains and unchanged reused cases,
+not convergence. Volatile work after the last old checkpoint cannot be recovered.

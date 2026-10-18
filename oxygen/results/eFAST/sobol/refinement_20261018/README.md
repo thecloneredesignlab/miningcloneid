@@ -65,3 +65,38 @@ target ends. The monitor itself uses the previously established small QoS.
 `slurm/jobs.json`, `launch_receipt.json`, and `time_extension/submission_jobs.tsv`
 are the authoritative submission records. A submitted array is not completed
 computation. Audits, smoke, model, statistics and reports have separate states.
+
+## Submitted jobs (2026-10-18)
+
+| Stage | Job | Extension monitor |
+|---|---:|---:|
+| prepare | 21140536 | 21140550 |
+| audit_global | 21140537 | 21140551 |
+| audit_neighborhood | 21140538 | 21140552 |
+| smoke | 21140539 | 21140553 |
+| model_g8192 | 21140540 | 21140554 |
+| analyze_g8192 | 21140541 | 21140555 |
+| model_g16384 | 21140542 | 21140556 |
+| analyze_g16384 | 21140543 | 21140557 |
+| model_g32768 | 21140544 | 21140558 |
+| analyze_g32768 | 21140545 | 21140559 |
+| report_global | 21140546 | 21140560 |
+| model_n8192 | 21140547 | 21140561 |
+| analyze_n8192 | 21140548 | 21140562 |
+| report_neighborhood | 21140549 | 21140563 |
+
+Code revision: `0f7f3a488b99722a98afec4717b7f50ab95409be`. All 14 parent jobs have a registered
+six-hour-threshold / six-hour-increment monitor. Initial live verification
+found preparation running and downstream stages pending on dependencies.
+All 14 monitors were RUNNING. This is a submission receipt, not completion.
+
+## Initial validation
+
+As of 2026-10-18T21:50:40.531226Z: preparation and all 501 case audits completed
+with exit code 0:0; all 11 tests passed in the original SIF; all five N4096
+prefixes matched exactly. The actual-model smoke task was RUNNING and its
+new-sample outputs will be reused. All 14 extension monitors were RUNNING;
+no extension had yet been needed and no failure receipt was present.
+
+Static publication receipts: `submission_receipt.json` and
+`submission_verification.json`. Live runtime manifests and events remain on HPC.

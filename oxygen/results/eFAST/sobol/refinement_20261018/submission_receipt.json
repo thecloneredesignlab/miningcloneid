@@ -1,0 +1,553 @@
+{
+  "status": "submitted",
+  "revision": "0f7f3a488b99722a98afec4717b7f50ab95409be",
+  "jobs": [
+    {
+      "stage": "prepare",
+      "job_id": "21140536",
+      "role": "prepare",
+      "scope": "",
+      "N": 0,
+      "array_count": 0,
+      "memory": "4G",
+      "dependencies": [],
+      "submitted_utc": "2026-10-18T21:45:57.763919Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_prepare",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=prepare",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/prepare_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/prepare_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "audit_global",
+      "job_id": "21140537",
+      "role": "audit",
+      "scope": "global",
+      "N": 0,
+      "array_count": 1,
+      "memory": "4G",
+      "dependencies": [
+        "21140536"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.798706Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_audit_global",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=audit,SOBOL_REFINEMENT_SCOPE=global",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/audit_global_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/audit_global_%A_%a.err",
+        "--array=1-1",
+        "--dependency=afterok:21140536",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "audit_neighborhood",
+      "job_id": "21140538",
+      "role": "audit",
+      "scope": "neighborhood10pct",
+      "N": 0,
+      "array_count": 500,
+      "memory": "4G",
+      "dependencies": [
+        "21140536"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.830332Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_audit_neighborhood",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=audit,SOBOL_REFINEMENT_SCOPE=neighborhood10pct",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/audit_neighborhood_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/audit_neighborhood_%A_%a.err",
+        "--array=1-500",
+        "--dependency=afterok:21140536",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "smoke",
+      "job_id": "21140539",
+      "role": "smoke",
+      "scope": "global",
+      "N": 8192,
+      "array_count": 0,
+      "memory": "4G",
+      "dependencies": [
+        "21140537"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.859623Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_smoke",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=smoke,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=8192",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/smoke_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/smoke_%A_%a.err",
+        "--dependency=afterok:21140537",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "model_g8192",
+      "job_id": "21140540",
+      "role": "model",
+      "scope": "global",
+      "N": 8192,
+      "array_count": 150,
+      "memory": "4G",
+      "dependencies": [
+        "21140539"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.898661Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_model_g8192",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=model,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=8192",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_g8192_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_g8192_%A_%a.err",
+        "--array=1-150",
+        "--dependency=afterok:21140539",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "analyze_g8192",
+      "job_id": "21140541",
+      "role": "analyze",
+      "scope": "global",
+      "N": 8192,
+      "array_count": 130,
+      "memory": "16G",
+      "dependencies": [
+        "21140540"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.928676Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=sref_analyze_g8192",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=analyze,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=8192",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_g8192_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_g8192_%A_%a.err",
+        "--array=1-130",
+        "--dependency=afterok:21140540",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "model_g16384",
+      "job_id": "21140542",
+      "role": "model",
+      "scope": "global",
+      "N": 16384,
+      "array_count": 300,
+      "memory": "4G",
+      "dependencies": [
+        "21140539"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.962124Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_model_g16384",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=model,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=16384",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_g16384_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_g16384_%A_%a.err",
+        "--array=1-300",
+        "--dependency=afterok:21140539",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "analyze_g16384",
+      "job_id": "21140543",
+      "role": "analyze",
+      "scope": "global",
+      "N": 16384,
+      "array_count": 130,
+      "memory": "16G",
+      "dependencies": [
+        "21140540",
+        "21140542",
+        "21140541"
+      ],
+      "submitted_utc": "2026-10-18T21:45:57.991775Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=sref_analyze_g16384",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=analyze,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=16384",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_g16384_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_g16384_%A_%a.err",
+        "--array=1-130",
+        "--dependency=afterok:21140540:21140542:21140541",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "model_g32768",
+      "job_id": "21140544",
+      "role": "model",
+      "scope": "global",
+      "N": 32768,
+      "array_count": 600,
+      "memory": "4G",
+      "dependencies": [
+        "21140539"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.021454Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_model_g32768",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=model,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=32768",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_g32768_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_g32768_%A_%a.err",
+        "--array=1-600",
+        "--dependency=afterok:21140539",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "analyze_g32768",
+      "job_id": "21140545",
+      "role": "analyze",
+      "scope": "global",
+      "N": 32768,
+      "array_count": 130,
+      "memory": "16G",
+      "dependencies": [
+        "21140540",
+        "21140542",
+        "21140544",
+        "21140543"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.056979Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=sref_analyze_g32768",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=analyze,SOBOL_REFINEMENT_SCOPE=global,SOBOL_REFINEMENT_N=32768",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_g32768_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_g32768_%A_%a.err",
+        "--array=1-130",
+        "--dependency=afterok:21140540:21140542:21140544:21140543",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "report_global",
+      "job_id": "21140546",
+      "role": "report",
+      "scope": "global",
+      "N": 0,
+      "array_count": 0,
+      "memory": "16G",
+      "dependencies": [
+        "21140541",
+        "21140543",
+        "21140545"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.088560Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=sref_report_global",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=report,SOBOL_REFINEMENT_SCOPE=global",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/report_global_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/report_global_%A_%a.err",
+        "--dependency=afterok:21140541:21140543:21140545",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "model_n8192",
+      "job_id": "21140547",
+      "role": "model",
+      "scope": "neighborhood10pct",
+      "N": 8192,
+      "array_count": 74550,
+      "memory": "4G",
+      "dependencies": [
+        "21140538",
+        "21140539"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.122888Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=4G",
+        "--job-name=sref_model_n8192",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=model,SOBOL_REFINEMENT_SCOPE=neighborhood10pct,SOBOL_REFINEMENT_N=8192",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_n8192_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/model_n8192_%A_%a.err",
+        "--array=1-74550",
+        "--dependency=afterok:21140538:21140539",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "analyze_n8192",
+      "job_id": "21140548",
+      "role": "analyze",
+      "scope": "neighborhood10pct",
+      "N": 8192,
+      "array_count": 2485,
+      "memory": "8G",
+      "dependencies": [
+        "21140547"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.154524Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=8G",
+        "--job-name=sref_analyze_n8192",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=analyze,SOBOL_REFINEMENT_SCOPE=neighborhood10pct,SOBOL_REFINEMENT_N=8192",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_n8192_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_n8192_%A_%a.err",
+        "--array=1-2485",
+        "--dependency=afterok:21140547",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    {
+      "stage": "report_neighborhood",
+      "job_id": "21140549",
+      "role": "report",
+      "scope": "neighborhood10pct",
+      "N": 0,
+      "array_count": 0,
+      "memory": "16G",
+      "dependencies": [
+        "21140548"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.186965Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=sref_report_neighborhood",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=report,SOBOL_REFINEMENT_SCOPE=neighborhood10pct",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/report_neighborhood_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/report_neighborhood_%A_%a.err",
+        "--dependency=afterok:21140548",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    }
+  ],
+  "monitors": [
+    {
+      "target_job_id": "21140536",
+      "monitor_job_id": "21140550",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.286892Z"
+    },
+    {
+      "target_job_id": "21140537",
+      "monitor_job_id": "21140551",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.330942Z"
+    },
+    {
+      "target_job_id": "21140538",
+      "monitor_job_id": "21140552",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.375647Z"
+    },
+    {
+      "target_job_id": "21140539",
+      "monitor_job_id": "21140553",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.417283Z"
+    },
+    {
+      "target_job_id": "21140540",
+      "monitor_job_id": "21140554",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.456512Z"
+    },
+    {
+      "target_job_id": "21140541",
+      "monitor_job_id": "21140555",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.496217Z"
+    },
+    {
+      "target_job_id": "21140542",
+      "monitor_job_id": "21140556",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.538072Z"
+    },
+    {
+      "target_job_id": "21140543",
+      "monitor_job_id": "21140557",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.582188Z"
+    },
+    {
+      "target_job_id": "21140544",
+      "monitor_job_id": "21140558",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.624691Z"
+    },
+    {
+      "target_job_id": "21140545",
+      "monitor_job_id": "21140559",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.663536Z"
+    },
+    {
+      "target_job_id": "21140546",
+      "monitor_job_id": "21140560",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.710848Z"
+    },
+    {
+      "target_job_id": "21140547",
+      "monitor_job_id": "21140561",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.760088Z"
+    },
+    {
+      "target_job_id": "21140548",
+      "monitor_job_id": "21140562",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.805822Z"
+    },
+    {
+      "target_job_id": "21140549",
+      "monitor_job_id": "21140563",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.855324Z"
+    }
+  ],
+  "n_model_tasks": 75600,
+  "n_analysis_tasks": 2875,
+  "n_repeats": 5,
+  "n_target_seeds": 497,
+  "n_target_seed_oxygen": 55089,
+  "initial_qos": "xxlarge",
+  "initial_time": "12:00:00",
+  "specified_node": null,
+  "array_concurrency_limit": null,
+  "extension_threshold_hours": 6,
+  "extension_increment_hours": 6,
+  "submitted_utc": "2026-10-18T21:45:59.106910Z"
+}

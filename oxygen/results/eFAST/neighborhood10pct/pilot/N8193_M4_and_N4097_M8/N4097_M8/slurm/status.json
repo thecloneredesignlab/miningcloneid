@@ -1,0 +1,12 @@
+{
+  "checked_utc": "2026-10-18T10:11:15.569993+00:00",
+  "completed_seed_summaries": 2,
+  "completed_tasks": 140,
+  "config": "N4097_M8",
+  "convergence_policy": "diagnostic_only",
+  "failed_task_ids": [],
+  "failed_tasks": 0,
+  "missing_or_running_tasks": 0,
+  "missing_task_ids": [],
+  "total_tasks": 140
+}

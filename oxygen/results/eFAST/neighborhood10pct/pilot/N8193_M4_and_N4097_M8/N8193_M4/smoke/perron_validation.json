@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "n_matrices": 1,
+  "decimal_digits": [50, 100],
+  "double_residual": 4.3368086899420177e-19,
+  "leading_root_bound_width": 5.2001263401711183e-62,
+  "ploidy_change": 3.3306690738754696e-15,
+  "growth_change": 2.2204460492503131e-15,
+  "matrix_sha256": "45392861a8e56e4ab3070dc9c7b78b1c48100422ee017784c32d49df97f007b6"
+}

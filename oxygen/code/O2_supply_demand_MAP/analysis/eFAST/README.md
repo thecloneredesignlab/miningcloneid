@@ -327,3 +327,13 @@ identity and FFT calculations, including targeted-recovery diagnostics.
 See [the follow-up protocol](../../../../results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/README.md)
 for settings, outputs and scheduling. The previous scientific modules remain
 unchanged and are validated by their existing SHA-256 manifests.
+
+### Completed N/M follow-up collection and review
+
+`collect_resolution_nm_results.py` audits the 280 task caches and certified
+recovery sources on HPC, creates an explicit compact-file manifest and verifies
+local collection. `report_resolution_nm.py` independently reconciles the
+five-phase arrays, distinguishes N-resolution and M-setting comparisons and
+writes parameter/window tables plus diagnostic overview PDFs/PNGs. Neither
+script submits jobs or evaluates the model. See
+[completed results and interpretation](../../../../results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/README_results.md).

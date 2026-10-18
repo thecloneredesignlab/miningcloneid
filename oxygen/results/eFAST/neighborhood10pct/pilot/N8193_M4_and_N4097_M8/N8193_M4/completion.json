@@ -1,0 +1,24 @@
+{
+  "artifact_sha256": {
+    "band_rank_mechanism_comparison.tsv": "b73c49c7f114b510815cfca4df1200be93cfc589a11338585203568036565563",
+    "baseline_indices.npz": "11da16a3aa8549d04b6d52e7b123cf501adc851556e1d24572c3f3b84ae005e1",
+    "configuration_comparison.tsv": "037c146853ad11ab4a0b76801a691b6f11adcc4750ad4cce1f6b0fe0691c045a",
+    "figures/growth_ST_comparison.pdf": "f795cd18f232c33eece74973496b73777709f8ef71fc92099dcf61255aa08b82",
+    "figures/growth_ST_comparison.png": "8aa5df2cf307e6908ccd1929d73acfa47bc75171c36122bbf8b65ef454efacb9",
+    "figures/ploidy_ST_comparison.pdf": "41c3ae7fae0d814036060e870332a79f17325a60caffee5685951c7c461eb42c",
+    "figures/ploidy_ST_comparison.png": "b1554eafb1c5bfa0f028bfe97bd9623bbcfa9fe378dd1ef787cc97785d6154a0",
+    "key_ploidy_ST_configuration_comparison.tsv": "4a339aac02e94789595bbe23ac655d7975be552c77a16de07192528fb86be54a",
+    "key_ploidy_ST_repeat_diagnostics.tsv": "4fc4ce0732f711e9a9172cda5d11136da5d4ce82694c422e411f42c40bd0980c",
+    "oxygen_curve_summary.tsv.gz": "3b1280c20a0c1fb43efdb0436bd6e9a9c5baba55ad57582079fb4115e3c311d6",
+    "repeat_diagnostics.tsv": "ee09b443b62aced0a616e42deccda952ea77352ccc59aee30c594be23e999d15",
+    "seed_selection.tsv": "f479b3830c88c7001b608de24abd9b2f0e338cf87d1d2084c11828a026cd54f9"
+  },
+  "comparison_kind": "N_resolution",
+  "completed_utc": "2026-10-18T12:02:22.048325+00:00",
+  "config": "N8193_M4",
+  "diagnostic_only": true,
+  "interpretation": "Diagnostic endpoints, not a population sample. M comparisons are not N convergence. Phase ranges are not confidence intervals.",
+  "n_seed_summaries": 2,
+  "n_tasks": 140,
+  "status": "complete"
+}

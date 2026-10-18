@@ -1,0 +1,2 @@
+config	fit_seed	N	M	focal_parameter	replicate	sample_id	O2_pct	spectral_gap	ploidy_change	growth_change	double_residual	leading_root_bound_width	ploidy_precision_difference	growth_precision_difference
+N8193_M4	seed138	8193	4	alpha_o2	4	6901	1.25	4.62852395299862e-10	-4.440892098500626e-13	4.718447854656915e-16	4.0389678347315804e-28	2.3918705539943444e-52	0	0

@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "new_jobs_submitted": false,
+  "source_artifacts_verified": 64,
+  "source_manifest": "completed_results_manifest.tsv",
+  "n_pdf_pages_rendered_and_visually_inspected": 6,
+  "pdf_text_checks": "passed",
+  "new_report_tests": {
+    "total": 3,
+    "passed": 3
+  },
+  "independent_helper_tests": {
+    "total": 4,
+    "passed": 4
+  },
+  "checks": [
+    "N/M/seed/phase identity rejection",
+    "M comparison cannot be relabelled as N convergence",
+    "test repeat stability distinguished from reference stability",
+    "local maximum failure retained despite p90 pass",
+    "undefined indices never changed to zero",
+    "all original completion and collection hashes retained"
+  ],
+  "numerical_assessment": "Share with caveats: ploidy ST convergence remains parameter- and oxygen-dependent; M8 is not uniformly more stable",
+  "raw_output_audit_scope": "Full gzip hashes checked only for numerical recovery sources; other original outputs cross-linked through receipts"
+}

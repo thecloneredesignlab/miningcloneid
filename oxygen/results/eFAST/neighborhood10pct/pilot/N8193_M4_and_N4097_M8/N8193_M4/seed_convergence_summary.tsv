@@ -1,0 +1,5 @@
+config	comparison_kind	fit_seed	parameter_scope	oxygen_window	index	output	n_parameter_seed_cells	reference_repeat_p90_pass	test_repeat_p90_pass	difference_p90_pass	test_repeat_and_difference_p90_pass	test_repeat_and_difference_max_pass	both_configurations_R90_and_D90_pass	repeat_p90_improved	reference_repeat_max_pass	test_repeat_max_pass	difference_max_pass
+N8193_M4	N_resolution	seed25	key5	overall_0_to_5pct	ST	dominant_mean_ploidy	5	3	1	4	1	1	1	1	1	1	3
+N8193_M4	N_resolution	seed25	all14	overall_0_to_5pct	ST	dominant_mean_ploidy	14	11	10	13	10	7	9	2	7	9	9
+N8193_M4	N_resolution	seed138	key5	overall_0_to_5pct	ST	dominant_mean_ploidy	5	5	3	3	3	1	3	1	1	1	1
+N8193_M4	N_resolution	seed138	all14	overall_0_to_5pct	ST	dominant_mean_ploidy	14	11	3	6	3	1	3	2	1	1	1

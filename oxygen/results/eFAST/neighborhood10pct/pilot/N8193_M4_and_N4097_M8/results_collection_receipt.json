@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "collected_utc": "2026-10-18T17:55:00.689305+00:00",
+  "n_hpc_artifacts": 64,
+  "total_bytes": 13589169,
+  "all_hpc_sha256_matched": true,
+  "original_completion_hashes_matched": true,
+  "manifest_sha256": "eda7a15658f3a34539c394ee4868dcd8c7b004e730214ee9f81cc108a9dafe66",
+  "raw_trajectories_location": "HPC only",
+  "new_jobs_submitted": false
+}

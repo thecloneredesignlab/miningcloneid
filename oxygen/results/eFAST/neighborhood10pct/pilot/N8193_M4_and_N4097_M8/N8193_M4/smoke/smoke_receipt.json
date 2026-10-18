@@ -1,0 +1,56 @@
+{
+  "M": 4,
+  "N": 8193,
+  "completed_utc": "2026-10-18T06:29:43.735910+00:00",
+  "config": "N8193_M4",
+  "host": "hpctpa3pc0027",
+  "perron_validation": {
+    "decimal_digits": [
+      50,
+      100
+    ],
+    "double_residual": 4.336808689942018e-19,
+    "growth_change": 2.220446049250313e-15,
+    "leading_root_bound_width": 5.200126340171118e-62,
+    "matrix_sha256": "45392861a8e56e4ab3070dc9c7b78b1c48100422ee017784c32d49df97f007b6",
+    "n_matrices": 1,
+    "ploidy_change": 3.3306690738754696e-15,
+    "status": "passed"
+  },
+  "slurm_job_id": "21138912",
+  "status": "passed",
+  "submission_plan_sha256": "92363327852774f616b054477a7612609429637f52142cac0a680b86ea330f6f",
+  "trajectory_checks": [
+    {
+      "M": 4,
+      "N": 8193,
+      "elapsed_seconds": 295.81989983003587,
+      "fit_seed": "seed25",
+      "focal_parameter": "buffer_beta",
+      "n_rows": 24579,
+      "output_sha256": "cd4dc36428475d55abb822700f0434e9ca6351a1964a659a747f9bdccfc71430",
+      "oxygen_pct": [
+        0.0,
+        2.5,
+        5.0
+      ],
+      "phase_seed": 202610330
+    },
+    {
+      "M": 4,
+      "N": 8193,
+      "elapsed_seconds": 268.53641292080283,
+      "fit_seed": "seed138",
+      "focal_parameter": "buffer_beta",
+      "n_rows": 24579,
+      "output_sha256": "d9e586738140bbb599de375c20db8b0662eb1f44dd5dfdda3eaba237ca9b45f4",
+      "oxygen_pct": [
+        0.0,
+        2.5,
+        5.0
+      ],
+      "phase_seed": 202611460
+    }
+  ],
+  "unit_tests": "test_resolution_nm.py"
+}

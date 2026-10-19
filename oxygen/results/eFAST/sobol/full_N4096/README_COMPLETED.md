@@ -16,3 +16,17 @@ The verified local/HPC collection contains 19,828 files (1,619,105,148 bytes).
 Git contains primary figures, scope summaries, all 54 response figures/source
 tables, reference parameter sets and audit receipts. Detailed per-endpoint
 files can be retrieved with collect_full.py using collection_manifest.tsv.
+
+## Local figure display update (2026-10-19)
+
+All current oxygen-axis figures now use a base-10 symlog axis, retaining real
+O2=0 with a linear interval from 0 to 0.025%. Dashed boundaries at 1% and 3%
+mark Low/Mid/High oxygen. Numerical tables, repeats and convergence diagnostics
+are unchanged. The 54 parameter response surfaces are unchanged.
+
+- [Current figures and complete redraw audit](axis_redraw_20261019/README.md)
+- [Global/neighborhood comparison figure groups](figure_comparison_20261019/README.md)
+
+The earlier collection receipt and file hashes above describe the original
+collected artifacts. Current image identities and verification are recorded in
+`axis_redraw_20261019/completion.json` and `figure_manifest.tsv`.

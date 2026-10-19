@@ -1,0 +1,56 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-19T18:22:58.908Z",
+  "method": "Visual inspection of pdftoppm rasterizations of final PDF pages",
+  "renderer": {
+    "batch_sha256": "0e46db2a4d5b40ae864367c340837ed1eca096ecc53b5fb6b8f58f14724aa381",
+    "helper_sha256": "556411f0812ce6413651f17ddd8d34babcf67f7f1dd13f3d4dc1732ec2518ee3",
+    "scale": "symlog",
+    "base": 10,
+    "linthresh": 0.025,
+    "linscale": 1,
+    "oxygen_ticks": [
+      0,
+      0.025,
+      0.1,
+      0.5,
+      1,
+      3,
+      5
+    ],
+    "boundaries": [
+      1,
+      3
+    ],
+    "pdf_layout_frozen_before_export": true,
+    "band_label_offset_points": 3,
+    "zero_retained": true,
+    "cell_edges": "physical oxygen midpoints, clipped to 0 and 5",
+    "positive_palette": "#54278f",
+    "model_evaluations": 0,
+    "sensitivity_estimations": 0
+  },
+  "reviewed": [
+    {
+      "path": "global/figures/s2_pair_by_oxygen.pdf",
+      "sha256": "17a275200d186555b0de716c8a9487c137d7d392bd227aa2cebb7762e34b10a8"
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2.pdf",
+      "sha256": "ef7898156e3508323b1b6f2bbcd1cf900c87c39f5e8059f0584767184531f342"
+    },
+    {
+      "path": "neighborhood10pct/full/seed500/figures/s2_pair_by_oxygen.pdf",
+      "sha256": "9d50641297e2a28b5b87e1dd8a76ececf354a41d427ac429982637f3e0b10f76"
+    }
+  ],
+  "findings": [
+    "Oxygen ticks and Low/Mid/High labels visible.",
+    "Dashed boundaries at 1% and 3% visible.",
+    "Fixed 3-point region-label spacing separates labels from panel titles.",
+    "No clipped row labels, titles or colorbars observed.",
+    "12-panel global/neighborhood layout and signed S2 scales preserved."
+  ],
+  "automated_pdf_validation": "pdf_validation.json",
+  "automated_pdf_count": 1521
+}

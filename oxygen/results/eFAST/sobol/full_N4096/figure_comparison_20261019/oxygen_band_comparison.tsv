@@ -1,0 +1,1429 @@
+scope	output	index	parameter_i	parameter_j	band	n_oxygen	mean_of_scope_summaries	diagnostic_pass_fraction
+global	dominant_mean_ploidy	S1	lam_max		low_0_1	41	0.06179455471488852	0.6829268292682927
+global	dominant_mean_ploidy	S1	lam_max		middle_1_3	79	0.02414681472826526	1.0
+global	dominant_mean_ploidy	S1	lam_max		high_3_5	81	0.008413849989837425	1.0
+global	dominant_mean_ploidy	S1	p_mis_base		low_0_1	41	0.04189100647771184	0.8780487804878049
+global	dominant_mean_ploidy	S1	p_mis_base		middle_1_3	79	0.04518101457839026	0.379746835443038
+global	dominant_mean_ploidy	S1	p_mis_base		high_3_5	81	0.04420636144668836	1.0
+global	dominant_mean_ploidy	S1	p_misseg		low_0_1	41	0.059888515296721755	0.975609756097561
+global	dominant_mean_ploidy	S1	p_misseg		middle_1_3	79	0.02097341491251176	0.8607594936708861
+global	dominant_mean_ploidy	S1	p_misseg		high_3_5	81	0.004454829529961366	1.0
+global	dominant_mean_ploidy	S1	k_o_mis		low_0_1	41	0.0036427493552577427	1.0
+global	dominant_mean_ploidy	S1	k_o_mis		middle_1_3	79	-0.0002047441265001923	1.0
+global	dominant_mean_ploidy	S1	k_o_mis		high_3_5	81	0.002531120027063502	1.0
+global	dominant_mean_ploidy	S1	buffer_smax		low_0_1	41	-0.004216209160284827	1.0
+global	dominant_mean_ploidy	S1	buffer_smax		middle_1_3	79	0.005798987462937558	1.0
+global	dominant_mean_ploidy	S1	buffer_smax		high_3_5	81	0.020182708535413527	1.0
+global	dominant_mean_ploidy	S1	buffer_beta		low_0_1	41	4.611164630649221e-05	1.0
+global	dominant_mean_ploidy	S1	buffer_beta		middle_1_3	79	0.001528564168895087	1.0
+global	dominant_mean_ploidy	S1	buffer_beta		high_3_5	81	0.0015143286584633827	1.0
+global	dominant_mean_ploidy	S1	buffer_n_exp		low_0_1	41	-0.0017175407930861632	1.0
+global	dominant_mean_ploidy	S1	buffer_n_exp		middle_1_3	79	0.0003852868313692203	1.0
+global	dominant_mean_ploidy	S1	buffer_n_exp		high_3_5	81	0.0059501094616772904	1.0
+global	dominant_mean_ploidy	S1	p_wgd		low_0_1	41	4.928510704564873e-05	1.0
+global	dominant_mean_ploidy	S1	p_wgd		middle_1_3	79	0.0008844771585310203	1.0
+global	dominant_mean_ploidy	S1	p_wgd		high_3_5	81	0.002561465901139005	1.0
+global	dominant_mean_ploidy	S1	alpha_o2		low_0_1	41	0.0013384978212558293	1.0
+global	dominant_mean_ploidy	S1	alpha_o2		middle_1_3	79	0.003524167071369017	1.0
+global	dominant_mean_ploidy	S1	alpha_o2		high_3_5	81	0.005497376239396728	1.0
+global	dominant_mean_ploidy	S1	gamma_growth		low_0_1	41	0.0015114739194114308	1.0
+global	dominant_mean_ploidy	S1	gamma_growth		middle_1_3	79	-0.0007413912697698674	1.0
+global	dominant_mean_ploidy	S1	gamma_growth		high_3_5	81	0.0025450358353581496	0.8024691358024691
+global	dominant_mean_ploidy	S1	mu_hp		low_0_1	41	0.020058749571129946	0.0
+global	dominant_mean_ploidy	S1	mu_hp		middle_1_3	79	0.005894350424515424	0.7341772151898734
+global	dominant_mean_ploidy	S1	mu_hp		high_3_5	81	0.004137379140916969	1.0
+global	dominant_mean_ploidy	S1	gamma_mu		low_0_1	41	0.021671220318186992	0.9512195121951219
+global	dominant_mean_ploidy	S1	gamma_mu		middle_1_3	79	0.01253149119116459	1.0
+global	dominant_mean_ploidy	S1	gamma_mu		high_3_5	81	0.015709207023886278	1.0
+global	dominant_mean_ploidy	S1	O2_crit		low_0_1	41	0.00046044461474879225	1.0
+global	dominant_mean_ploidy	S1	O2_crit		middle_1_3	79	-0.00026775026460396166	0.7848101265822784
+global	dominant_mean_ploidy	S1	O2_crit		high_3_5	81	0.00970179087378086	1.0
+global	dominant_mean_ploidy	S1	n_O		low_0_1	41	0.0021491678334796837	1.0
+global	dominant_mean_ploidy	S1	n_O		middle_1_3	79	-0.0045336067887580675	0.9620253164556962
+global	dominant_mean_ploidy	S1	n_O		high_3_5	81	-0.0010860042500956536	0.5679012345679012
+global	dominant_mean_ploidy	ST	lam_max		low_0_1	41	0.5271812455764116	0.0
+global	dominant_mean_ploidy	ST	lam_max		middle_1_3	79	0.4563444442123	0.0
+global	dominant_mean_ploidy	ST	lam_max		high_3_5	81	0.3783714308442713	0.0
+global	dominant_mean_ploidy	ST	p_mis_base		low_0_1	41	0.3530630142643082	0.0
+global	dominant_mean_ploidy	ST	p_mis_base		middle_1_3	79	0.4649544573446686	0.0379746835443038
+global	dominant_mean_ploidy	ST	p_mis_base		high_3_5	81	0.4957097126769968	0.0
+global	dominant_mean_ploidy	ST	p_misseg		low_0_1	41	0.5090330718854044	0.0
+global	dominant_mean_ploidy	ST	p_misseg		middle_1_3	79	0.3918082267806711	0.06329113924050633
+global	dominant_mean_ploidy	ST	p_misseg		high_3_5	81	0.30050327652182746	0.12345679012345678
+global	dominant_mean_ploidy	ST	k_o_mis		low_0_1	41	0.24879427659830325	0.07317073170731707
+global	dominant_mean_ploidy	ST	k_o_mis		middle_1_3	79	0.2274936831076849	0.12658227848101267
+global	dominant_mean_ploidy	ST	k_o_mis		high_3_5	81	0.18281873045408523	0.1111111111111111
+global	dominant_mean_ploidy	ST	buffer_smax		low_0_1	41	0.11263410516484343	0.43902439024390244
+global	dominant_mean_ploidy	ST	buffer_smax		middle_1_3	79	0.1789907258839653	0.25316455696202533
+global	dominant_mean_ploidy	ST	buffer_smax		high_3_5	81	0.2424078909527243	0.1728395061728395
+global	dominant_mean_ploidy	ST	buffer_beta		low_0_1	41	0.10461069934654196	0.7317073170731707
+global	dominant_mean_ploidy	ST	buffer_beta		middle_1_3	79	0.13233979814380287	0.4810126582278481
+global	dominant_mean_ploidy	ST	buffer_beta		high_3_5	81	0.14497054843125484	0.0
+global	dominant_mean_ploidy	ST	buffer_n_exp		low_0_1	41	0.05697560214491661	0.8292682926829268
+global	dominant_mean_ploidy	ST	buffer_n_exp		middle_1_3	79	0.10557198430733408	0.7974683544303798
+global	dominant_mean_ploidy	ST	buffer_n_exp		high_3_5	81	0.15681487138801029	0.7901234567901234
+global	dominant_mean_ploidy	ST	p_wgd		low_0_1	41	0.0002539822058348979	1.0
+global	dominant_mean_ploidy	ST	p_wgd		middle_1_3	79	0.007602910490093551	1.0
+global	dominant_mean_ploidy	ST	p_wgd		high_3_5	81	0.023060672063045715	1.0
+global	dominant_mean_ploidy	ST	alpha_o2		low_0_1	41	0.10525008657147068	0.5609756097560976
+global	dominant_mean_ploidy	ST	alpha_o2		middle_1_3	79	0.13173858510532668	0.0759493670886076
+global	dominant_mean_ploidy	ST	alpha_o2		high_3_5	81	0.12589657969171392	0.16049382716049382
+global	dominant_mean_ploidy	ST	gamma_growth		low_0_1	41	0.1680235496699646	0.1951219512195122
+global	dominant_mean_ploidy	ST	gamma_growth		middle_1_3	79	0.21861934353402268	0.0
+global	dominant_mean_ploidy	ST	gamma_growth		high_3_5	81	0.22777108605786608	0.0
+global	dominant_mean_ploidy	ST	mu_hp		low_0_1	41	0.4115914887629433	0.12195121951219512
+global	dominant_mean_ploidy	ST	mu_hp		middle_1_3	79	0.3207248034861598	0.0759493670886076
+global	dominant_mean_ploidy	ST	mu_hp		high_3_5	81	0.27990757019594453	0.3333333333333333
+global	dominant_mean_ploidy	ST	gamma_mu		low_0_1	41	0.3288859073799074	0.14634146341463414
+global	dominant_mean_ploidy	ST	gamma_mu		middle_1_3	79	0.3606563578621605	0.08860759493670886
+global	dominant_mean_ploidy	ST	gamma_mu		high_3_5	81	0.3026518468204778	0.024691358024691357
+global	dominant_mean_ploidy	ST	O2_crit		low_0_1	41	0.3068867202585831	0.21951219512195122
+global	dominant_mean_ploidy	ST	O2_crit		middle_1_3	79	0.47112067471080615	0.0
+global	dominant_mean_ploidy	ST	O2_crit		high_3_5	81	0.46537668771797464	0.07407407407407407
+global	dominant_mean_ploidy	ST	n_O		low_0_1	41	0.18497964160442293	0.24390243902439024
+global	dominant_mean_ploidy	ST	n_O		middle_1_3	79	0.3977487175238975	0.0
+global	dominant_mean_ploidy	ST	n_O		high_3_5	81	0.5115633870517781	0.0
+global	dominant_mean_ploidy	S2	lam_max	p_mis_base	low_0_1	41	0.034086721731405624	0.2926829268292683
+global	dominant_mean_ploidy	S2	lam_max	p_mis_base	middle_1_3	79	0.03798548608197754	0.189873417721519
+global	dominant_mean_ploidy	S2	lam_max	p_mis_base	high_3_5	81	0.030194223572759162	0.0
+global	dominant_mean_ploidy	S2	lam_max	p_misseg	low_0_1	41	0.07287233464060476	0.24390243902439024
+global	dominant_mean_ploidy	S2	lam_max	p_misseg	middle_1_3	79	0.03913466625082875	0.8860759493670886
+global	dominant_mean_ploidy	S2	lam_max	p_misseg	high_3_5	81	0.028343837618673897	0.2839506172839506
+global	dominant_mean_ploidy	S2	lam_max	k_o_mis	low_0_1	41	0.011321834458505804	0.2926829268292683
+global	dominant_mean_ploidy	S2	lam_max	k_o_mis	middle_1_3	79	0.008816128535647205	0.3037974683544304
+global	dominant_mean_ploidy	S2	lam_max	k_o_mis	high_3_5	81	0.016021515797129855	0.8271604938271605
+global	dominant_mean_ploidy	S2	lam_max	buffer_smax	low_0_1	41	0.014861461784458947	0.07317073170731707
+global	dominant_mean_ploidy	S2	lam_max	buffer_smax	middle_1_3	79	0.003305934836606699	0.43037974683544306
+global	dominant_mean_ploidy	S2	lam_max	buffer_smax	high_3_5	81	0.013746601322939658	0.5432098765432098
+global	dominant_mean_ploidy	S2	lam_max	buffer_beta	low_0_1	41	0.012367000919509106	0.12195121951219512
+global	dominant_mean_ploidy	S2	lam_max	buffer_beta	middle_1_3	79	0.010729872786115929	0.379746835443038
+global	dominant_mean_ploidy	S2	lam_max	buffer_beta	high_3_5	81	0.01738660495123139	0.5308641975308642
+global	dominant_mean_ploidy	S2	lam_max	buffer_n_exp	low_0_1	41	0.013360886011338113	0.0975609756097561
+global	dominant_mean_ploidy	S2	lam_max	buffer_n_exp	middle_1_3	79	0.009563643931522144	0.3037974683544304
+global	dominant_mean_ploidy	S2	lam_max	buffer_n_exp	high_3_5	81	0.016369355401700276	0.0
+global	dominant_mean_ploidy	S2	lam_max	p_wgd	low_0_1	41	0.011569619215707877	0.07317073170731707
+global	dominant_mean_ploidy	S2	lam_max	p_wgd	middle_1_3	79	0.008035542039516345	0.379746835443038
+global	dominant_mean_ploidy	S2	lam_max	p_wgd	high_3_5	81	0.01591483723770605	0.691358024691358
+global	dominant_mean_ploidy	S2	lam_max	alpha_o2	low_0_1	41	0.011318756981401657	0.0
+global	dominant_mean_ploidy	S2	lam_max	alpha_o2	middle_1_3	79	0.007546061333312355	0.3037974683544304
+global	dominant_mean_ploidy	S2	lam_max	alpha_o2	high_3_5	81	0.01688019131887592	0.38271604938271603
+global	dominant_mean_ploidy	S2	lam_max	gamma_growth	low_0_1	41	0.010514892947792082	0.024390243902439025
+global	dominant_mean_ploidy	S2	lam_max	gamma_growth	middle_1_3	79	0.007916309588583754	0.43037974683544306
+global	dominant_mean_ploidy	S2	lam_max	gamma_growth	high_3_5	81	0.013447114772704863	0.3950617283950617
+global	dominant_mean_ploidy	S2	lam_max	mu_hp	low_0_1	41	0.021994251872750163	0.0
+global	dominant_mean_ploidy	S2	lam_max	mu_hp	middle_1_3	79	0.005993067289501491	0.4430379746835443
+global	dominant_mean_ploidy	S2	lam_max	mu_hp	high_3_5	81	0.01233827007869077	0.9753086419753086
+global	dominant_mean_ploidy	S2	lam_max	gamma_mu	low_0_1	41	0.021940994635862996	0.04878048780487805
+global	dominant_mean_ploidy	S2	lam_max	gamma_mu	middle_1_3	79	0.02138355109650465	0.20253164556962025
+global	dominant_mean_ploidy	S2	lam_max	gamma_mu	high_3_5	81	0.019731613950920865	0.9382716049382716
+global	dominant_mean_ploidy	S2	lam_max	O2_crit	low_0_1	41	0.010722166757266758	0.04878048780487805
+global	dominant_mean_ploidy	S2	lam_max	O2_crit	middle_1_3	79	0.01662673867985591	0.6708860759493671
+global	dominant_mean_ploidy	S2	lam_max	O2_crit	high_3_5	81	0.014843616448173023	0.6049382716049383
+global	dominant_mean_ploidy	S2	lam_max	n_O	low_0_1	41	0.00911801857647823	0.07317073170731707
+global	dominant_mean_ploidy	S2	lam_max	n_O	middle_1_3	79	0.01098781546701993	0.3670886075949367
+global	dominant_mean_ploidy	S2	lam_max	n_O	high_3_5	81	0.02478149511683897	0.20987654320987653
+global	dominant_mean_ploidy	S2	p_mis_base	p_misseg	low_0_1	41	-0.002060619562917124	0.7317073170731707
+global	dominant_mean_ploidy	S2	p_mis_base	p_misseg	middle_1_3	79	0.007154910573860787	0.4050632911392405
+global	dominant_mean_ploidy	S2	p_mis_base	p_misseg	high_3_5	81	0.005224755110166602	0.2716049382716049
+global	dominant_mean_ploidy	S2	p_mis_base	k_o_mis	low_0_1	41	-0.0055185895076090875	0.8048780487804879
+global	dominant_mean_ploidy	S2	p_mis_base	k_o_mis	middle_1_3	79	0.007740152661569529	0.4936708860759494
+global	dominant_mean_ploidy	S2	p_mis_base	k_o_mis	high_3_5	81	0.0011169450533194535	1.0
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_smax	low_0_1	41	-0.005257531895175584	0.8048780487804879
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_smax	middle_1_3	79	0.012101894639071912	0.12658227848101267
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_smax	high_3_5	81	-0.004504543214660703	0.5925925925925926
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_beta	low_0_1	41	-1.4052104436077293e-05	0.7804878048780488
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_beta	middle_1_3	79	0.008734252417136776	0.4430379746835443
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_beta	high_3_5	81	0.0021314477455494614	0.9753086419753086
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_n_exp	low_0_1	41	-0.005857559227535818	0.9024390243902439
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_n_exp	middle_1_3	79	0.012971846021189365	0.4430379746835443
+global	dominant_mean_ploidy	S2	p_mis_base	buffer_n_exp	high_3_5	81	0.0010930647991038937	0.7654320987654321
+global	dominant_mean_ploidy	S2	p_mis_base	p_wgd	low_0_1	41	-0.005210992448841241	0.926829268292683
+global	dominant_mean_ploidy	S2	p_mis_base	p_wgd	middle_1_3	79	0.006186895650625496	0.5569620253164557
+global	dominant_mean_ploidy	S2	p_mis_base	p_wgd	high_3_5	81	0.004602101401184534	0.8518518518518519
+global	dominant_mean_ploidy	S2	p_mis_base	alpha_o2	low_0_1	41	-0.0006926023972825844	0.8780487804878049
+global	dominant_mean_ploidy	S2	p_mis_base	alpha_o2	middle_1_3	79	0.0161439633641515	0.3670886075949367
+global	dominant_mean_ploidy	S2	p_mis_base	alpha_o2	high_3_5	81	0.002996926493173014	0.9876543209876543
+global	dominant_mean_ploidy	S2	p_mis_base	gamma_growth	low_0_1	41	0.0003745236889658527	0.5853658536585366
+global	dominant_mean_ploidy	S2	p_mis_base	gamma_growth	middle_1_3	79	0.022596663908305763	0.02531645569620253
+global	dominant_mean_ploidy	S2	p_mis_base	gamma_growth	high_3_5	81	0.026361954267330144	0.2962962962962963
+global	dominant_mean_ploidy	S2	p_mis_base	mu_hp	low_0_1	41	0.024702906634737964	0.4634146341463415
+global	dominant_mean_ploidy	S2	p_mis_base	mu_hp	middle_1_3	79	0.0273772789418386	0.379746835443038
+global	dominant_mean_ploidy	S2	p_mis_base	mu_hp	high_3_5	81	0.007130968674473684	0.14814814814814814
+global	dominant_mean_ploidy	S2	p_mis_base	gamma_mu	low_0_1	41	0.0041041623940479425	0.4878048780487805
+global	dominant_mean_ploidy	S2	p_mis_base	gamma_mu	middle_1_3	79	0.029346663514872657	0.5063291139240507
+global	dominant_mean_ploidy	S2	p_mis_base	gamma_mu	high_3_5	81	0.009882909744726819	0.8518518518518519
+global	dominant_mean_ploidy	S2	p_mis_base	O2_crit	low_0_1	41	0.004094577422011737	0.5121951219512195
+global	dominant_mean_ploidy	S2	p_mis_base	O2_crit	middle_1_3	79	0.02227932478395065	0.3670886075949367
+global	dominant_mean_ploidy	S2	p_mis_base	O2_crit	high_3_5	81	0.024004898043059365	0.25925925925925924
+global	dominant_mean_ploidy	S2	p_mis_base	n_O	low_0_1	41	-0.005489088391552611	0.8048780487804879
+global	dominant_mean_ploidy	S2	p_mis_base	n_O	middle_1_3	79	0.006830735371792852	0.3670886075949367
+global	dominant_mean_ploidy	S2	p_mis_base	n_O	high_3_5	81	0.012393929400770536	0.9753086419753086
+global	dominant_mean_ploidy	S2	p_misseg	k_o_mis	low_0_1	41	0.01888720101576654	0.3170731707317073
+global	dominant_mean_ploidy	S2	p_misseg	k_o_mis	middle_1_3	79	0.01007065965123693	0.11392405063291139
+global	dominant_mean_ploidy	S2	p_misseg	k_o_mis	high_3_5	81	0.015570626909205871	0.4691358024691358
+global	dominant_mean_ploidy	S2	p_misseg	buffer_smax	low_0_1	41	0.006045323889887324	0.2926829268292683
+global	dominant_mean_ploidy	S2	p_misseg	buffer_smax	middle_1_3	79	0.0031320569340074333	0.21518987341772153
+global	dominant_mean_ploidy	S2	p_misseg	buffer_smax	high_3_5	81	0.015772186796828087	0.345679012345679
+global	dominant_mean_ploidy	S2	p_misseg	buffer_beta	low_0_1	41	0.004219936410029365	0.34146341463414637
+global	dominant_mean_ploidy	S2	p_misseg	buffer_beta	middle_1_3	79	-0.001087560984644336	0.35443037974683544
+global	dominant_mean_ploidy	S2	p_misseg	buffer_beta	high_3_5	81	0.014646585001079099	0.2839506172839506
+global	dominant_mean_ploidy	S2	p_misseg	buffer_n_exp	low_0_1	41	0.003633930384779748	0.36585365853658536
+global	dominant_mean_ploidy	S2	p_misseg	buffer_n_exp	middle_1_3	79	0.0027616385446083904	0.4050632911392405
+global	dominant_mean_ploidy	S2	p_misseg	buffer_n_exp	high_3_5	81	0.01713190508840256	0.25925925925925924
+global	dominant_mean_ploidy	S2	p_misseg	p_wgd	low_0_1	41	0.0030855296231098828	0.3170731707317073
+global	dominant_mean_ploidy	S2	p_misseg	p_wgd	middle_1_3	79	-0.0013642332763509027	0.35443037974683544
+global	dominant_mean_ploidy	S2	p_misseg	p_wgd	high_3_5	81	0.01232561984912524	0.4567901234567901
+global	dominant_mean_ploidy	S2	p_misseg	alpha_o2	low_0_1	41	0.0012394068276809697	0.34146341463414637
+global	dominant_mean_ploidy	S2	p_misseg	alpha_o2	middle_1_3	79	-0.0029284071440971084	0.379746835443038
+global	dominant_mean_ploidy	S2	p_misseg	alpha_o2	high_3_5	81	0.008566131265394605	0.30864197530864196
+global	dominant_mean_ploidy	S2	p_misseg	gamma_growth	low_0_1	41	0.0005687781445753558	0.34146341463414637
+global	dominant_mean_ploidy	S2	p_misseg	gamma_growth	middle_1_3	79	0.0009286355941435439	0.10126582278481013
+global	dominant_mean_ploidy	S2	p_misseg	gamma_growth	high_3_5	81	0.015111804845530675	0.41975308641975306
+global	dominant_mean_ploidy	S2	p_misseg	mu_hp	low_0_1	41	0.02454270305640519	0.17073170731707318
+global	dominant_mean_ploidy	S2	p_misseg	mu_hp	middle_1_3	79	0.0033609119382894707	0.3291139240506329
+global	dominant_mean_ploidy	S2	p_misseg	mu_hp	high_3_5	81	0.011145015143900682	0.12345679012345678
+global	dominant_mean_ploidy	S2	p_misseg	gamma_mu	low_0_1	41	0.0237808760495573	0.17073170731707318
+global	dominant_mean_ploidy	S2	p_misseg	gamma_mu	middle_1_3	79	0.014213858886288653	0.5569620253164557
+global	dominant_mean_ploidy	S2	p_misseg	gamma_mu	high_3_5	81	0.012165875299129866	0.12345679012345678
+global	dominant_mean_ploidy	S2	p_misseg	O2_crit	low_0_1	41	0.009435804229251638	0.34146341463414637
+global	dominant_mean_ploidy	S2	p_misseg	O2_crit	middle_1_3	79	0.0011759728900901936	0.4177215189873418
+global	dominant_mean_ploidy	S2	p_misseg	O2_crit	high_3_5	81	0.002427896407718067	1.0
+global	dominant_mean_ploidy	S2	p_misseg	n_O	low_0_1	41	0.0009551446052064534	0.5853658536585366
+global	dominant_mean_ploidy	S2	p_misseg	n_O	middle_1_3	79	0.0072205227726604435	0.5189873417721519
+global	dominant_mean_ploidy	S2	p_misseg	n_O	high_3_5	81	0.016479343061497943	0.8395061728395061
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_smax	low_0_1	41	0.008601238499078019	0.9512195121951219
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_smax	middle_1_3	79	0.008658057313183976	0.759493670886076
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_smax	high_3_5	81	0.0035419036218742673	0.8765432098765432
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_beta	low_0_1	41	0.008511176454619471	0.975609756097561
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_beta	middle_1_3	79	0.00932540940422953	0.8481012658227848
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_beta	high_3_5	81	0.004453252427134565	1.0
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_n_exp	low_0_1	41	0.009156284521882534	0.9512195121951219
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_n_exp	middle_1_3	79	0.009681197226771032	0.8734177215189873
+global	dominant_mean_ploidy	S2	k_o_mis	buffer_n_exp	high_3_5	81	0.004678744757773199	1.0
+global	dominant_mean_ploidy	S2	k_o_mis	p_wgd	low_0_1	41	0.007520428542149943	0.975609756097561
+global	dominant_mean_ploidy	S2	k_o_mis	p_wgd	middle_1_3	79	0.007937130952187118	0.8227848101265823
+global	dominant_mean_ploidy	S2	k_o_mis	p_wgd	high_3_5	81	0.006497758940369896	1.0
+global	dominant_mean_ploidy	S2	k_o_mis	alpha_o2	low_0_1	41	0.007474876399360783	0.975609756097561
+global	dominant_mean_ploidy	S2	k_o_mis	alpha_o2	middle_1_3	79	0.007774219128370378	0.6835443037974683
+global	dominant_mean_ploidy	S2	k_o_mis	alpha_o2	high_3_5	81	0.00266038879974647	0.5185185185185185
+global	dominant_mean_ploidy	S2	k_o_mis	gamma_growth	low_0_1	41	0.008160545772624265	0.926829268292683
+global	dominant_mean_ploidy	S2	k_o_mis	gamma_growth	middle_1_3	79	0.008167360888369841	0.9240506329113924
+global	dominant_mean_ploidy	S2	k_o_mis	gamma_growth	high_3_5	81	0.0027394003512496447	0.9876543209876543
+global	dominant_mean_ploidy	S2	k_o_mis	mu_hp	low_0_1	41	0.012939492543086021	1.0
+global	dominant_mean_ploidy	S2	k_o_mis	mu_hp	middle_1_3	79	0.0063538243920683414	0.9746835443037974
+global	dominant_mean_ploidy	S2	k_o_mis	mu_hp	high_3_5	81	0.0005132211218050199	1.0
+global	dominant_mean_ploidy	S2	k_o_mis	gamma_mu	low_0_1	41	0.00839660311046148	0.8048780487804879
+global	dominant_mean_ploidy	S2	k_o_mis	gamma_mu	middle_1_3	79	0.009777632549659042	0.6582278481012658
+global	dominant_mean_ploidy	S2	k_o_mis	gamma_mu	high_3_5	81	0.007274712019896034	0.35802469135802467
+global	dominant_mean_ploidy	S2	k_o_mis	O2_crit	low_0_1	41	0.007995667883323378	0.9024390243902439
+global	dominant_mean_ploidy	S2	k_o_mis	O2_crit	middle_1_3	79	0.007080072859530303	0.9873417721518988
+global	dominant_mean_ploidy	S2	k_o_mis	O2_crit	high_3_5	81	0.004048253389622145	0.7407407407407407
+global	dominant_mean_ploidy	S2	k_o_mis	n_O	low_0_1	41	0.008995509555452114	0.975609756097561
+global	dominant_mean_ploidy	S2	k_o_mis	n_O	middle_1_3	79	0.01055059109385932	0.7088607594936709
+global	dominant_mean_ploidy	S2	k_o_mis	n_O	high_3_5	81	0.007079614291800105	0.37037037037037035
+global	dominant_mean_ploidy	S2	buffer_smax	buffer_beta	low_0_1	41	0.0028784084328470003	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	buffer_beta	middle_1_3	79	0.0023880860883178767	0.9620253164556962
+global	dominant_mean_ploidy	S2	buffer_smax	buffer_beta	high_3_5	81	0.008628390668883242	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	buffer_n_exp	low_0_1	41	0.0049053710396026046	0.975609756097561
+global	dominant_mean_ploidy	S2	buffer_smax	buffer_n_exp	middle_1_3	79	0.009704556228779285	0.7341772151898734
+global	dominant_mean_ploidy	S2	buffer_smax	buffer_n_exp	high_3_5	81	0.021733985352950708	0.5432098765432098
+global	dominant_mean_ploidy	S2	buffer_smax	p_wgd	low_0_1	41	0.002961896652077705	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	p_wgd	middle_1_3	79	0.0018722782713754091	0.9367088607594937
+global	dominant_mean_ploidy	S2	buffer_smax	p_wgd	high_3_5	81	0.006415456663089526	0.9012345679012346
+global	dominant_mean_ploidy	S2	buffer_smax	alpha_o2	low_0_1	41	0.002811075361091368	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	alpha_o2	middle_1_3	79	0.0007012097725852436	0.9113924050632911
+global	dominant_mean_ploidy	S2	buffer_smax	alpha_o2	high_3_5	81	0.0008776446408176453	0.41975308641975306
+global	dominant_mean_ploidy	S2	buffer_smax	gamma_growth	low_0_1	41	0.002738086418760042	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	gamma_growth	middle_1_3	79	0.0025955986532742994	0.8987341772151899
+global	dominant_mean_ploidy	S2	buffer_smax	gamma_growth	high_3_5	81	0.004439065445085709	0.6666666666666666
+global	dominant_mean_ploidy	S2	buffer_smax	mu_hp	low_0_1	41	0.003027512279132225	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	mu_hp	middle_1_3	79	0.002224846244830517	0.9367088607594937
+global	dominant_mean_ploidy	S2	buffer_smax	mu_hp	high_3_5	81	0.0067107526010934115	0.345679012345679
+global	dominant_mean_ploidy	S2	buffer_smax	gamma_mu	low_0_1	41	0.001504512633796878	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	gamma_mu	middle_1_3	79	0.0026447811430230605	0.9367088607594937
+global	dominant_mean_ploidy	S2	buffer_smax	gamma_mu	high_3_5	81	0.0008732599780211581	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	O2_crit	low_0_1	41	0.0033936890883952578	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	O2_crit	middle_1_3	79	0.006765343522393568	0.9113924050632911
+global	dominant_mean_ploidy	S2	buffer_smax	O2_crit	high_3_5	81	0.011073379134736243	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	n_O	low_0_1	41	0.0033008331409193382	1.0
+global	dominant_mean_ploidy	S2	buffer_smax	n_O	middle_1_3	79	0.009675133448707563	0.9493670886075949
+global	dominant_mean_ploidy	S2	buffer_smax	n_O	high_3_5	81	0.0222773766298485	0.5185185185185185
+global	dominant_mean_ploidy	S2	buffer_beta	buffer_n_exp	low_0_1	41	-0.0012023933682809584	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	buffer_n_exp	middle_1_3	79	0.00138389778807624	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	buffer_n_exp	high_3_5	81	0.004066459222507514	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	p_wgd	low_0_1	41	-0.0014843534925188446	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	p_wgd	middle_1_3	79	-0.0012133697554968389	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	p_wgd	high_3_5	81	0.0007049426526350562	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	alpha_o2	low_0_1	41	-0.0012582694025307893	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	alpha_o2	middle_1_3	79	-0.0007351590825932737	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	alpha_o2	high_3_5	81	0.0014292443571702594	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	gamma_growth	low_0_1	41	-0.0019703652043015045	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	gamma_growth	middle_1_3	79	0.00040596603145868273	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	gamma_growth	high_3_5	81	0.0045331197153967145	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	mu_hp	low_0_1	41	-0.001369442967777115	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	mu_hp	middle_1_3	79	-0.0034412872205311367	0.9746835443037974
+global	dominant_mean_ploidy	S2	buffer_beta	mu_hp	high_3_5	81	-0.0022677298266225204	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	gamma_mu	low_0_1	41	-0.002594008376682769	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	gamma_mu	middle_1_3	79	-0.0023442277642454668	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	gamma_mu	high_3_5	81	-0.004873051834160942	0.9382716049382716
+global	dominant_mean_ploidy	S2	buffer_beta	O2_crit	low_0_1	41	-0.0024910992276502278	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	O2_crit	middle_1_3	79	-0.002880604683992922	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	O2_crit	high_3_5	81	0.0007795904151801437	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	n_O	low_0_1	41	-0.0026648505809339085	1.0
+global	dominant_mean_ploidy	S2	buffer_beta	n_O	middle_1_3	79	-0.0011208292717396332	0.9367088607594937
+global	dominant_mean_ploidy	S2	buffer_beta	n_O	high_3_5	81	-0.00020633853676762834	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	p_wgd	low_0_1	41	0.0017681101143306654	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	p_wgd	middle_1_3	79	0.0014650559149293142	0.9873417721518988
+global	dominant_mean_ploidy	S2	buffer_n_exp	p_wgd	high_3_5	81	0.0001802637065573315	0.9629629629629629
+global	dominant_mean_ploidy	S2	buffer_n_exp	alpha_o2	low_0_1	41	0.0017794079845167045	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	alpha_o2	middle_1_3	79	0.0019523757122648553	0.9746835443037974
+global	dominant_mean_ploidy	S2	buffer_n_exp	alpha_o2	high_3_5	81	-0.0002634693922756969	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	gamma_growth	low_0_1	41	0.00107183947788698	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	gamma_growth	middle_1_3	79	0.0004206893366338787	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	gamma_growth	high_3_5	81	-0.0030558284022588274	0.9506172839506173
+global	dominant_mean_ploidy	S2	buffer_n_exp	mu_hp	low_0_1	41	0.002066186788833453	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	mu_hp	middle_1_3	79	-9.727156577165198e-05	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	mu_hp	high_3_5	81	0.0017170430393131223	0.9259259259259259
+global	dominant_mean_ploidy	S2	buffer_n_exp	gamma_mu	low_0_1	41	0.001507830336713006	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	gamma_mu	middle_1_3	79	0.0016324824025924533	0.9746835443037974
+global	dominant_mean_ploidy	S2	buffer_n_exp	gamma_mu	high_3_5	81	-0.0008679756871904155	0.9506172839506173
+global	dominant_mean_ploidy	S2	buffer_n_exp	O2_crit	low_0_1	41	0.0011473114519748868	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	O2_crit	middle_1_3	79	0.0010133336372176002	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	O2_crit	high_3_5	81	-0.00022864407486419572	0.691358024691358
+global	dominant_mean_ploidy	S2	buffer_n_exp	n_O	low_0_1	41	0.0016073469548795341	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	n_O	middle_1_3	79	0.004554662198202132	1.0
+global	dominant_mean_ploidy	S2	buffer_n_exp	n_O	high_3_5	81	0.006809069377722774	0.5679012345679012
+global	dominant_mean_ploidy	S2	p_wgd	alpha_o2	low_0_1	41	-6.55141238502174e-05	1.0
+global	dominant_mean_ploidy	S2	p_wgd	alpha_o2	middle_1_3	79	-0.0005290201691940543	1.0
+global	dominant_mean_ploidy	S2	p_wgd	alpha_o2	high_3_5	81	-0.0012446144950478595	1.0
+global	dominant_mean_ploidy	S2	p_wgd	gamma_growth	low_0_1	41	-9.703636875495078e-05	1.0
+global	dominant_mean_ploidy	S2	p_wgd	gamma_growth	middle_1_3	79	-0.0008664180842891582	1.0
+global	dominant_mean_ploidy	S2	p_wgd	gamma_growth	high_3_5	81	-0.0013394582629909515	1.0
+global	dominant_mean_ploidy	S2	p_wgd	mu_hp	low_0_1	41	-0.00013209414527599308	1.0
+global	dominant_mean_ploidy	S2	p_wgd	mu_hp	middle_1_3	79	0.0001402876535593917	1.0
+global	dominant_mean_ploidy	S2	p_wgd	mu_hp	high_3_5	81	0.0007760929479604005	1.0
+global	dominant_mean_ploidy	S2	p_wgd	gamma_mu	low_0_1	41	-7.864869300189401e-05	1.0
+global	dominant_mean_ploidy	S2	p_wgd	gamma_mu	middle_1_3	79	-0.00024197286757468507	1.0
+global	dominant_mean_ploidy	S2	p_wgd	gamma_mu	high_3_5	81	-0.001538374405791533	1.0
+global	dominant_mean_ploidy	S2	p_wgd	O2_crit	low_0_1	41	-8.974820797229162e-05	1.0
+global	dominant_mean_ploidy	S2	p_wgd	O2_crit	middle_1_3	79	7.804362382437195e-05	1.0
+global	dominant_mean_ploidy	S2	p_wgd	O2_crit	high_3_5	81	0.0017127887893938535	1.0
+global	dominant_mean_ploidy	S2	p_wgd	n_O	low_0_1	41	-8.351533270847616e-05	1.0
+global	dominant_mean_ploidy	S2	p_wgd	n_O	middle_1_3	79	-0.0002105139497914517	1.0
+global	dominant_mean_ploidy	S2	p_wgd	n_O	high_3_5	81	0.0015925064457165713	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	gamma_growth	low_0_1	41	0.00020785646971869403	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	gamma_growth	middle_1_3	79	-0.002780800352887805	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	gamma_growth	high_3_5	81	-0.003868291828357698	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	mu_hp	low_0_1	41	-0.0013371126037517813	0.975609756097561
+global	dominant_mean_ploidy	S2	alpha_o2	mu_hp	middle_1_3	79	-0.003017860612871983	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	mu_hp	high_3_5	81	-0.0059342662597307114	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	gamma_mu	low_0_1	41	-3.0260420070270345e-05	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	gamma_mu	middle_1_3	79	-0.002061483941439957	0.9873417721518988
+global	dominant_mean_ploidy	S2	alpha_o2	gamma_mu	high_3_5	81	-0.004590755117310797	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	O2_crit	low_0_1	41	0.002539656310433282	0.975609756097561
+global	dominant_mean_ploidy	S2	alpha_o2	O2_crit	middle_1_3	79	-0.004504698988326452	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	O2_crit	high_3_5	81	-0.0044109574298889604	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	n_O	low_0_1	41	0.0007287386185064764	1.0
+global	dominant_mean_ploidy	S2	alpha_o2	n_O	middle_1_3	79	-0.0038409434237852823	0.9873417721518988
+global	dominant_mean_ploidy	S2	alpha_o2	n_O	high_3_5	81	-0.004302286458107835	1.0
+global	dominant_mean_ploidy	S2	gamma_growth	mu_hp	low_0_1	41	0.005277118837204258	1.0
+global	dominant_mean_ploidy	S2	gamma_growth	mu_hp	middle_1_3	79	0.005079358857937476	0.9620253164556962
+global	dominant_mean_ploidy	S2	gamma_growth	mu_hp	high_3_5	81	-0.0003938837387144612	1.0
+global	dominant_mean_ploidy	S2	gamma_growth	gamma_mu	low_0_1	41	0.005737907422114429	0.9512195121951219
+global	dominant_mean_ploidy	S2	gamma_growth	gamma_mu	middle_1_3	79	0.0073894256724245854	0.9620253164556962
+global	dominant_mean_ploidy	S2	gamma_growth	gamma_mu	high_3_5	81	-0.006110217915380968	0.8395061728395061
+global	dominant_mean_ploidy	S2	gamma_growth	O2_crit	low_0_1	41	0.004165615633631014	0.9024390243902439
+global	dominant_mean_ploidy	S2	gamma_growth	O2_crit	middle_1_3	79	0.0069422696082920895	1.0
+global	dominant_mean_ploidy	S2	gamma_growth	O2_crit	high_3_5	81	-0.00043008650820555066	0.7654320987654321
+global	dominant_mean_ploidy	S2	gamma_growth	n_O	low_0_1	41	0.005250828514833351	1.0
+global	dominant_mean_ploidy	S2	gamma_growth	n_O	middle_1_3	79	0.003520440137020652	0.9746835443037974
+global	dominant_mean_ploidy	S2	gamma_growth	n_O	high_3_5	81	0.0009380321873421178	0.7901234567901234
+global	dominant_mean_ploidy	S2	mu_hp	gamma_mu	low_0_1	41	0.005564274065821754	0.0
+global	dominant_mean_ploidy	S2	mu_hp	gamma_mu	middle_1_3	79	0.0034729913634347974	0.3670886075949367
+global	dominant_mean_ploidy	S2	mu_hp	gamma_mu	high_3_5	81	0.00499714617968405	0.7283950617283951
+global	dominant_mean_ploidy	S2	mu_hp	O2_crit	low_0_1	41	0.012087868596472541	0.0
+global	dominant_mean_ploidy	S2	mu_hp	O2_crit	middle_1_3	79	0.0046061482089918195	0.8481012658227848
+global	dominant_mean_ploidy	S2	mu_hp	O2_crit	high_3_5	81	-0.002851199766638495	1.0
+global	dominant_mean_ploidy	S2	mu_hp	n_O	low_0_1	41	0.0010306782385013378	0.0
+global	dominant_mean_ploidy	S2	mu_hp	n_O	middle_1_3	79	0.0006919065475441688	0.4430379746835443
+global	dominant_mean_ploidy	S2	mu_hp	n_O	high_3_5	81	-5.549488091426518e-05	1.0
+global	dominant_mean_ploidy	S2	gamma_mu	O2_crit	low_0_1	41	0.000870948537629892	0.2682926829268293
+global	dominant_mean_ploidy	S2	gamma_mu	O2_crit	middle_1_3	79	-0.00014990435983900171	0.9493670886075949
+global	dominant_mean_ploidy	S2	gamma_mu	O2_crit	high_3_5	81	-0.001546133837580089	0.7901234567901234
+global	dominant_mean_ploidy	S2	gamma_mu	n_O	low_0_1	41	-0.003091099226607081	0.5609756097560976
+global	dominant_mean_ploidy	S2	gamma_mu	n_O	middle_1_3	79	0.001674840046877188	0.5949367088607594
+global	dominant_mean_ploidy	S2	gamma_mu	n_O	high_3_5	81	0.004939861962389014	0.2839506172839506
+global	dominant_mean_ploidy	S2	O2_crit	n_O	low_0_1	41	0.001168157219353508	0.8780487804878049
+global	dominant_mean_ploidy	S2	O2_crit	n_O	middle_1_3	79	0.0022439359112347026	0.43037974683544306
+global	dominant_mean_ploidy	S2	O2_crit	n_O	high_3_5	81	-0.0026101236623044897	0.9506172839506173
+global	dominant_growth_rate	S1	lam_max		low_0_1	41	0.04484494397051375	0.21951219512195122
+global	dominant_growth_rate	S1	lam_max		middle_1_3	79	0.2453547377868181	0.25316455696202533
+global	dominant_growth_rate	S1	lam_max		high_3_5	81	0.4065737438586965	1.0
+global	dominant_growth_rate	S1	p_mis_base		low_0_1	41	0.0549997022983864	1.0
+global	dominant_growth_rate	S1	p_mis_base		middle_1_3	79	0.09131889057020333	1.0
+global	dominant_growth_rate	S1	p_mis_base		high_3_5	81	0.11366117711311109	1.0
+global	dominant_growth_rate	S1	p_misseg		low_0_1	41	0.16599625236787355	1.0
+global	dominant_growth_rate	S1	p_misseg		middle_1_3	79	0.057427178393067754	1.0
+global	dominant_growth_rate	S1	p_misseg		high_3_5	81	0.022491385649286485	1.0
+global	dominant_growth_rate	S1	k_o_mis		low_0_1	41	0.010418947210715235	1.0
+global	dominant_growth_rate	S1	k_o_mis		middle_1_3	79	0.0073593948557079914	1.0
+global	dominant_growth_rate	S1	k_o_mis		high_3_5	81	0.003130356064165802	1.0
+global	dominant_growth_rate	S1	buffer_smax		low_0_1	41	0.0021600626413448313	1.0
+global	dominant_growth_rate	S1	buffer_smax		middle_1_3	79	0.000969025576811914	1.0
+global	dominant_growth_rate	S1	buffer_smax		high_3_5	81	0.00134772092508565	1.0
+global	dominant_growth_rate	S1	buffer_beta		low_0_1	41	0.003313429264414103	1.0
+global	dominant_growth_rate	S1	buffer_beta		middle_1_3	79	0.0021009516097842663	1.0
+global	dominant_growth_rate	S1	buffer_beta		high_3_5	81	0.001409106399189574	1.0
+global	dominant_growth_rate	S1	buffer_n_exp		low_0_1	41	0.0003896724162471473	1.0
+global	dominant_growth_rate	S1	buffer_n_exp		middle_1_3	79	0.0003131877462187162	1.0
+global	dominant_growth_rate	S1	buffer_n_exp		high_3_5	81	0.0006591160621962859	1.0
+global	dominant_growth_rate	S1	p_wgd		low_0_1	41	1.3460834561990784e-06	1.0
+global	dominant_growth_rate	S1	p_wgd		middle_1_3	79	-7.535013487936732e-07	1.0
+global	dominant_growth_rate	S1	p_wgd		high_3_5	81	-4.5398528361685454e-07	1.0
+global	dominant_growth_rate	S1	alpha_o2		low_0_1	41	-0.0011209671908275353	1.0
+global	dominant_growth_rate	S1	alpha_o2		middle_1_3	79	-0.0008573954668966338	1.0
+global	dominant_growth_rate	S1	alpha_o2		high_3_5	81	-0.00045171965557364984	1.0
+global	dominant_growth_rate	S1	gamma_growth		low_0_1	41	-0.000726826076077467	1.0
+global	dominant_growth_rate	S1	gamma_growth		middle_1_3	79	-5.7620156468304236e-05	1.0
+global	dominant_growth_rate	S1	gamma_growth		high_3_5	81	0.00021797365578803032	1.0
+global	dominant_growth_rate	S1	mu_hp		low_0_1	41	0.11139913539970941	1.0
+global	dominant_growth_rate	S1	mu_hp		middle_1_3	79	0.03362784508570029	1.0
+global	dominant_growth_rate	S1	mu_hp		high_3_5	81	0.012826229989867316	1.0
+global	dominant_growth_rate	S1	gamma_mu		low_0_1	41	0.01144774808819925	1.0
+global	dominant_growth_rate	S1	gamma_mu		middle_1_3	79	0.0024927088958034875	1.0
+global	dominant_growth_rate	S1	gamma_mu		high_3_5	81	0.0008973470982626484	1.0
+global	dominant_growth_rate	S1	O2_crit		low_0_1	41	0.0706877733431141	1.0
+global	dominant_growth_rate	S1	O2_crit		middle_1_3	79	0.06848177738447307	1.0
+global	dominant_growth_rate	S1	O2_crit		high_3_5	81	0.023789734647229787	1.0
+global	dominant_growth_rate	S1	n_O		low_0_1	41	0.004904715117379175	1.0
+global	dominant_growth_rate	S1	n_O		middle_1_3	79	0.021948574227380575	1.0
+global	dominant_growth_rate	S1	n_O		high_3_5	81	0.0293353135382368	1.0
+global	dominant_growth_rate	ST	lam_max		low_0_1	41	0.4726445038069321	1.0
+global	dominant_growth_rate	ST	lam_max		middle_1_3	79	0.6173849518865263	1.0
+global	dominant_growth_rate	ST	lam_max		high_3_5	81	0.7094625178331896	1.0
+global	dominant_growth_rate	ST	p_mis_base		low_0_1	41	0.16424929291292514	1.0
+global	dominant_growth_rate	ST	p_mis_base		middle_1_3	79	0.237319877983207	1.0
+global	dominant_growth_rate	ST	p_mis_base		high_3_5	81	0.2759370414626197	1.0
+global	dominant_growth_rate	ST	p_misseg		low_0_1	41	0.42850494640912123	1.0
+global	dominant_growth_rate	ST	p_misseg		middle_1_3	79	0.22091814283478248	1.0
+global	dominant_growth_rate	ST	p_misseg		high_3_5	81	0.1311624617983958	1.0
+global	dominant_growth_rate	ST	k_o_mis		low_0_1	41	0.04778305864462084	1.0
+global	dominant_growth_rate	ST	k_o_mis		middle_1_3	79	0.04329996400022928	1.0
+global	dominant_growth_rate	ST	k_o_mis		high_3_5	81	0.03263677982464323	1.0
+global	dominant_growth_rate	ST	buffer_smax		low_0_1	41	0.023742716394323553	1.0
+global	dominant_growth_rate	ST	buffer_smax		middle_1_3	79	0.02103815101032097	1.0
+global	dominant_growth_rate	ST	buffer_smax		high_3_5	81	0.018856922650827203	1.0
+global	dominant_growth_rate	ST	buffer_beta		low_0_1	41	0.023102707735656265	1.0
+global	dominant_growth_rate	ST	buffer_beta		middle_1_3	79	0.018183547360242903	1.0
+global	dominant_growth_rate	ST	buffer_beta		high_3_5	81	0.015996071853474042	1.0
+global	dominant_growth_rate	ST	buffer_n_exp		low_0_1	41	0.005711855722985951	1.0
+global	dominant_growth_rate	ST	buffer_n_exp		middle_1_3	79	0.0038644567940045813	1.0
+global	dominant_growth_rate	ST	buffer_n_exp		high_3_5	81	0.003020733060115155	1.0
+global	dominant_growth_rate	ST	p_wgd		low_0_1	41	2.435158398067518e-07	1.0
+global	dominant_growth_rate	ST	p_wgd		middle_1_3	79	3.3263472221841937e-07	1.0
+global	dominant_growth_rate	ST	p_wgd		high_3_5	81	3.781122035435899e-07	1.0
+global	dominant_growth_rate	ST	alpha_o2		low_0_1	41	0.008093192405858263	1.0
+global	dominant_growth_rate	ST	alpha_o2		middle_1_3	79	0.0022496066214471168	1.0
+global	dominant_growth_rate	ST	alpha_o2		high_3_5	81	0.0009349311659923127	1.0
+global	dominant_growth_rate	ST	gamma_growth		low_0_1	41	0.004985625185411907	1.0
+global	dominant_growth_rate	ST	gamma_growth		middle_1_3	79	0.002723689579835467	1.0
+global	dominant_growth_rate	ST	gamma_growth		high_3_5	81	0.0020842922407238182	1.0
+global	dominant_growth_rate	ST	mu_hp		low_0_1	41	0.2062471807208999	1.0
+global	dominant_growth_rate	ST	mu_hp		middle_1_3	79	0.11104814499911378	1.0
+global	dominant_growth_rate	ST	mu_hp		high_3_5	81	0.07472395569365435	1.0
+global	dominant_growth_rate	ST	gamma_mu		low_0_1	41	0.03030292116828399	1.0
+global	dominant_growth_rate	ST	gamma_mu		middle_1_3	79	0.014843832440248934	1.0
+global	dominant_growth_rate	ST	gamma_mu		high_3_5	81	0.009672294662781713	1.0
+global	dominant_growth_rate	ST	O2_crit		low_0_1	41	0.177150383402738	1.0
+global	dominant_growth_rate	ST	O2_crit		middle_1_3	79	0.21784727786764058	1.0
+global	dominant_growth_rate	ST	O2_crit		high_3_5	81	0.11179713478848041	1.0
+global	dominant_growth_rate	ST	n_O		low_0_1	41	0.044620336441475374	1.0
+global	dominant_growth_rate	ST	n_O		middle_1_3	79	0.10774179296795595	1.0
+global	dominant_growth_rate	ST	n_O		high_3_5	81	0.12564960068231296	1.0
+global	dominant_growth_rate	S2	lam_max	p_mis_base	low_0_1	41	0.08589924911114233	0.0
+global	dominant_growth_rate	S2	lam_max	p_mis_base	middle_1_3	79	0.1298006670010831	0.0
+global	dominant_growth_rate	S2	lam_max	p_mis_base	high_3_5	81	0.13912711861098642	0.6172839506172839
+global	dominant_growth_rate	S2	lam_max	p_misseg	low_0_1	41	0.1835440516410584	0.1951219512195122
+global	dominant_growth_rate	S2	lam_max	p_misseg	middle_1_3	79	0.085331547104065	0.13924050632911392
+global	dominant_growth_rate	S2	lam_max	p_misseg	high_3_5	81	0.036232519643844524	1.0
+global	dominant_growth_rate	S2	lam_max	k_o_mis	low_0_1	41	0.03618494342961715	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	k_o_mis	middle_1_3	79	0.03844519471406909	0.0
+global	dominant_growth_rate	S2	lam_max	k_o_mis	high_3_5	81	0.017657856355413278	0.9382716049382716
+global	dominant_growth_rate	S2	lam_max	buffer_smax	low_0_1	41	0.029526273337257394	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	buffer_smax	middle_1_3	79	0.03290073765108766	0.0
+global	dominant_growth_rate	S2	lam_max	buffer_smax	high_3_5	81	0.014206367699504922	0.9259259259259259
+global	dominant_growth_rate	S2	lam_max	buffer_beta	low_0_1	41	0.030286298497466557	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	buffer_beta	middle_1_3	79	0.03245137558225215	0.0
+global	dominant_growth_rate	S2	lam_max	buffer_beta	high_3_5	81	0.014865085597700858	0.9753086419753086
+global	dominant_growth_rate	S2	lam_max	buffer_n_exp	low_0_1	41	0.02709443486315753	0.17073170731707318
+global	dominant_growth_rate	S2	lam_max	buffer_n_exp	middle_1_3	79	0.02957105380624909	0.012658227848101266
+global	dominant_growth_rate	S2	lam_max	buffer_n_exp	high_3_5	81	0.011337151121821808	1.0
+global	dominant_growth_rate	S2	lam_max	p_wgd	low_0_1	41	0.025840394399950443	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	p_wgd	middle_1_3	79	0.02980391782924508	0.0
+global	dominant_growth_rate	S2	lam_max	p_wgd	high_3_5	81	0.01248867358707706	0.9629629629629629
+global	dominant_growth_rate	S2	lam_max	alpha_o2	low_0_1	41	0.027813458370196633	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	alpha_o2	middle_1_3	79	0.03070614229308824	0.0379746835443038
+global	dominant_growth_rate	S2	lam_max	alpha_o2	high_3_5	81	0.012682702132130297	1.0
+global	dominant_growth_rate	S2	lam_max	gamma_growth	low_0_1	41	0.026612970479681704	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	gamma_growth	middle_1_3	79	0.030595325109581	0.0
+global	dominant_growth_rate	S2	lam_max	gamma_growth	high_3_5	81	0.011652863389186629	0.9629629629629629
+global	dominant_growth_rate	S2	lam_max	mu_hp	low_0_1	41	0.06958719218189202	0.04878048780487805
+global	dominant_growth_rate	S2	lam_max	mu_hp	middle_1_3	79	0.052052079803100205	0.0
+global	dominant_growth_rate	S2	lam_max	mu_hp	high_3_5	81	0.022686670208467447	0.9753086419753086
+global	dominant_growth_rate	S2	lam_max	gamma_mu	low_0_1	41	0.027191529087059765	0.12195121951219512
+global	dominant_growth_rate	S2	lam_max	gamma_mu	middle_1_3	79	0.030232733492727044	0.0
+global	dominant_growth_rate	S2	lam_max	gamma_mu	high_3_5	81	0.010195365074949692	0.8641975308641975
+global	dominant_growth_rate	S2	lam_max	O2_crit	low_0_1	41	0.06709361722009516	0.12195121951219512
+global	dominant_growth_rate	S2	lam_max	O2_crit	middle_1_3	79	0.07384693429826941	0.0
+global	dominant_growth_rate	S2	lam_max	O2_crit	high_3_5	81	0.026547157673016183	0.7160493827160493
+global	dominant_growth_rate	S2	lam_max	n_O	low_0_1	41	0.02922367669010537	0.14634146341463414
+global	dominant_growth_rate	S2	lam_max	n_O	middle_1_3	79	0.046377099847223914	0.0
+global	dominant_growth_rate	S2	lam_max	n_O	high_3_5	81	0.030416505075033053	0.9259259259259259
+global	dominant_growth_rate	S2	p_mis_base	p_misseg	low_0_1	41	0.01238635424012682	1.0
+global	dominant_growth_rate	S2	p_mis_base	p_misseg	middle_1_3	79	0.002315654624426547	1.0
+global	dominant_growth_rate	S2	p_mis_base	p_misseg	high_3_5	81	-0.0019635037269305103	1.0
+global	dominant_growth_rate	S2	p_mis_base	k_o_mis	low_0_1	41	0.006429472887639309	1.0
+global	dominant_growth_rate	S2	p_mis_base	k_o_mis	middle_1_3	79	0.004402210156390471	1.0
+global	dominant_growth_rate	S2	p_mis_base	k_o_mis	high_3_5	81	0.0020105128573526566	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_smax	low_0_1	41	0.006434733291326149	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_smax	middle_1_3	79	0.0055579971993155956	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_smax	high_3_5	81	0.0037442020142624387	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_beta	low_0_1	41	0.006385556477222635	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_beta	middle_1_3	79	0.004208412219807325	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_beta	high_3_5	81	0.0018276232006156801	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_n_exp	low_0_1	41	0.004947162178421497	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_n_exp	middle_1_3	79	0.003113278121516986	1.0
+global	dominant_growth_rate	S2	p_mis_base	buffer_n_exp	high_3_5	81	0.0009575570342750681	1.0
+global	dominant_growth_rate	S2	p_mis_base	p_wgd	low_0_1	41	0.005602476535486229	1.0
+global	dominant_growth_rate	S2	p_mis_base	p_wgd	middle_1_3	79	0.004079772080562661	1.0
+global	dominant_growth_rate	S2	p_mis_base	p_wgd	high_3_5	81	0.0014968370817596197	1.0
+global	dominant_growth_rate	S2	p_mis_base	alpha_o2	low_0_1	41	0.006157129376683361	1.0
+global	dominant_growth_rate	S2	p_mis_base	alpha_o2	middle_1_3	79	0.004554806489108408	1.0
+global	dominant_growth_rate	S2	p_mis_base	alpha_o2	high_3_5	81	0.0017679363018626851	1.0
+global	dominant_growth_rate	S2	p_mis_base	gamma_growth	low_0_1	41	0.005683692198696994	1.0
+global	dominant_growth_rate	S2	p_mis_base	gamma_growth	middle_1_3	79	0.004009422552619314	1.0
+global	dominant_growth_rate	S2	p_mis_base	gamma_growth	high_3_5	81	0.001639387501043918	1.0
+global	dominant_growth_rate	S2	p_mis_base	mu_hp	low_0_1	41	0.006169826217476739	1.0
+global	dominant_growth_rate	S2	p_mis_base	mu_hp	middle_1_3	79	0.004993500855515143	1.0
+global	dominant_growth_rate	S2	p_mis_base	mu_hp	high_3_5	81	0.002438789420407601	1.0
+global	dominant_growth_rate	S2	p_mis_base	gamma_mu	low_0_1	41	0.006458443806342614	1.0
+global	dominant_growth_rate	S2	p_mis_base	gamma_mu	middle_1_3	79	0.0035941936157782204	1.0
+global	dominant_growth_rate	S2	p_mis_base	gamma_mu	high_3_5	81	0.0012114753308695046	1.0
+global	dominant_growth_rate	S2	p_mis_base	O2_crit	low_0_1	41	0.007362125516801353	1.0
+global	dominant_growth_rate	S2	p_mis_base	O2_crit	middle_1_3	79	0.005200650061568927	1.0
+global	dominant_growth_rate	S2	p_mis_base	O2_crit	high_3_5	81	0.00262589687857396	1.0
+global	dominant_growth_rate	S2	p_mis_base	n_O	low_0_1	41	0.005378935993742752	1.0
+global	dominant_growth_rate	S2	p_mis_base	n_O	middle_1_3	79	0.005060407649580116	1.0
+global	dominant_growth_rate	S2	p_mis_base	n_O	high_3_5	81	0.004187169843345316	1.0
+global	dominant_growth_rate	S2	p_misseg	k_o_mis	low_0_1	41	0.0016000346385332096	1.0
+global	dominant_growth_rate	S2	p_misseg	k_o_mis	middle_1_3	79	0.0023642795804061896	1.0
+global	dominant_growth_rate	S2	p_misseg	k_o_mis	high_3_5	81	0.0017961210304477625	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_smax	low_0_1	41	-0.003015097779429105	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_smax	middle_1_3	79	-0.0032231288156756247	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_smax	high_3_5	81	-0.000945753673190223	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_beta	low_0_1	41	-0.0023154569462615167	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_beta	middle_1_3	79	-0.0025306527731509118	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_beta	high_3_5	81	-0.00037954367510893824	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_n_exp	low_0_1	41	-0.002771693435174531	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_n_exp	middle_1_3	79	-0.003265896594743739	1.0
+global	dominant_growth_rate	S2	p_misseg	buffer_n_exp	high_3_5	81	-0.0012403015137392036	1.0
+global	dominant_growth_rate	S2	p_misseg	p_wgd	low_0_1	41	-0.0029215509099449863	1.0
+global	dominant_growth_rate	S2	p_misseg	p_wgd	middle_1_3	79	-0.003048255945694003	1.0
+global	dominant_growth_rate	S2	p_misseg	p_wgd	high_3_5	81	-0.0008090191263849841	1.0
+global	dominant_growth_rate	S2	p_misseg	alpha_o2	low_0_1	41	-0.00017675796792596032	1.0
+global	dominant_growth_rate	S2	p_misseg	alpha_o2	middle_1_3	79	-0.0024229287724469952	1.0
+global	dominant_growth_rate	S2	p_misseg	alpha_o2	high_3_5	81	-0.0006808642954917311	1.0
+global	dominant_growth_rate	S2	p_misseg	gamma_growth	low_0_1	41	-0.0018497601414774836	1.0
+global	dominant_growth_rate	S2	p_misseg	gamma_growth	middle_1_3	79	-0.0031756802101410753	1.0
+global	dominant_growth_rate	S2	p_misseg	gamma_growth	high_3_5	81	-0.0010536498508771487	1.0
+global	dominant_growth_rate	S2	p_misseg	mu_hp	low_0_1	41	0.007783801825960781	1.0
+global	dominant_growth_rate	S2	p_misseg	mu_hp	middle_1_3	79	0.007484590360621351	1.0
+global	dominant_growth_rate	S2	p_misseg	mu_hp	high_3_5	81	0.008176580421695896	1.0
+global	dominant_growth_rate	S2	p_misseg	gamma_mu	low_0_1	41	-0.0031883116739899655	1.0
+global	dominant_growth_rate	S2	p_misseg	gamma_mu	middle_1_3	79	-0.0029808792206468863	1.0
+global	dominant_growth_rate	S2	p_misseg	gamma_mu	high_3_5	81	-0.0005187610905171865	1.0
+global	dominant_growth_rate	S2	p_misseg	O2_crit	low_0_1	41	-0.00023084061349549977	0.3170731707317073
+global	dominant_growth_rate	S2	p_misseg	O2_crit	middle_1_3	79	0.011805717459441237	0.9240506329113924
+global	dominant_growth_rate	S2	p_misseg	O2_crit	high_3_5	81	0.009361099811357632	1.0
+global	dominant_growth_rate	S2	p_misseg	n_O	low_0_1	41	-0.0028718956088095173	1.0
+global	dominant_growth_rate	S2	p_misseg	n_O	middle_1_3	79	0.0031170597144002873	1.0
+global	dominant_growth_rate	S2	p_misseg	n_O	high_3_5	81	0.008376481169794892	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_smax	low_0_1	41	0.0009199830103016675	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_smax	middle_1_3	79	-0.00024378648575572266	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_smax	high_3_5	81	9.465265443490368e-05	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_beta	low_0_1	41	0.0017441918404265731	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_beta	middle_1_3	79	0.00041177726063746284	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_beta	high_3_5	81	0.0007700012137276031	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_n_exp	low_0_1	41	0.001228180833232893	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_n_exp	middle_1_3	79	0.00038346339751306897	1.0
+global	dominant_growth_rate	S2	k_o_mis	buffer_n_exp	high_3_5	81	0.0004915630838433433	1.0
+global	dominant_growth_rate	S2	k_o_mis	p_wgd	low_0_1	41	0.0010884402080788816	1.0
+global	dominant_growth_rate	S2	k_o_mis	p_wgd	middle_1_3	79	0.00020018850991711167	1.0
+global	dominant_growth_rate	S2	k_o_mis	p_wgd	high_3_5	81	0.0004219798931836208	1.0
+global	dominant_growth_rate	S2	k_o_mis	alpha_o2	low_0_1	41	0.0014516415536957926	1.0
+global	dominant_growth_rate	S2	k_o_mis	alpha_o2	middle_1_3	79	0.00024934986060459947	1.0
+global	dominant_growth_rate	S2	k_o_mis	alpha_o2	high_3_5	81	0.000471305910880436	1.0
+global	dominant_growth_rate	S2	k_o_mis	gamma_growth	low_0_1	41	0.0012344451722001903	1.0
+global	dominant_growth_rate	S2	k_o_mis	gamma_growth	middle_1_3	79	0.0003074832816107301	1.0
+global	dominant_growth_rate	S2	k_o_mis	gamma_growth	high_3_5	81	0.000661538529652595	1.0
+global	dominant_growth_rate	S2	k_o_mis	mu_hp	low_0_1	41	0.001280066505419703	1.0
+global	dominant_growth_rate	S2	k_o_mis	mu_hp	middle_1_3	79	-0.00012222880803932859	1.0
+global	dominant_growth_rate	S2	k_o_mis	mu_hp	high_3_5	81	0.0015266876061580564	1.0
+global	dominant_growth_rate	S2	k_o_mis	gamma_mu	low_0_1	41	0.0011897410341642587	1.0
+global	dominant_growth_rate	S2	k_o_mis	gamma_mu	middle_1_3	79	2.9304180240184515e-05	1.0
+global	dominant_growth_rate	S2	k_o_mis	gamma_mu	high_3_5	81	0.0004164785802207351	1.0
+global	dominant_growth_rate	S2	k_o_mis	O2_crit	low_0_1	41	0.001535727378677033	1.0
+global	dominant_growth_rate	S2	k_o_mis	O2_crit	middle_1_3	79	0.0016225734671901947	1.0
+global	dominant_growth_rate	S2	k_o_mis	O2_crit	high_3_5	81	0.001868150133337452	1.0
+global	dominant_growth_rate	S2	k_o_mis	n_O	low_0_1	41	0.001298078164392747	1.0
+global	dominant_growth_rate	S2	k_o_mis	n_O	middle_1_3	79	0.00034593595234557037	1.0
+global	dominant_growth_rate	S2	k_o_mis	n_O	high_3_5	81	0.0009785678377919511	1.0
+global	dominant_growth_rate	S2	buffer_smax	buffer_beta	low_0_1	41	0.0032800513897751505	1.0
+global	dominant_growth_rate	S2	buffer_smax	buffer_beta	middle_1_3	79	0.0024087880698188736	1.0
+global	dominant_growth_rate	S2	buffer_smax	buffer_beta	high_3_5	81	0.0014645397046527146	1.0
+global	dominant_growth_rate	S2	buffer_smax	buffer_n_exp	low_0_1	41	0.0014747466437152839	1.0
+global	dominant_growth_rate	S2	buffer_smax	buffer_n_exp	middle_1_3	79	0.0012966940566424166	1.0
+global	dominant_growth_rate	S2	buffer_smax	buffer_n_exp	high_3_5	81	0.0005900541482998407	1.0
+global	dominant_growth_rate	S2	buffer_smax	p_wgd	low_0_1	41	0.0009392342656631959	1.0
+global	dominant_growth_rate	S2	buffer_smax	p_wgd	middle_1_3	79	0.0011827302787694818	1.0
+global	dominant_growth_rate	S2	buffer_smax	p_wgd	high_3_5	81	0.0005690195597296402	1.0
+global	dominant_growth_rate	S2	buffer_smax	alpha_o2	low_0_1	41	0.0012061991175239062	1.0
+global	dominant_growth_rate	S2	buffer_smax	alpha_o2	middle_1_3	79	0.001229063464038356	1.0
+global	dominant_growth_rate	S2	buffer_smax	alpha_o2	high_3_5	81	0.0005882000402936091	1.0
+global	dominant_growth_rate	S2	buffer_smax	gamma_growth	low_0_1	41	0.0011143834766177028	1.0
+global	dominant_growth_rate	S2	buffer_smax	gamma_growth	middle_1_3	79	0.0013174286088665622	1.0
+global	dominant_growth_rate	S2	buffer_smax	gamma_growth	high_3_5	81	0.0006002669383075132	1.0
+global	dominant_growth_rate	S2	buffer_smax	mu_hp	low_0_1	41	0.001410778808171868	1.0
+global	dominant_growth_rate	S2	buffer_smax	mu_hp	middle_1_3	79	0.0018347755262077723	1.0
+global	dominant_growth_rate	S2	buffer_smax	mu_hp	high_3_5	81	0.0009035018966621428	1.0
+global	dominant_growth_rate	S2	buffer_smax	gamma_mu	low_0_1	41	0.0013926701737775058	1.0
+global	dominant_growth_rate	S2	buffer_smax	gamma_mu	middle_1_3	79	0.001398819424774025	1.0
+global	dominant_growth_rate	S2	buffer_smax	gamma_mu	high_3_5	81	0.0008535821268204655	1.0
+global	dominant_growth_rate	S2	buffer_smax	O2_crit	low_0_1	41	0.000272971020256785	1.0
+global	dominant_growth_rate	S2	buffer_smax	O2_crit	middle_1_3	79	0.00161115138865174	1.0
+global	dominant_growth_rate	S2	buffer_smax	O2_crit	high_3_5	81	0.0009910145135811543	1.0
+global	dominant_growth_rate	S2	buffer_smax	n_O	low_0_1	41	0.0007524425693662337	1.0
+global	dominant_growth_rate	S2	buffer_smax	n_O	middle_1_3	79	0.0004999622398357322	1.0
+global	dominant_growth_rate	S2	buffer_smax	n_O	high_3_5	81	-0.00017058380478909098	1.0
+global	dominant_growth_rate	S2	buffer_beta	buffer_n_exp	low_0_1	41	6.831366184245055e-05	1.0
+global	dominant_growth_rate	S2	buffer_beta	buffer_n_exp	middle_1_3	79	-0.0011145144110441536	1.0
+global	dominant_growth_rate	S2	buffer_beta	buffer_n_exp	high_3_5	81	-0.0015449817560199473	1.0
+global	dominant_growth_rate	S2	buffer_beta	p_wgd	low_0_1	41	-0.0005853944211310591	1.0
+global	dominant_growth_rate	S2	buffer_beta	p_wgd	middle_1_3	79	-0.0015146238505862036	1.0
+global	dominant_growth_rate	S2	buffer_beta	p_wgd	high_3_5	81	-0.0017525938579082754	1.0
+global	dominant_growth_rate	S2	buffer_beta	alpha_o2	low_0_1	41	-0.0005983140344160788	1.0
+global	dominant_growth_rate	S2	buffer_beta	alpha_o2	middle_1_3	79	-0.0014851177462596502	1.0
+global	dominant_growth_rate	S2	buffer_beta	alpha_o2	high_3_5	81	-0.0017484964643700892	1.0
+global	dominant_growth_rate	S2	buffer_beta	gamma_growth	low_0_1	41	-0.00032403972454193944	1.0
+global	dominant_growth_rate	S2	buffer_beta	gamma_growth	middle_1_3	79	-0.0013778793849222842	1.0
+global	dominant_growth_rate	S2	buffer_beta	gamma_growth	high_3_5	81	-0.001683315733763797	1.0
+global	dominant_growth_rate	S2	buffer_beta	mu_hp	low_0_1	41	-0.0014216730006048138	1.0
+global	dominant_growth_rate	S2	buffer_beta	mu_hp	middle_1_3	79	-0.0020359878925483308	1.0
+global	dominant_growth_rate	S2	buffer_beta	mu_hp	high_3_5	81	-0.0020550103614065925	1.0
+global	dominant_growth_rate	S2	buffer_beta	gamma_mu	low_0_1	41	-0.0002718528576169433	1.0
+global	dominant_growth_rate	S2	buffer_beta	gamma_mu	middle_1_3	79	-0.0013709898725889878	1.0
+global	dominant_growth_rate	S2	buffer_beta	gamma_mu	high_3_5	81	-0.0017257300170465547	1.0
+global	dominant_growth_rate	S2	buffer_beta	O2_crit	low_0_1	41	-0.0015106965432540402	1.0
+global	dominant_growth_rate	S2	buffer_beta	O2_crit	middle_1_3	79	-0.0026316815129881943	1.0
+global	dominant_growth_rate	S2	buffer_beta	O2_crit	high_3_5	81	-0.0019443101326560399	1.0
+global	dominant_growth_rate	S2	buffer_beta	n_O	low_0_1	41	-0.00040241083584865474	1.0
+global	dominant_growth_rate	S2	buffer_beta	n_O	middle_1_3	79	-0.0017974386871944905	1.0
+global	dominant_growth_rate	S2	buffer_beta	n_O	high_3_5	81	-0.0021475899544929258	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	p_wgd	low_0_1	41	0.0013174437098523238	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	p_wgd	middle_1_3	79	0.0008078290464583275	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	p_wgd	high_3_5	81	0.0001305492593466641	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	alpha_o2	low_0_1	41	0.0012608118253914144	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	alpha_o2	middle_1_3	79	0.0007951461339914893	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	alpha_o2	high_3_5	81	0.00014587677843920722	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	gamma_growth	low_0_1	41	0.0012371154840489656	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	gamma_growth	middle_1_3	79	0.0007792504512954322	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	gamma_growth	high_3_5	81	0.00017118521983713552	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	mu_hp	low_0_1	41	5.624600874196709e-06	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	mu_hp	middle_1_3	79	0.000342391918071277	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	mu_hp	high_3_5	81	-0.00011835143550349297	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	gamma_mu	low_0_1	41	0.0013948225254554825	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	gamma_mu	middle_1_3	79	0.0008297364745850649	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	gamma_mu	high_3_5	81	0.0001319385334721937	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	O2_crit	low_0_1	41	0.0012984543771745742	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	O2_crit	middle_1_3	79	0.001149732736859007	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	O2_crit	high_3_5	81	0.00013534775055360268	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	n_O	low_0_1	41	0.001542901257152811	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	n_O	middle_1_3	79	0.0009112443559731687	1.0
+global	dominant_growth_rate	S2	buffer_n_exp	n_O	high_3_5	81	-2.9383539941324212e-05	1.0
+global	dominant_growth_rate	S2	p_wgd	alpha_o2	low_0_1	41	-4.010787514909825e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	alpha_o2	middle_1_3	79	-1.3517000137555206e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	alpha_o2	high_3_5	81	-6.404475739332367e-07	1.0
+global	dominant_growth_rate	S2	p_wgd	gamma_growth	low_0_1	41	-4.102983599410615e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	gamma_growth	middle_1_3	79	-1.2580469949860112e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	gamma_growth	high_3_5	81	-1.5984518029973725e-07	1.0
+global	dominant_growth_rate	S2	p_wgd	mu_hp	low_0_1	41	6.810817720610103e-09	1.0
+global	dominant_growth_rate	S2	p_wgd	mu_hp	middle_1_3	79	2.245855047536061e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	mu_hp	high_3_5	81	2.225939105929575e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	gamma_mu	low_0_1	41	-2.3629721846981584e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	gamma_mu	middle_1_3	79	-2.3698709124317365e-07	1.0
+global	dominant_growth_rate	S2	p_wgd	gamma_mu	high_3_5	81	-2.232508242503735e-07	1.0
+global	dominant_growth_rate	S2	p_wgd	O2_crit	low_0_1	41	-3.691819797537828e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	O2_crit	middle_1_3	79	-1.714010805377168e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	O2_crit	high_3_5	81	-7.817075930409978e-07	1.0
+global	dominant_growth_rate	S2	p_wgd	n_O	low_0_1	41	-3.7396045944342095e-06	1.0
+global	dominant_growth_rate	S2	p_wgd	n_O	middle_1_3	79	8.797186721271706e-07	1.0
+global	dominant_growth_rate	S2	p_wgd	n_O	high_3_5	81	2.545283794987801e-06	1.0
+global	dominant_growth_rate	S2	alpha_o2	gamma_growth	low_0_1	41	0.0019291352324593582	1.0
+global	dominant_growth_rate	S2	alpha_o2	gamma_growth	middle_1_3	79	0.0009739373623023272	1.0
+global	dominant_growth_rate	S2	alpha_o2	gamma_growth	high_3_5	81	0.0006497825481198027	1.0
+global	dominant_growth_rate	S2	alpha_o2	mu_hp	low_0_1	41	0.0018098490544752003	1.0
+global	dominant_growth_rate	S2	alpha_o2	mu_hp	middle_1_3	79	0.00111218429911871	1.0
+global	dominant_growth_rate	S2	alpha_o2	mu_hp	high_3_5	81	0.0006577909394416202	1.0
+global	dominant_growth_rate	S2	alpha_o2	gamma_mu	low_0_1	41	0.0020547891914762324	1.0
+global	dominant_growth_rate	S2	alpha_o2	gamma_mu	middle_1_3	79	0.0010526369053728236	1.0
+global	dominant_growth_rate	S2	alpha_o2	gamma_mu	high_3_5	81	0.0007122398755024268	1.0
+global	dominant_growth_rate	S2	alpha_o2	O2_crit	low_0_1	41	0.00153514533668559	1.0
+global	dominant_growth_rate	S2	alpha_o2	O2_crit	middle_1_3	79	0.0006760822048763504	1.0
+global	dominant_growth_rate	S2	alpha_o2	O2_crit	high_3_5	81	0.0005821163840046292	1.0
+global	dominant_growth_rate	S2	alpha_o2	n_O	low_0_1	41	0.001843431559871925	1.0
+global	dominant_growth_rate	S2	alpha_o2	n_O	middle_1_3	79	0.001109656572560043	1.0
+global	dominant_growth_rate	S2	alpha_o2	n_O	high_3_5	81	0.0006445610981121161	1.0
+global	dominant_growth_rate	S2	gamma_growth	mu_hp	low_0_1	41	0.001648878136727072	1.0
+global	dominant_growth_rate	S2	gamma_growth	mu_hp	middle_1_3	79	7.235747951430336e-05	1.0
+global	dominant_growth_rate	S2	gamma_growth	mu_hp	high_3_5	81	-0.0011162677377745706	1.0
+global	dominant_growth_rate	S2	gamma_growth	gamma_mu	low_0_1	41	0.001306168125144212	1.0
+global	dominant_growth_rate	S2	gamma_growth	gamma_mu	middle_1_3	79	9.608231787182702e-05	1.0
+global	dominant_growth_rate	S2	gamma_growth	gamma_mu	high_3_5	81	-0.0010522016551774867	1.0
+global	dominant_growth_rate	S2	gamma_growth	O2_crit	low_0_1	41	0.001394622202227468	1.0
+global	dominant_growth_rate	S2	gamma_growth	O2_crit	middle_1_3	79	0.0005214047766688302	1.0
+global	dominant_growth_rate	S2	gamma_growth	O2_crit	high_3_5	81	-0.0008216972947633028	1.0
+global	dominant_growth_rate	S2	gamma_growth	n_O	low_0_1	41	0.0014737177397548956	1.0
+global	dominant_growth_rate	S2	gamma_growth	n_O	middle_1_3	79	0.0004045348969370906	1.0
+global	dominant_growth_rate	S2	gamma_growth	n_O	high_3_5	81	-0.0005458372576701777	1.0
+global	dominant_growth_rate	S2	mu_hp	gamma_mu	low_0_1	41	0.0058647104608715766	1.0
+global	dominant_growth_rate	S2	mu_hp	gamma_mu	middle_1_3	79	-0.0007835279773602833	1.0
+global	dominant_growth_rate	S2	mu_hp	gamma_mu	high_3_5	81	0.0016694411572581588	1.0
+global	dominant_growth_rate	S2	mu_hp	O2_crit	low_0_1	41	0.007401811059945789	1.0
+global	dominant_growth_rate	S2	mu_hp	O2_crit	middle_1_3	79	0.005601188698696824	1.0
+global	dominant_growth_rate	S2	mu_hp	O2_crit	high_3_5	81	0.004717185895926605	1.0
+global	dominant_growth_rate	S2	mu_hp	n_O	low_0_1	41	0.0015125836075644246	1.0
+global	dominant_growth_rate	S2	mu_hp	n_O	middle_1_3	79	0.00135276010840895	1.0
+global	dominant_growth_rate	S2	mu_hp	n_O	high_3_5	81	0.00676907364696806	1.0
+global	dominant_growth_rate	S2	gamma_mu	O2_crit	low_0_1	41	0.0005633155282722586	1.0
+global	dominant_growth_rate	S2	gamma_mu	O2_crit	middle_1_3	79	-0.0006725725287390438	1.0
+global	dominant_growth_rate	S2	gamma_mu	O2_crit	high_3_5	81	-0.0002384707016557299	1.0
+global	dominant_growth_rate	S2	gamma_mu	n_O	low_0_1	41	9.66881299623625e-05	1.0
+global	dominant_growth_rate	S2	gamma_mu	n_O	middle_1_3	79	-0.00020295576944405467	1.0
+global	dominant_growth_rate	S2	gamma_mu	n_O	high_3_5	81	0.0007150524766300525	1.0
+global	dominant_growth_rate	S2	O2_crit	n_O	low_0_1	41	0.00786845265556592	1.0
+global	dominant_growth_rate	S2	O2_crit	n_O	middle_1_3	79	-0.0007276706525129883	1.0
+global	dominant_growth_rate	S2	O2_crit	n_O	high_3_5	81	-0.002237864943962313	1.0
+neighborhood10pct	dominant_mean_ploidy	S1	lam_max		low_0_1	41	0.002537660012331205	0.9963414634146341
+neighborhood10pct	dominant_mean_ploidy	S1	lam_max		middle_1_3	79	9.324086068193678e-05	0.9998481012658228
+neighborhood10pct	dominant_mean_ploidy	S1	lam_max		high_3_5	81	1.5329452759549092e-07	0.9999506172839506
+neighborhood10pct	dominant_mean_ploidy	S1	p_mis_base		low_0_1	41	0.005122151302046927	0.9896585365853658
+neighborhood10pct	dominant_mean_ploidy	S1	p_mis_base		middle_1_3	79	0.027969874545335702	0.9461772151898734
+neighborhood10pct	dominant_mean_ploidy	S1	p_mis_base		high_3_5	81	0.08625816219146466	0.955358024691358
+neighborhood10pct	dominant_mean_ploidy	S1	p_misseg		low_0_1	41	0.01821409257978619	0.9801463414634146
+neighborhood10pct	dominant_mean_ploidy	S1	p_misseg		middle_1_3	79	0.00291432883439635	0.9921772151898735
+neighborhood10pct	dominant_mean_ploidy	S1	p_misseg		high_3_5	81	0.0010075365025291698	0.9956543209876543
+neighborhood10pct	dominant_mean_ploidy	S1	k_o_mis		low_0_1	41	0.011732151732407693	0.9792682926829268
+neighborhood10pct	dominant_mean_ploidy	S1	k_o_mis		middle_1_3	79	0.005802955543805952	0.982886075949367
+neighborhood10pct	dominant_mean_ploidy	S1	k_o_mis		high_3_5	81	0.0016721982686195716	0.9941481481481481
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_smax		low_0_1	41	0.05318635940676627	0.9215609756097561
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_smax		middle_1_3	79	0.16694857123122714	0.8911898734177215
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_smax		high_3_5	81	0.23783420888278503	0.9508641975308642
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_beta		low_0_1	41	0.12199187618192664	0.874
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_beta		middle_1_3	79	0.059160987470929315	0.916
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_beta		high_3_5	81	0.05634323187810315	0.9460493827160494
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_n_exp		low_0_1	41	0.0004987457187575098	0.9990243902439024
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_n_exp		middle_1_3	79	0.00038306282669416634	0.9989367088607595
+neighborhood10pct	dominant_mean_ploidy	S1	buffer_n_exp		high_3_5	81	0.00025595875685970775	0.9980493827160494
+neighborhood10pct	dominant_mean_ploidy	S1	p_wgd		low_0_1	41	-1.5704431296558922e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S1	p_wgd		middle_1_3	79	6.023007398273802e-08	1.0
+neighborhood10pct	dominant_mean_ploidy	S1	p_wgd		high_3_5	81	1.0530664749868112e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S1	alpha_o2		low_0_1	41	0.0014617127790774202	0.999609756097561
+neighborhood10pct	dominant_mean_ploidy	S1	alpha_o2		middle_1_3	79	0.00021827996888145205	0.9998987341772152
+neighborhood10pct	dominant_mean_ploidy	S1	alpha_o2		high_3_5	81	3.4780027847831485e-05	0.9998024691358025
+neighborhood10pct	dominant_mean_ploidy	S1	gamma_growth		low_0_1	41	0.0006088842367377193	0.9997560975609756
+neighborhood10pct	dominant_mean_ploidy	S1	gamma_growth		middle_1_3	79	0.00014798012355792098	0.9998987341772152
+neighborhood10pct	dominant_mean_ploidy	S1	gamma_growth		high_3_5	81	1.6465474482882742e-05	0.9999506172839506
+neighborhood10pct	dominant_mean_ploidy	S1	mu_hp		low_0_1	41	0.029375458743220322	0.9632682926829268
+neighborhood10pct	dominant_mean_ploidy	S1	mu_hp		middle_1_3	79	0.0039068609536117285	0.9751139240506329
+neighborhood10pct	dominant_mean_ploidy	S1	mu_hp		high_3_5	81	0.0024233470370331085	0.9940987654320987
+neighborhood10pct	dominant_mean_ploidy	S1	gamma_mu		low_0_1	41	0.01052985742294683	0.9980975609756098
+neighborhood10pct	dominant_mean_ploidy	S1	gamma_mu		middle_1_3	79	0.004163380728805711	0.9977974683544304
+neighborhood10pct	dominant_mean_ploidy	S1	gamma_mu		high_3_5	81	0.001494664851582333	0.9984691358024691
+neighborhood10pct	dominant_mean_ploidy	S1	O2_crit		low_0_1	41	0.0352476164632931	0.917609756097561
+neighborhood10pct	dominant_mean_ploidy	S1	O2_crit		middle_1_3	79	0.028059722076024703	0.916253164556962
+neighborhood10pct	dominant_mean_ploidy	S1	O2_crit		high_3_5	81	0.017128268414921596	0.9838024691358025
+neighborhood10pct	dominant_mean_ploidy	S1	n_O		low_0_1	41	0.0012050702104965032	0.9991707317073171
+neighborhood10pct	dominant_mean_ploidy	S1	n_O		middle_1_3	79	0.006902291547802503	0.9934683544303797
+neighborhood10pct	dominant_mean_ploidy	S1	n_O		high_3_5	81	0.013577422335166334	0.990567901234568
+neighborhood10pct	dominant_mean_ploidy	ST	lam_max		low_0_1	41	0.02416811038932158	0.9837560975609756
+neighborhood10pct	dominant_mean_ploidy	ST	lam_max		middle_1_3	79	0.005483746579875504	0.9824556962025316
+neighborhood10pct	dominant_mean_ploidy	ST	lam_max		high_3_5	81	0.0003935996183659571	0.9939506172839506
+neighborhood10pct	dominant_mean_ploidy	ST	p_mis_base		low_0_1	41	0.053317608051617026	0.9397073170731707
+neighborhood10pct	dominant_mean_ploidy	ST	p_mis_base		middle_1_3	79	0.157969244264896	0.8569873417721519
+neighborhood10pct	dominant_mean_ploidy	ST	p_mis_base		high_3_5	81	0.29914951183382793	0.8841728395061729
+neighborhood10pct	dominant_mean_ploidy	ST	p_misseg		low_0_1	41	0.13159077670229158	0.8944390243902439
+neighborhood10pct	dominant_mean_ploidy	ST	p_misseg		middle_1_3	79	0.08169091305150222	0.8751139240506329
+neighborhood10pct	dominant_mean_ploidy	ST	p_misseg		high_3_5	81	0.03388495384954678	0.9426666666666667
+neighborhood10pct	dominant_mean_ploidy	ST	k_o_mis		low_0_1	41	0.12924588315714006	0.8180487804878048
+neighborhood10pct	dominant_mean_ploidy	ST	k_o_mis		middle_1_3	79	0.11760273399837774	0.792126582278481
+neighborhood10pct	dominant_mean_ploidy	ST	k_o_mis		high_3_5	81	0.05377113421764679	0.9169876543209876
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_smax		low_0_1	41	0.27621467965464125	0.7619512195121951
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_smax		middle_1_3	79	0.46782935483657406	0.6745316455696203
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_smax		high_3_5	81	0.45677960310096677	0.8221728395061728
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_beta		low_0_1	41	0.45984030161014705	0.8437073170731707
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_beta		middle_1_3	79	0.403639906757236	0.8111139240506329
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_beta		high_3_5	81	0.38407765539829947	0.8734567901234568
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_n_exp		low_0_1	41	0.016084303270865682	0.9872682926829268
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_n_exp		middle_1_3	79	0.020622336021386592	0.9652658227848101
+neighborhood10pct	dominant_mean_ploidy	ST	buffer_n_exp		high_3_5	81	0.018722617214768776	0.9650617283950618
+neighborhood10pct	dominant_mean_ploidy	ST	p_wgd		low_0_1	41	7.3260070552938625e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	ST	p_wgd		middle_1_3	79	1.5687576535475533e-05	1.0
+neighborhood10pct	dominant_mean_ploidy	ST	p_wgd		high_3_5	81	3.852400274596395e-05	0.9999753086419753
+neighborhood10pct	dominant_mean_ploidy	ST	alpha_o2		low_0_1	41	0.03160652556127234	0.9769756097560975
+neighborhood10pct	dominant_mean_ploidy	ST	alpha_o2		middle_1_3	79	0.01922675346519492	0.9549113924050633
+neighborhood10pct	dominant_mean_ploidy	ST	alpha_o2		high_3_5	81	0.0059001662951935294	0.9797777777777777
+neighborhood10pct	dominant_mean_ploidy	ST	gamma_growth		low_0_1	41	0.019230993820184908	0.9758048780487805
+neighborhood10pct	dominant_mean_ploidy	ST	gamma_growth		middle_1_3	79	0.012459561878470879	0.9423544303797469
+neighborhood10pct	dominant_mean_ploidy	ST	gamma_growth		high_3_5	81	0.002821728980570679	0.9725925925925926
+neighborhood10pct	dominant_mean_ploidy	ST	mu_hp		low_0_1	41	0.17589508029741616	0.8758536585365854
+neighborhood10pct	dominant_mean_ploidy	ST	mu_hp		middle_1_3	79	0.09454105231863746	0.8373670886075949
+neighborhood10pct	dominant_mean_ploidy	ST	mu_hp		high_3_5	81	0.056676796787526774	0.915283950617284
+neighborhood10pct	dominant_mean_ploidy	ST	gamma_mu		low_0_1	41	0.09192356439077483	0.9180975609756098
+neighborhood10pct	dominant_mean_ploidy	ST	gamma_mu		middle_1_3	79	0.0840571781488305	0.8929620253164557
+neighborhood10pct	dominant_mean_ploidy	ST	gamma_mu		high_3_5	81	0.041051026166653216	0.9526172839506173
+neighborhood10pct	dominant_mean_ploidy	ST	O2_crit		low_0_1	41	0.2559551923619855	0.8982439024390244
+neighborhood10pct	dominant_mean_ploidy	ST	O2_crit		middle_1_3	79	0.2705892964713222	0.7360253164556962
+neighborhood10pct	dominant_mean_ploidy	ST	O2_crit		high_3_5	81	0.17178558267166663	0.8281728395061728
+neighborhood10pct	dominant_mean_ploidy	ST	n_O		low_0_1	41	0.05524164063390337	0.924439024390244
+neighborhood10pct	dominant_mean_ploidy	ST	n_O		middle_1_3	79	0.14014313836593623	0.7641518987341772
+neighborhood10pct	dominant_mean_ploidy	ST	n_O		high_3_5	81	0.1306974696494717	0.8305925925925925
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_mis_base	low_0_1	41	-6.571981909087142e-05	0.9924390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_mis_base	middle_1_3	79	-3.4345078735914284e-05	0.9991139240506329
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_mis_base	high_3_5	81	-7.64273625793959e-07	0.9996049382716049
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_misseg	low_0_1	41	3.726632207018715e-05	0.9922439024390244
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_misseg	middle_1_3	79	-1.4309904293367245e-05	0.9993924050632912
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_misseg	high_3_5	81	-5.850161936782637e-07	0.9996049382716049
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	k_o_mis	low_0_1	41	-6.212274457131241e-05	0.9924390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	k_o_mis	middle_1_3	79	-3.362379252884609e-05	0.9993670886075949
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	k_o_mis	high_3_5	81	-6.08350274792069e-07	0.9996543209876543
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_smax	low_0_1	41	6.34981911340078e-05	0.9933170731707317
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_smax	middle_1_3	79	-1.668475283217563e-05	0.9991139240506329
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_smax	high_3_5	81	-5.885201223238228e-08	0.9996296296296296
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_beta	low_0_1	41	0.0003319452348308408	0.9787317073170732
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_beta	middle_1_3	79	1.288729982651906e-06	0.9966329113924051
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_beta	high_3_5	81	1.5084014488802072e-06	0.9997037037037036
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_n_exp	low_0_1	41	-4.843879070903741e-05	0.992390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_n_exp	middle_1_3	79	-3.545693819586728e-05	0.9994683544303797
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	buffer_n_exp	high_3_5	81	-6.412913373756272e-07	0.9998271604938271
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_wgd	low_0_1	41	-5.7275083960166615e-05	0.9928292682926829
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_wgd	middle_1_3	79	-3.642283892057935e-05	0.9992658227848101
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	p_wgd	high_3_5	81	-5.555566339013387e-07	0.9996049382716049
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	alpha_o2	low_0_1	41	-3.497160168067167e-05	0.9917073170731707
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	alpha_o2	middle_1_3	79	-3.628594383251025e-05	0.9992658227848101
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	alpha_o2	high_3_5	81	-6.187384126588488e-07	0.9997530864197531
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	gamma_growth	low_0_1	41	-5.853501567105865e-05	0.9920975609756097
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	gamma_growth	middle_1_3	79	-4.00387383490856e-05	0.9991392405063291
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	gamma_growth	high_3_5	81	-6.440710913245579e-07	0.9996049382716049
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	mu_hp	low_0_1	41	8.435157393869509e-05	0.9924390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	mu_hp	middle_1_3	79	-2.7035186379490733e-05	0.9990379746835443
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	mu_hp	high_3_5	81	-5.835070602900755e-07	0.9995802469135803
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	gamma_mu	low_0_1	41	-4.6733771545504556e-05	0.9915121951219512
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	gamma_mu	middle_1_3	79	-3.2234916211766256e-05	0.9985822784810127
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	gamma_mu	high_3_5	81	-6.534168330100683e-07	0.9997037037037036
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	O2_crit	low_0_1	41	8.048196804803586e-05	0.9797073170731707
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	O2_crit	middle_1_3	79	-1.8587168274786893e-05	0.9964303797468355
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	O2_crit	high_3_5	81	-4.397930067181608e-07	0.9994567901234568
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	n_O	low_0_1	41	-5.816043926593859e-05	0.9926341463414634
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	n_O	middle_1_3	79	-2.8889301152074653e-05	0.9990126582278481
+neighborhood10pct	dominant_mean_ploidy	S2	lam_max	n_O	high_3_5	81	-6.822924804961402e-07	0.9997283950617284
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	p_misseg	low_0_1	41	0.00026858118700208986	0.9762926829268292
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	p_misseg	middle_1_3	79	0.0004991438520456522	0.9074683544303798
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	p_misseg	high_3_5	81	0.0004898118457480899	0.9060246913580247
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	k_o_mis	low_0_1	41	-1.4806343084564844e-05	0.976780487804878
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	k_o_mis	middle_1_3	79	0.0002427310157502715	0.9015443037974683
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	k_o_mis	high_3_5	81	0.0004517687520087158	0.8944691358024691
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_smax	low_0_1	41	0.0006026124809896319	0.9630731707317073
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_smax	middle_1_3	79	0.003854317449703664	0.854379746835443
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_smax	high_3_5	81	0.006616700233372577	0.827679012345679
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_beta	low_0_1	41	0.0008003872480021441	0.954390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_beta	middle_1_3	79	0.004068803797042492	0.8404050632911393
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_beta	high_3_5	81	0.010103627409535085	0.8009135802469136
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_n_exp	low_0_1	41	4.209323596932956e-09	0.978780487804878
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_n_exp	middle_1_3	79	0.0001322343910998345	0.9079493670886076
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	buffer_n_exp	high_3_5	81	0.00021519349040131962	0.8987407407407407
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	p_wgd	low_0_1	41	-1.2627140551638927e-05	0.9795609756097561
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	p_wgd	middle_1_3	79	3.861589036914689e-05	0.9124810126582279
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	p_wgd	high_3_5	81	8.532140663364852e-05	0.906074074074074
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	alpha_o2	low_0_1	41	6.248398814370074e-06	0.9794634146341463
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	alpha_o2	middle_1_3	79	2.4197678224835277e-05	0.9114177215189874
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	alpha_o2	high_3_5	81	5.4226070974908804e-05	0.9045679012345679
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	gamma_growth	low_0_1	41	1.9427474051941543e-05	0.9793170731707317
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	gamma_growth	middle_1_3	79	3.1221894140411754e-05	0.9100253164556962
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	gamma_growth	high_3_5	81	3.5717093591837226e-05	0.9050617283950617
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	mu_hp	low_0_1	41	0.00030070572876906264	0.9766341463414634
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	mu_hp	middle_1_3	79	0.0005365488751073292	0.9021012658227848
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	mu_hp	high_3_5	81	0.0010324299765861347	0.900962962962963
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	gamma_mu	low_0_1	41	6.929680020337308e-05	0.9780487804878049
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	gamma_mu	middle_1_3	79	0.00012316829709514704	0.906506329113924
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	gamma_mu	high_3_5	81	9.062184551850325e-05	0.9002716049382716
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	O2_crit	low_0_1	41	0.0004263502221789727	0.9734634146341463
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	O2_crit	middle_1_3	79	0.003069330071113288	0.8873924050632911
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	O2_crit	high_3_5	81	0.005982215975812573	0.8908148148148148
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	n_O	low_0_1	41	1.8110643290322647e-05	0.979170731707317
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	n_O	middle_1_3	79	0.0013034930728617125	0.8943291139240507
+neighborhood10pct	dominant_mean_ploidy	S2	p_mis_base	n_O	high_3_5	81	0.0034951498153164323	0.8576049382716049
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	k_o_mis	low_0_1	41	0.00039520846039340566	0.9225853658536586
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	k_o_mis	middle_1_3	79	0.00024661935968334214	0.9497721518987342
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	k_o_mis	high_3_5	81	1.5310386896953766e-05	0.9791851851851852
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_smax	low_0_1	41	0.0024058673333050167	0.8894634146341464
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_smax	middle_1_3	79	0.0019234691568179398	0.9257215189873418
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_smax	high_3_5	81	0.0005745521020254831	0.9691111111111111
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_beta	low_0_1	41	0.003876970970216704	0.8871707317073171
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_beta	middle_1_3	79	0.0012926150516231881	0.924126582278481
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_beta	high_3_5	81	0.00041655431139863894	0.9630864197530864
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_n_exp	low_0_1	41	6.619762536392409e-05	0.9298048780487805
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_n_exp	middle_1_3	79	2.909724186258349e-05	0.9532151898734177
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	buffer_n_exp	high_3_5	81	4.584134304868779e-06	0.9784938271604938
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	p_wgd	low_0_1	41	-4.411300584311309e-05	0.936
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	p_wgd	middle_1_3	79	-9.277425122277492e-06	0.9555443037974684
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	p_wgd	high_3_5	81	-6.446814450565833e-06	0.9798518518518519
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	alpha_o2	low_0_1	41	0.00014337737537586107	0.9335121951219513
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	alpha_o2	middle_1_3	79	2.5422594228226478e-05	0.9542531645569621
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	alpha_o2	high_3_5	81	-3.6104932722791716e-06	0.9810123456790123
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	gamma_growth	low_0_1	41	9.537443634776356e-05	0.9330243902439025
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	gamma_growth	middle_1_3	79	4.3093577189350855e-05	0.9544556962025317
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	gamma_growth	high_3_5	81	-3.396550006289177e-06	0.9795802469135803
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	mu_hp	low_0_1	41	0.001491258789644892	0.9217560975609757
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	mu_hp	middle_1_3	79	0.00020925631150689225	0.9489367088607595
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	mu_hp	high_3_5	81	2.9960968598694504e-05	0.9765432098765432
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	gamma_mu	low_0_1	41	0.0004164371471508601	0.9158048780487805
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	gamma_mu	middle_1_3	79	0.00011220441120559351	0.9493164556962025
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	gamma_mu	high_3_5	81	1.8755463351361974e-07	0.9794074074074074
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	O2_crit	low_0_1	41	0.002209140983158679	0.9087317073170732
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	O2_crit	middle_1_3	79	0.0012819091788206758	0.9226075949367089
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	O2_crit	high_3_5	81	0.00022530937327532813	0.9717777777777777
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	n_O	low_0_1	41	5.2408918293521095e-05	0.9333658536585366
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	n_O	middle_1_3	79	0.0002983100947909236	0.9492658227848101
+neighborhood10pct	dominant_mean_ploidy	S2	p_misseg	n_O	high_3_5	81	0.00012652591849673288	0.9769629629629629
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_smax	low_0_1	41	0.0014475819833263122	0.9061463414634147
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_smax	middle_1_3	79	0.001381646591733019	0.8911139240506329
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_smax	high_3_5	81	0.0003453095833732107	0.9607901234567902
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_beta	low_0_1	41	0.0017314851165362273	0.9111707317073171
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_beta	middle_1_3	79	0.0005809086561250474	0.9016962025316456
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_beta	high_3_5	81	4.00893491186767e-05	0.9609629629629629
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_n_exp	low_0_1	41	0.00012234814174672687	0.948780487804878
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_n_exp	middle_1_3	79	-0.00038284264580499996	0.9401012658227849
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	buffer_n_exp	high_3_5	81	-9.429217627111034e-05	0.9813333333333333
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	p_wgd	low_0_1	41	7.25014931109073e-05	0.9519512195121951
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	p_wgd	middle_1_3	79	-0.0003861774872156651	0.9417215189873418
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	p_wgd	high_3_5	81	-9.904827554967283e-05	0.9811111111111112
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	alpha_o2	low_0_1	41	8.259099478296444e-05	0.9476097560975609
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	alpha_o2	middle_1_3	79	-0.00031177367974831384	0.9391392405063291
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	alpha_o2	high_3_5	81	-8.999826884520225e-05	0.9800740740740741
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	gamma_growth	low_0_1	41	0.0001026445067613619	0.9502926829268292
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	gamma_growth	middle_1_3	79	-0.0003699334020438721	0.9402784810126582
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	gamma_growth	high_3_5	81	-9.681041986150651e-05	0.98
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	mu_hp	low_0_1	41	0.0011694515071056211	0.9108780487804878
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	mu_hp	middle_1_3	79	0.0003525204742452599	0.9014430379746835
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	mu_hp	high_3_5	81	4.515723218571705e-05	0.9644691358024692
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	gamma_mu	low_0_1	41	0.0002400586681387257	0.9379512195121951
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	gamma_mu	middle_1_3	79	-0.00024054686844625383	0.924379746835443
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	gamma_mu	high_3_5	81	-7.498414316100598e-05	0.9735802469135802
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	O2_crit	low_0_1	41	0.0028014135999902016	0.911219512195122
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	O2_crit	middle_1_3	79	0.0023826499860685885	0.8869367088607595
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	O2_crit	high_3_5	81	0.0004759039851413183	0.9630123456790124
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	n_O	low_0_1	41	0.00033674013598939507	0.9442439024390243
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	n_O	middle_1_3	79	0.00040437748940141396	0.9103291139240506
+neighborhood10pct	dominant_mean_ploidy	S2	k_o_mis	n_O	high_3_5	81	0.00021455368890939018	0.9627901234567902
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	buffer_beta	low_0_1	41	0.01153001858453703	0.7699512195121951
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	buffer_beta	middle_1_3	79	0.025141832300399666	0.712632911392405
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	buffer_beta	high_3_5	81	0.021753547931934684	0.8156543209876543
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	buffer_n_exp	low_0_1	41	0.0005479009470247058	0.8282439024390243
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	buffer_n_exp	middle_1_3	79	0.0006007933762525085	0.7831898734177215
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	buffer_n_exp	high_3_5	81	0.0006072644943519763	0.8611604938271605
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	p_wgd	low_0_1	41	0.0002727889708934703	0.834390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	p_wgd	middle_1_3	79	5.740462149410039e-05	0.7937215189873418
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	p_wgd	high_3_5	81	-0.00016383608843720599	0.8692345679012345
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	alpha_o2	low_0_1	41	0.0008316794649411574	0.8281951219512195
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	alpha_o2	middle_1_3	79	0.0003692391911728558	0.7833924050632911
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	alpha_o2	high_3_5	81	-1.6527254321386825e-05	0.8594074074074074
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	gamma_growth	low_0_1	41	0.0007768568362429305	0.8302439024390244
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	gamma_growth	middle_1_3	79	0.0004107544607977542	0.7933164556962026
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	gamma_growth	high_3_5	81	7.6188851242015e-06	0.8698271604938271
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	mu_hp	low_0_1	41	0.0024598725397241786	0.7917073170731708
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	mu_hp	middle_1_3	79	0.0016903114756524188	0.7588607594936709
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	mu_hp	high_3_5	81	0.00032804419856779366	0.8522716049382716
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	gamma_mu	low_0_1	41	0.0014467782657128152	0.7996585365853659
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	gamma_mu	middle_1_3	79	0.001281637298996629	0.7634683544303797
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	gamma_mu	high_3_5	81	0.0008534851321879386	0.8375802469135802
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	O2_crit	low_0_1	41	0.007339504745594631	0.771219512195122
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	O2_crit	middle_1_3	79	0.008100430335248434	0.7055949367088608
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	O2_crit	high_3_5	81	0.003385476013189158	0.8411111111111111
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	n_O	low_0_1	41	0.0008601406919213247	0.8302926829268292
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	n_O	middle_1_3	79	0.0023891784130660536	0.7543544303797468
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_smax	n_O	high_3_5	81	0.0015292203115255456	0.8122962962962963
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	buffer_n_exp	low_0_1	41	0.0003671308971660763	0.7674146341463415
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	buffer_n_exp	middle_1_3	79	0.001783109579733495	0.808379746835443
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	buffer_n_exp	high_3_5	81	0.0022290376330383415	0.874641975308642
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	p_wgd	low_0_1	41	-0.0007944585304970659	0.7750731707317073
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	p_wgd	middle_1_3	79	0.0008606241577401002	0.8193924050632911
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	p_wgd	high_3_5	81	0.0010957749951707536	0.8861975308641975
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	alpha_o2	low_0_1	41	-0.00016752597547806147	0.7699512195121951
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	alpha_o2	middle_1_3	79	0.000928509651562542	0.8177721518987342
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	alpha_o2	high_3_5	81	0.0010685905215902312	0.8849876543209877
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	gamma_growth	low_0_1	41	-0.0002512436147036152	0.7652682926829268
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	gamma_growth	middle_1_3	79	0.0010458823412216227	0.8145063291139241
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	gamma_growth	high_3_5	81	0.0010530912412716625	0.8850123456790123
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	mu_hp	low_0_1	41	0.005246377848027406	0.7466341463414634
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	mu_hp	middle_1_3	79	0.0022828323806237125	0.7951392405063291
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	mu_hp	high_3_5	81	0.0017841049683740356	0.8700987654320987
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	gamma_mu	low_0_1	41	0.0010765501911836582	0.7545365853658537
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	gamma_mu	middle_1_3	79	0.0015704971686758278	0.8065822784810126
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	gamma_mu	high_3_5	81	0.0014156018264046165	0.8738765432098765
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	O2_crit	low_0_1	41	0.006833873177314214	0.7468780487804878
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	O2_crit	middle_1_3	79	0.007091980091078748	0.7799746835443038
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	O2_crit	high_3_5	81	0.00476701179139194	0.8673086419753087
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	n_O	low_0_1	41	-0.00017264377400028598	0.7757560975609756
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	n_O	middle_1_3	79	0.002373360230872202	0.8057721518987342
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_beta	n_O	high_3_5	81	0.002565064699415646	0.8494320987654321
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	p_wgd	low_0_1	41	-3.390552626172596e-06	0.9977073170731707
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	p_wgd	middle_1_3	79	2.002952898139386e-05	0.9941772151898735
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	p_wgd	high_3_5	81	3.328518897733081e-05	0.9931358024691358
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	alpha_o2	low_0_1	41	9.465413525179909e-06	0.9974146341463415
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	alpha_o2	middle_1_3	79	2.377895203181735e-05	0.9943291139240507
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	alpha_o2	high_3_5	81	3.958728164088593e-05	0.9932839506172839
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	gamma_growth	low_0_1	41	3.3178192933847556e-07	0.9966341463414634
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	gamma_growth	middle_1_3	79	1.8573524373237594e-05	0.9938987341772152
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	gamma_growth	high_3_5	81	3.0454483010884585e-05	0.9924197530864197
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	mu_hp	low_0_1	41	-4.408370709714512e-05	0.9957560975609756
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	mu_hp	middle_1_3	79	1.4177663178370023e-05	0.993493670886076
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	mu_hp	high_3_5	81	2.134317155360247e-05	0.9914074074074074
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	gamma_mu	low_0_1	41	-9.914333227022056e-06	0.9960975609756098
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	gamma_mu	middle_1_3	79	3.86632545395549e-05	0.9932658227848101
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	gamma_mu	high_3_5	81	4.02699928222921e-05	0.9929382716049383
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	O2_crit	low_0_1	41	-2.590405686850374e-05	0.9955609756097561
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	O2_crit	middle_1_3	79	2.181389488612167e-05	0.9881518987341772
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	O2_crit	high_3_5	81	6.0009207775897054e-05	0.9897283950617284
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	n_O	low_0_1	41	1.7027932260524875e-06	0.9975609756097561
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	n_O	middle_1_3	79	4.091267727018921e-05	0.9939240506329113
+neighborhood10pct	dominant_mean_ploidy	S2	buffer_n_exp	n_O	high_3_5	81	5.845136313528855e-05	0.9936049382716049
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	alpha_o2	low_0_1	41	2.628718911243557e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	alpha_o2	middle_1_3	79	-1.0551863576189249e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	alpha_o2	high_3_5	81	-1.8070940375833722e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	gamma_growth	low_0_1	41	2.4568528934648336e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	gamma_growth	middle_1_3	79	-1.5965495048425901e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	gamma_growth	high_3_5	81	-2.3673849675338457e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	mu_hp	low_0_1	41	1.176173799742354e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	mu_hp	middle_1_3	79	-6.282482194137117e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	mu_hp	high_3_5	81	-2.3113010274733875e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	gamma_mu	low_0_1	41	2.629685301600399e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	gamma_mu	middle_1_3	79	-8.579503701358075e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	gamma_mu	high_3_5	81	-1.6889885583877876e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	O2_crit	low_0_1	41	1.33531628453166e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	O2_crit	middle_1_3	79	-6.031957268855124e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	O2_crit	high_3_5	81	-5.39089394889469e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	n_O	low_0_1	41	2.972110430533276e-07	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	n_O	middle_1_3	79	-1.2812914181713977e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	p_wgd	n_O	high_3_5	81	-2.961426403455295e-06	1.0
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	gamma_growth	low_0_1	41	6.614972660656014e-05	0.9965365853658537
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	gamma_growth	middle_1_3	79	9.298409122556015e-05	0.9983544303797468
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	gamma_growth	high_3_5	81	4.239791535355043e-05	0.9985925925925926
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	mu_hp	low_0_1	41	0.00016709370524881708	0.9966829268292683
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	mu_hp	middle_1_3	79	0.00012157403841926785	0.9966835443037975
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	mu_hp	high_3_5	81	3.499350408464897e-05	0.9981234567901235
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	gamma_mu	low_0_1	41	4.885549820244368e-05	0.996390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	gamma_mu	middle_1_3	79	8.40561775151741e-05	0.9979746835443037
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	gamma_mu	high_3_5	81	3.358067930355604e-05	0.9982962962962963
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	O2_crit	low_0_1	41	0.0003113640584315759	0.9939512195121951
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	O2_crit	middle_1_3	79	0.00016567163585065088	0.9946075949367088
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	O2_crit	high_3_5	81	3.818684979385948e-05	0.9984938271604938
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	n_O	low_0_1	41	6.989371969167639e-05	0.9970731707317073
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	n_O	middle_1_3	79	8.343674827346194e-05	0.9981518987341772
+neighborhood10pct	dominant_mean_ploidy	S2	alpha_o2	n_O	high_3_5	81	2.7222279400568106e-05	0.9990864197530864
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	mu_hp	low_0_1	41	0.00018748516705189606	0.9960487804878049
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	mu_hp	middle_1_3	79	-7.713223657275231e-06	0.9969620253164557
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	mu_hp	high_3_5	81	-6.646726875144273e-06	0.9986913580246913
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	gamma_mu	low_0_1	41	0.00016670838492191745	0.996390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	gamma_mu	middle_1_3	79	1.4723214000602491e-05	0.9979746835443037
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	gamma_mu	high_3_5	81	-5.640098976283269e-06	0.9992592592592593
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	O2_crit	low_0_1	41	0.0002965239382659653	0.9933658536585366
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	O2_crit	middle_1_3	79	4.483555810614464e-05	0.9907088607594937
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	O2_crit	high_3_5	81	-5.171567955117146e-06	0.998567901234568
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	n_O	low_0_1	41	0.00010421762023816176	0.9981463414634146
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	n_O	middle_1_3	79	-3.584596487577905e-06	0.9974683544303797
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_growth	n_O	high_3_5	81	-1.3496677144553102e-05	0.9990123456790123
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	gamma_mu	low_0_1	41	0.0007771785877643404	0.9217073170731708
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	gamma_mu	middle_1_3	79	-0.00027413314357089787	0.9412658227848101
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	gamma_mu	high_3_5	81	-0.00011310185932212748	0.9748148148148148
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	O2_crit	low_0_1	41	0.0044763674881272844	0.8899512195121951
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	O2_crit	middle_1_3	79	0.0016718712732156729	0.911113924050633
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	O2_crit	high_3_5	81	0.00022699624692472972	0.9671604938271605
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	n_O	low_0_1	41	0.000491300525027292	0.9205853658536586
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	n_O	middle_1_3	79	0.00023465376921934382	0.9364303797468354
+neighborhood10pct	dominant_mean_ploidy	S2	mu_hp	n_O	high_3_5	81	0.00012452450242614923	0.9661481481481482
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_mu	O2_crit	low_0_1	41	0.000805594086616961	0.9687317073170731
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_mu	O2_crit	middle_1_3	79	0.0004449243434545807	0.9605822784810126
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_mu	O2_crit	high_3_5	81	0.00014272573222152358	0.989679012345679
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_mu	n_O	low_0_1	41	-0.00011954828589990754	0.9831219512195122
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_mu	n_O	middle_1_3	79	9.127573718161599e-05	0.9773417721518988
+neighborhood10pct	dominant_mean_ploidy	S2	gamma_mu	n_O	high_3_5	81	7.875043258465124e-05	0.9909382716049383
+neighborhood10pct	dominant_mean_ploidy	S2	O2_crit	n_O	low_0_1	41	0.001892103085850853	0.7404390243902439
+neighborhood10pct	dominant_mean_ploidy	S2	O2_crit	n_O	middle_1_3	79	0.00472034168976912	0.7132911392405064
+neighborhood10pct	dominant_mean_ploidy	S2	O2_crit	n_O	high_3_5	81	0.002347702596421231	0.9027407407407407
+neighborhood10pct	dominant_growth_rate	S1	lam_max		low_0_1	41	0.0016047954829267299	0.9932682926829268
+neighborhood10pct	dominant_growth_rate	S1	lam_max		middle_1_3	79	0.011828707314103772	0.9990379746835443
+neighborhood10pct	dominant_growth_rate	S1	lam_max		high_3_5	81	0.05509909966105165	0.9991604938271605
+neighborhood10pct	dominant_growth_rate	S1	p_mis_base		low_0_1	41	0.005967402965818233	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_mis_base		middle_1_3	79	0.028464501162727654	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_mis_base		high_3_5	81	0.07526046678407938	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_misseg		low_0_1	41	0.0616748973395905	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_misseg		middle_1_3	79	0.021106905885809643	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_misseg		high_3_5	81	0.0061603720926032505	1.0
+neighborhood10pct	dominant_growth_rate	S1	k_o_mis		low_0_1	41	0.00830100196725224	1.0
+neighborhood10pct	dominant_growth_rate	S1	k_o_mis		middle_1_3	79	0.020265906617696932	1.0
+neighborhood10pct	dominant_growth_rate	S1	k_o_mis		high_3_5	81	0.012065885085644261	1.0
+neighborhood10pct	dominant_growth_rate	S1	buffer_smax		low_0_1	41	0.09765950189408819	0.987609756097561
+neighborhood10pct	dominant_growth_rate	S1	buffer_smax		middle_1_3	79	0.04916995555422318	0.9978227848101265
+neighborhood10pct	dominant_growth_rate	S1	buffer_smax		high_3_5	81	0.027492247059882107	1.0
+neighborhood10pct	dominant_growth_rate	S1	buffer_beta		low_0_1	41	0.1231519653697357	0.9990243902439024
+neighborhood10pct	dominant_growth_rate	S1	buffer_beta		middle_1_3	79	0.05729380732249625	1.0
+neighborhood10pct	dominant_growth_rate	S1	buffer_beta		high_3_5	81	0.04202688693636324	1.0
+neighborhood10pct	dominant_growth_rate	S1	buffer_n_exp		low_0_1	41	6.928146027300877e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	buffer_n_exp		middle_1_3	79	7.967625519261267e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	buffer_n_exp		high_3_5	81	7.614552942718683e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_wgd		low_0_1	41	-1.5301076894325655e-07	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_wgd		middle_1_3	79	-4.009493196716302e-07	1.0
+neighborhood10pct	dominant_growth_rate	S1	p_wgd		high_3_5	81	-3.7937172527489263e-07	1.0
+neighborhood10pct	dominant_growth_rate	S1	alpha_o2		low_0_1	41	0.0009457081219557053	1.0
+neighborhood10pct	dominant_growth_rate	S1	alpha_o2		middle_1_3	79	5.3166165414604884e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	alpha_o2		high_3_5	81	6.606843436466019e-06	1.0
+neighborhood10pct	dominant_growth_rate	S1	gamma_growth		low_0_1	41	7.33353661917849e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	gamma_growth		middle_1_3	79	-1.1121012107711752e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	gamma_growth		high_3_5	81	-1.666458121283837e-05	1.0
+neighborhood10pct	dominant_growth_rate	S1	mu_hp		low_0_1	41	0.09853245371944815	0.998780487804878
+neighborhood10pct	dominant_growth_rate	S1	mu_hp		middle_1_3	79	0.02790350994722913	0.9997721518987341
+neighborhood10pct	dominant_growth_rate	S1	mu_hp		high_3_5	81	0.012142165556663266	1.0
+neighborhood10pct	dominant_growth_rate	S1	gamma_mu		low_0_1	41	0.0007720371155447475	1.0
+neighborhood10pct	dominant_growth_rate	S1	gamma_mu		middle_1_3	79	0.0008874684844332838	1.0
+neighborhood10pct	dominant_growth_rate	S1	gamma_mu		high_3_5	81	0.00044905570116082625	1.0
+neighborhood10pct	dominant_growth_rate	S1	O2_crit		low_0_1	41	0.13963226522146008	0.9845853658536585
+neighborhood10pct	dominant_growth_rate	S1	O2_crit		middle_1_3	79	0.20840331527301098	0.9987848101265823
+neighborhood10pct	dominant_growth_rate	S1	O2_crit		high_3_5	81	0.09072756661141622	1.0
+neighborhood10pct	dominant_growth_rate	S1	n_O		low_0_1	41	0.008990508333311047	1.0
+neighborhood10pct	dominant_growth_rate	S1	n_O		middle_1_3	79	0.05889339326423646	1.0
+neighborhood10pct	dominant_growth_rate	S1	n_O		high_3_5	81	0.06190879805079854	1.0
+neighborhood10pct	dominant_growth_rate	ST	lam_max		low_0_1	41	0.005350360038926356	0.9960487804878049
+neighborhood10pct	dominant_growth_rate	ST	lam_max		middle_1_3	79	0.016982336003332002	1.0
+neighborhood10pct	dominant_growth_rate	ST	lam_max		high_3_5	81	0.060054677243373523	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_mis_base		low_0_1	41	0.008896199776017489	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_mis_base		middle_1_3	79	0.0357481906507865	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_mis_base		high_3_5	81	0.09660265626964017	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_misseg		low_0_1	41	0.07230365985727431	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_misseg		middle_1_3	79	0.030922487924491714	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_misseg		high_3_5	81	0.013146289697457151	1.0
+neighborhood10pct	dominant_growth_rate	ST	k_o_mis		low_0_1	41	0.014476238839112972	1.0
+neighborhood10pct	dominant_growth_rate	ST	k_o_mis		middle_1_3	79	0.03172430840931839	1.0
+neighborhood10pct	dominant_growth_rate	ST	k_o_mis		high_3_5	81	0.021103587478334743	1.0
+neighborhood10pct	dominant_growth_rate	ST	buffer_smax		low_0_1	41	0.15523220113222747	0.888
+neighborhood10pct	dominant_growth_rate	ST	buffer_smax		middle_1_3	79	0.0951051970601919	0.9792151898734177
+neighborhood10pct	dominant_growth_rate	ST	buffer_smax		high_3_5	81	0.07874858074988561	0.9964197530864197
+neighborhood10pct	dominant_growth_rate	ST	buffer_beta		low_0_1	41	0.165456820923511	0.9914634146341463
+neighborhood10pct	dominant_growth_rate	ST	buffer_beta		middle_1_3	79	0.09019801669252313	1.0
+neighborhood10pct	dominant_growth_rate	ST	buffer_beta		high_3_5	81	0.07481052340358017	1.0
+neighborhood10pct	dominant_growth_rate	ST	buffer_n_exp		low_0_1	41	0.0006506542408283978	1.0
+neighborhood10pct	dominant_growth_rate	ST	buffer_n_exp		middle_1_3	79	0.0004599387048373522	1.0
+neighborhood10pct	dominant_growth_rate	ST	buffer_n_exp		high_3_5	81	0.00039057941954609177	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_wgd		low_0_1	41	1.122339835343521e-08	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_wgd		middle_1_3	79	5.0349363988593523e-08	1.0
+neighborhood10pct	dominant_growth_rate	ST	p_wgd		high_3_5	81	1.5269537071906146e-07	1.0
+neighborhood10pct	dominant_growth_rate	ST	alpha_o2		low_0_1	41	0.002899732432266477	1.0
+neighborhood10pct	dominant_growth_rate	ST	alpha_o2		middle_1_3	79	0.0002046016026812642	1.0
+neighborhood10pct	dominant_growth_rate	ST	alpha_o2		high_3_5	81	3.8136917588041115e-05	1.0
+neighborhood10pct	dominant_growth_rate	ST	gamma_growth		low_0_1	41	0.00032218265260980264	1.0
+neighborhood10pct	dominant_growth_rate	ST	gamma_growth		middle_1_3	79	5.816175517344127e-05	1.0
+neighborhood10pct	dominant_growth_rate	ST	gamma_growth		high_3_5	81	1.210029925034922e-05	1.0
+neighborhood10pct	dominant_growth_rate	ST	mu_hp		low_0_1	41	0.10908424997702072	0.9938536585365854
+neighborhood10pct	dominant_growth_rate	ST	mu_hp		middle_1_3	79	0.03782999393622041	0.9981772151898735
+neighborhood10pct	dominant_growth_rate	ST	mu_hp		high_3_5	81	0.020355411337532114	0.9987160493827161
+neighborhood10pct	dominant_growth_rate	ST	gamma_mu		low_0_1	41	0.003209848193719037	1.0
+neighborhood10pct	dominant_growth_rate	ST	gamma_mu		middle_1_3	79	0.0032110722748830874	1.0
+neighborhood10pct	dominant_growth_rate	ST	gamma_mu		high_3_5	81	0.0015548882799465166	1.0
+neighborhood10pct	dominant_growth_rate	ST	O2_crit		low_0_1	41	0.1759076564548667	0.9989756097560976
+neighborhood10pct	dominant_growth_rate	ST	O2_crit		middle_1_3	79	0.25787722250346296	1.0
+neighborhood10pct	dominant_growth_rate	ST	O2_crit		high_3_5	81	0.12675842863320905	1.0
+neighborhood10pct	dominant_growth_rate	ST	n_O		low_0_1	41	0.015092786316827263	1.0
+neighborhood10pct	dominant_growth_rate	ST	n_O		middle_1_3	79	0.082465213571661	1.0
+neighborhood10pct	dominant_growth_rate	ST	n_O		high_3_5	81	0.09565966568578076	1.0
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_mis_base	low_0_1	41	6.710130352123261e-05	0.9954146341463415
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_mis_base	middle_1_3	79	0.00016145494614710907	0.9990126582278481
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_mis_base	high_3_5	81	0.00021113789168624136	0.9981975308641975
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_misseg	low_0_1	41	0.00044977778092696296	0.9953170731707317
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_misseg	middle_1_3	79	0.00039792479827553483	0.9990126582278481
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_misseg	high_3_5	81	4.901358233108075e-05	0.9982469135802469
+neighborhood10pct	dominant_growth_rate	S2	lam_max	k_o_mis	low_0_1	41	5.000800906163467e-05	0.9955609756097561
+neighborhood10pct	dominant_growth_rate	S2	lam_max	k_o_mis	middle_1_3	79	4.233427039105228e-05	0.9990126582278481
+neighborhood10pct	dominant_growth_rate	S2	lam_max	k_o_mis	high_3_5	81	-0.00020457928222150182	0.9979259259259259
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_smax	low_0_1	41	0.0005161202418662301	0.995609756097561
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_smax	middle_1_3	79	0.0004502987125063108	0.9990886075949367
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_smax	high_3_5	81	0.00027513092611156434	0.9982962962962963
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_beta	low_0_1	41	0.00014233920217259	0.997219512195122
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_beta	middle_1_3	79	0.0001700130604313006	0.9988607594936709
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_beta	high_3_5	81	0.00012483234923360304	0.9984691358024691
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_n_exp	low_0_1	41	4.9163031965907064e-05	0.9953658536585366
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_n_exp	middle_1_3	79	-1.3303484568451126e-05	0.9990126582278481
+neighborhood10pct	dominant_growth_rate	S2	lam_max	buffer_n_exp	high_3_5	81	-0.00021679233212105515	0.9982962962962963
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_wgd	low_0_1	41	3.631226883228949e-05	0.9954146341463415
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_wgd	middle_1_3	79	-3.959870188068814e-05	0.9989873417721519
+neighborhood10pct	dominant_growth_rate	S2	lam_max	p_wgd	high_3_5	81	-0.0002665914848907942	0.9981975308641975
+neighborhood10pct	dominant_growth_rate	S2	lam_max	alpha_o2	low_0_1	41	5.466036107219592e-05	0.995219512195122
+neighborhood10pct	dominant_growth_rate	S2	lam_max	alpha_o2	middle_1_3	79	-3.612682926553181e-05	0.9989873417721519
+neighborhood10pct	dominant_growth_rate	S2	lam_max	alpha_o2	high_3_5	81	-0.000266212304284512	0.9981975308641975
+neighborhood10pct	dominant_growth_rate	S2	lam_max	gamma_growth	low_0_1	41	5.217250773973642e-05	0.9953170731707317
+neighborhood10pct	dominant_growth_rate	S2	lam_max	gamma_growth	middle_1_3	79	-3.411714802093032e-05	0.9989873417721519
+neighborhood10pct	dominant_growth_rate	S2	lam_max	gamma_growth	high_3_5	81	-0.00026444293690548395	0.9981975308641975
+neighborhood10pct	dominant_growth_rate	S2	lam_max	mu_hp	low_0_1	41	0.00023360604727232348	0.994780487804878
+neighborhood10pct	dominant_growth_rate	S2	lam_max	mu_hp	middle_1_3	79	0.00011265184494701028	0.9989873417721519
+neighborhood10pct	dominant_growth_rate	S2	lam_max	mu_hp	high_3_5	81	-0.00014880711422666224	0.9981728395061729
+neighborhood10pct	dominant_growth_rate	S2	lam_max	gamma_mu	low_0_1	41	5.056604886913366e-05	0.995609756097561
+neighborhood10pct	dominant_growth_rate	S2	lam_max	gamma_mu	middle_1_3	79	-6.70643750433422e-05	0.9989873417721519
+neighborhood10pct	dominant_growth_rate	S2	lam_max	gamma_mu	high_3_5	81	-0.0003657679631135074	0.9982962962962963
+neighborhood10pct	dominant_growth_rate	S2	lam_max	O2_crit	low_0_1	41	0.0003374118414897476	0.9958536585365854
+neighborhood10pct	dominant_growth_rate	S2	lam_max	O2_crit	middle_1_3	79	0.0006001402510558275	0.9992405063291139
+neighborhood10pct	dominant_growth_rate	S2	lam_max	O2_crit	high_3_5	81	0.0001270150612249569	0.9991851851851852
+neighborhood10pct	dominant_growth_rate	S2	lam_max	n_O	low_0_1	41	6.622007479223656e-05	0.9954634146341463
+neighborhood10pct	dominant_growth_rate	S2	lam_max	n_O	middle_1_3	79	0.00016568689670122538	0.9989873417721519
+neighborhood10pct	dominant_growth_rate	S2	lam_max	n_O	high_3_5	81	-5.413810036183853e-05	0.998641975308642
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	p_misseg	low_0_1	41	-5.577814261068139e-06	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	p_misseg	middle_1_3	79	-0.0003043064436417877	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	p_misseg	high_3_5	81	-0.0002483972325035111	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	k_o_mis	low_0_1	41	-0.0001963845251677157	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	k_o_mis	middle_1_3	79	-0.00041924345981052594	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	k_o_mis	high_3_5	81	-0.00026738667323351927	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_smax	low_0_1	41	8.500928171975496e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_smax	middle_1_3	79	0.0021280777438301684	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_smax	high_3_5	81	0.008590103309363504	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_beta	low_0_1	41	7.035518032401081e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_beta	middle_1_3	79	0.0011553033806515145	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_beta	high_3_5	81	0.00543049007912273	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_n_exp	low_0_1	41	-0.00021576212051723818	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_n_exp	middle_1_3	79	-0.00041128932242906095	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	buffer_n_exp	high_3_5	81	-0.0003022493182674024	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	p_wgd	low_0_1	41	-0.0002022275812250024	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	p_wgd	middle_1_3	79	-0.0003987099805006976	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	p_wgd	high_3_5	81	-0.00026460264169591603	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	alpha_o2	low_0_1	41	-0.00019724024179135487	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	alpha_o2	middle_1_3	79	-0.0004094375083199469	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	alpha_o2	high_3_5	81	-0.0002640623322236208	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	gamma_growth	low_0_1	41	-0.0001929083133697209	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	gamma_growth	middle_1_3	79	-0.0003772109636937065	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	gamma_growth	high_3_5	81	-0.0002383811996542465	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	mu_hp	low_0_1	41	-0.00010758097355562804	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	mu_hp	middle_1_3	79	-0.0003478664310534217	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	mu_hp	high_3_5	81	-0.00033711483240333106	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	gamma_mu	low_0_1	41	-0.00017566943719271992	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	gamma_mu	middle_1_3	79	-0.0003352654479549676	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	gamma_mu	high_3_5	81	-0.0002342453193102498	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	O2_crit	low_0_1	41	0.00011398003760492527	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	O2_crit	middle_1_3	79	6.824294280369381e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	O2_crit	high_3_5	81	0.00010509672547446957	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	n_O	low_0_1	41	-0.0001502782006049856	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	n_O	middle_1_3	79	-0.00012411935317695525	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_mis_base	n_O	high_3_5	81	-4.7112545549780005e-05	0.9994567901234568
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	k_o_mis	low_0_1	41	7.705435904014761e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	k_o_mis	middle_1_3	79	0.000901912328034004	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	k_o_mis	high_3_5	81	0.0014724975354115561	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_smax	low_0_1	41	0.001174366536236083	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_smax	middle_1_3	79	0.0014648522365356676	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_smax	high_3_5	81	0.0015135534248533046	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_beta	low_0_1	41	0.0016572124238251847	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_beta	middle_1_3	79	0.0011302397398420155	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_beta	high_3_5	81	0.001774699984950072	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_n_exp	low_0_1	41	1.203820963048006e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_n_exp	middle_1_3	79	0.000681371787707584	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	buffer_n_exp	high_3_5	81	0.0011521184404060544	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	p_wgd	low_0_1	41	-7.431106282896242e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	p_wgd	middle_1_3	79	0.0006868469515101642	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	p_wgd	high_3_5	81	0.0011571786423798386	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	alpha_o2	low_0_1	41	0.00017690316193918348	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	alpha_o2	middle_1_3	79	0.0007273415606267723	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	alpha_o2	high_3_5	81	0.0011700941454917695	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	gamma_growth	low_0_1	41	1.2755273877743725e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	gamma_growth	middle_1_3	79	0.0006611678220985666	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	gamma_growth	high_3_5	81	0.0011375217331793472	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	mu_hp	low_0_1	41	0.0004514892552214682	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	mu_hp	middle_1_3	79	0.001226516392153425	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	mu_hp	high_3_5	81	0.001700806274141152	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	gamma_mu	low_0_1	41	1.862248386017794e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	gamma_mu	middle_1_3	79	0.0006739626006789594	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	gamma_mu	high_3_5	81	0.0011399860491078445	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	O2_crit	low_0_1	41	0.0007483241986887595	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	O2_crit	middle_1_3	79	0.0024939906621288476	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	O2_crit	high_3_5	81	0.0029009345214711336	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	n_O	low_0_1	41	5.3590272937068705e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	n_O	middle_1_3	79	0.000951267610688766	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_misseg	n_O	high_3_5	81	0.0018281348517220218	1.0
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_smax	low_0_1	41	0.00010134126981870368	0.9988292682926829
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_smax	middle_1_3	79	0.00023839926004361	0.9955949367088608
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_smax	high_3_5	81	-2.8832331684978973e-05	0.9936049382716049
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_beta	low_0_1	41	0.00012290539054136734	0.999609756097561
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_beta	middle_1_3	79	0.00016433965996860827	0.9935189873417721
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_beta	high_3_5	81	-3.2881655473667244e-06	0.9908888888888889
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_n_exp	low_0_1	41	-3.3128662724914164e-05	0.999609756097561
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_n_exp	middle_1_3	79	2.0787436868808608e-05	0.9958481012658228
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	buffer_n_exp	high_3_5	81	-0.00021249512501244055	0.9954074074074074
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	p_wgd	low_0_1	41	-5.109768645504517e-05	0.999609756097561
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	p_wgd	middle_1_3	79	3.339424601975978e-06	0.9959240506329113
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	p_wgd	high_3_5	81	-0.0002354455929264627	0.9954814814814815
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	alpha_o2	low_0_1	41	-5.101195295518759e-05	0.999609756097561
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	alpha_o2	middle_1_3	79	-2.951958577712246e-06	0.9960506329113924
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	alpha_o2	high_3_5	81	-0.00024558504543959413	0.9955555555555555
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	gamma_growth	low_0_1	41	-5.615409379079811e-05	0.999609756097561
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	gamma_growth	middle_1_3	79	-1.714557930587164e-06	0.9960253164556963
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	gamma_growth	high_3_5	81	-0.00023931178916924772	0.9955555555555555
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	mu_hp	low_0_1	41	0.00033206082958682384	0.9981463414634146
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	mu_hp	middle_1_3	79	0.0003436031106034295	0.9791898734177216
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	mu_hp	high_3_5	81	9.719318120971913e-05	0.9845432098765432
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	gamma_mu	low_0_1	41	-1.1517073866130726e-05	0.9996585365853659
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	gamma_mu	middle_1_3	79	1.6471229598187774e-05	0.9966075949367088
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	gamma_mu	high_3_5	81	-0.00023729117523510487	0.9961728395061729
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	O2_crit	low_0_1	41	0.001031331926464798	1.0
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	O2_crit	middle_1_3	79	0.0018482634547252424	0.9978734177215189
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	O2_crit	high_3_5	81	0.0011556990324133266	0.9900740740740741
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	n_O	low_0_1	41	5.900344966008394e-05	0.9993170731707317
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	n_O	middle_1_3	79	0.0006763970631940016	0.9962278481012659
+neighborhood10pct	dominant_growth_rate	S2	k_o_mis	n_O	high_3_5	81	0.0012181981614081492	0.9991111111111111
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	buffer_beta	low_0_1	41	0.01667554315912757	0.9955121951219512
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	buffer_beta	middle_1_3	79	0.005235827210222498	0.999746835443038
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	buffer_beta	high_3_5	81	0.004212376164564463	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	buffer_n_exp	low_0_1	41	0.0026283467957724485	0.9888292682926829
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	buffer_n_exp	middle_1_3	79	0.0007958236785919131	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	buffer_n_exp	high_3_5	81	0.00024820361829518047	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	p_wgd	low_0_1	41	0.0024926065236998162	0.9894634146341463
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	p_wgd	middle_1_3	79	0.0007207065563168083	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	p_wgd	high_3_5	81	0.00018415766884563735	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	alpha_o2	low_0_1	41	0.0033038328412307344	0.9885853658536585
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	alpha_o2	middle_1_3	79	0.0008534442897634125	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	alpha_o2	high_3_5	81	0.0002362906925375425	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	gamma_growth	low_0_1	41	0.002598757455939783	0.9896585365853658
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	gamma_growth	middle_1_3	79	0.0007558009472623448	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	gamma_growth	high_3_5	81	0.00020621645401656095	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	mu_hp	low_0_1	41	0.002707527293682329	0.9892195121951219
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	mu_hp	middle_1_3	79	0.0010005090545212834	0.9999746835443037
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	mu_hp	high_3_5	81	0.00033352749027117193	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	gamma_mu	low_0_1	41	0.0027307054041661857	0.9877073170731707
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	gamma_mu	middle_1_3	79	0.0009181757816703892	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	gamma_mu	high_3_5	81	0.0002817899216409436	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	O2_crit	low_0_1	41	0.005517453475995574	0.9839512195121951
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	O2_crit	middle_1_3	79	0.0030384764343065447	0.9984050632911392
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	O2_crit	high_3_5	81	0.0012463739692213187	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	n_O	low_0_1	41	0.002497636716272804	0.9893170731707317
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	n_O	middle_1_3	79	0.0009240717082992548	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_smax	n_O	high_3_5	81	0.0005012340086545319	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	buffer_n_exp	low_0_1	41	0.0004448673124144197	0.9968780487804878
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	buffer_n_exp	middle_1_3	79	0.00045395089890002457	0.9993417721518988
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	buffer_n_exp	high_3_5	81	0.00011110260330760358	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	p_wgd	low_0_1	41	-0.00020563837748692408	0.996780487804878
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	p_wgd	middle_1_3	79	3.409642637072359e-05	0.9996708860759493
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	p_wgd	high_3_5	81	-0.0001266552150470221	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	alpha_o2	low_0_1	41	0.00012573201851728597	0.9969756097560976
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	alpha_o2	middle_1_3	79	6.847130077618455e-05	0.9996708860759493
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	alpha_o2	high_3_5	81	-0.00012262808109518222	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	gamma_growth	low_0_1	41	-0.00013332270176751507	0.9965853658536585
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	gamma_growth	middle_1_3	79	4.86741305588058e-05	0.9997215189873417
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	gamma_growth	high_3_5	81	-0.0001209396501216798	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	mu_hp	low_0_1	41	-0.00011616806342055973	0.9936585365853658
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	mu_hp	middle_1_3	79	0.00019933435953847932	0.9993670886075949
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	mu_hp	high_3_5	81	0.00017799814547611944	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	gamma_mu	low_0_1	41	-2.6183549572949083e-06	0.9966341463414634
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	gamma_mu	middle_1_3	79	8.185420593989787e-05	0.9996202531645569
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	gamma_mu	high_3_5	81	-8.896941886168189e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	O2_crit	low_0_1	41	0.0011234121375200679	0.9969268292682927
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	O2_crit	middle_1_3	79	0.002241714575599631	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	O2_crit	high_3_5	81	0.0015829713662028546	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	n_O	low_0_1	41	-0.00031651064048463483	0.9968780487804878
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	n_O	middle_1_3	79	0.0002029516513336539	0.9994430379746836
+neighborhood10pct	dominant_growth_rate	S2	buffer_beta	n_O	high_3_5	81	0.0004974650557078181	0.9998518518518519
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	p_wgd	low_0_1	41	-0.00011163238979145004	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	p_wgd	middle_1_3	79	-0.00010549870169308505	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	p_wgd	high_3_5	81	-8.327155567208014e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	alpha_o2	low_0_1	41	-0.0001200929815866286	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	alpha_o2	middle_1_3	79	-0.00010915026554744068	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	alpha_o2	high_3_5	81	-8.49285616536113e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	gamma_growth	low_0_1	41	-0.00011113563277585537	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	gamma_growth	middle_1_3	79	-0.00010516330440653243	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	gamma_growth	high_3_5	81	-8.272754821074753e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	mu_hp	low_0_1	41	0.00013138309942178824	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	mu_hp	middle_1_3	79	4.911541687191118e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	mu_hp	high_3_5	81	1.5714156162042396e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	gamma_mu	low_0_1	41	-0.00011078722740900525	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	gamma_mu	middle_1_3	79	-0.00010171359754860002	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	gamma_mu	high_3_5	81	-7.562753444267616e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	O2_crit	low_0_1	41	-9.23732346433752e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	O2_crit	middle_1_3	79	-7.780704637616042e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	O2_crit	high_3_5	81	-6.900467391299448e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	n_O	low_0_1	41	-0.00012336881098952204	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	n_O	middle_1_3	79	-0.0001368250383972004	1.0
+neighborhood10pct	dominant_growth_rate	S2	buffer_n_exp	n_O	high_3_5	81	-0.0001242778093475287	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	alpha_o2	low_0_1	41	3.807705606508674e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	alpha_o2	middle_1_3	79	8.060635869071963e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	alpha_o2	high_3_5	81	9.656639669893803e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	gamma_growth	low_0_1	41	4.0877831672349564e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	gamma_growth	middle_1_3	79	8.528981510128012e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	gamma_growth	high_3_5	81	9.944536103010158e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	mu_hp	low_0_1	41	1.9700395859854195e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	mu_hp	middle_1_3	79	4.175092791256159e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	mu_hp	high_3_5	81	4.373801369184351e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	gamma_mu	low_0_1	41	3.5555945154719457e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	gamma_mu	middle_1_3	79	7.501056401346763e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	gamma_mu	high_3_5	81	9.491595291808669e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	O2_crit	low_0_1	41	3.1591081678516076e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	O2_crit	middle_1_3	79	7.946589289825e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	O2_crit	high_3_5	81	8.704697057089226e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	n_O	low_0_1	41	3.8014390985558825e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	n_O	middle_1_3	79	7.263513507783032e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	p_wgd	n_O	high_3_5	81	8.962596485375446e-07	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	gamma_growth	low_0_1	41	3.62997107779316e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	gamma_growth	middle_1_3	79	5.9591467450603656e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	gamma_growth	high_3_5	81	3.907721639760923e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	mu_hp	low_0_1	41	9.510897649031222e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	mu_hp	middle_1_3	79	6.292713554547896e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	mu_hp	high_3_5	81	3.948057281829092e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	gamma_mu	low_0_1	41	1.179113740358974e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	gamma_mu	middle_1_3	79	5.908519170667076e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	gamma_mu	high_3_5	81	4.17944007274376e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	O2_crit	low_0_1	41	3.0594012295273515e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	O2_crit	middle_1_3	79	4.0082241366558745e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	O2_crit	high_3_5	81	4.2122051582740243e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	n_O	low_0_1	41	6.037414263753502e-06	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	n_O	middle_1_3	79	6.464943460734066e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	alpha_o2	n_O	high_3_5	81	5.817444515282759e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	mu_hp	low_0_1	41	7.070664691159406e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	mu_hp	middle_1_3	79	5.2888930184103577e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	mu_hp	high_3_5	81	3.387806873793158e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	gamma_mu	low_0_1	41	6.173923982370323e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	gamma_mu	middle_1_3	79	4.438069221785735e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	gamma_mu	high_3_5	81	3.142684008568928e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	O2_crit	low_0_1	41	7.894726327201428e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	O2_crit	middle_1_3	79	3.321711231924252e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	O2_crit	high_3_5	81	2.1875355434539605e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	n_O	low_0_1	41	5.713940605594123e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	n_O	middle_1_3	79	4.140943391095127e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_growth	n_O	high_3_5	81	2.5185615466143443e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	gamma_mu	low_0_1	41	0.0001331732657247723	0.9971219512195122
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	gamma_mu	middle_1_3	79	-0.0005831326986237748	0.9994683544303797
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	gamma_mu	high_3_5	81	-0.0007251251521481232	1.0
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	O2_crit	low_0_1	41	0.0003920471309451072	0.995609756097561
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	O2_crit	middle_1_3	79	0.0013143321509001406	0.999493670886076
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	O2_crit	high_3_5	81	0.001350781926498898	1.0
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	n_O	low_0_1	41	-5.1798586986587884e-05	0.9976585365853659
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	n_O	middle_1_3	79	-5.14398127349452e-05	0.9996962025316456
+neighborhood10pct	dominant_growth_rate	S2	mu_hp	n_O	high_3_5	81	0.0004199389183805669	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_mu	O2_crit	low_0_1	41	0.00023560345595051777	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_mu	O2_crit	middle_1_3	79	0.0002370930467466738	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_mu	O2_crit	high_3_5	81	0.00014354159727584392	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_mu	n_O	low_0_1	41	6.548684957415839e-06	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_mu	n_O	middle_1_3	79	6.598445300076414e-05	1.0
+neighborhood10pct	dominant_growth_rate	S2	gamma_mu	n_O	high_3_5	81	0.00011001703684922399	1.0
+neighborhood10pct	dominant_growth_rate	S2	O2_crit	n_O	low_0_1	41	0.0019445592555415701	0.8828780487804878
+neighborhood10pct	dominant_growth_rate	S2	O2_crit	n_O	middle_1_3	79	0.004895538204239077	0.9713670886075949
+neighborhood10pct	dominant_growth_rate	S2	O2_crit	n_O	high_3_5	81	0.006098339021443173	0.9941975308641975

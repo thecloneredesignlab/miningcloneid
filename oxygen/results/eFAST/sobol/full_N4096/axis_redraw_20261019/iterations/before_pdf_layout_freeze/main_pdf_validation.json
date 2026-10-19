@@ -1,0 +1,140 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-19T18:08:29.024499+00:00",
+  "n_pdfs": 15,
+  "main_only": true,
+  "geometry": {
+    "status": "passed",
+    "real_zero_retained": true,
+    "low_end_linear": true,
+    "positive_log_spacing_verified": true,
+    "numerical_cell_values_identical": true,
+    "real_oxygen_cell_edges": true,
+    "thresholds": [
+      1.0,
+      3.0
+    ]
+  },
+  "pdf_text_and_page_boundaries": [
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_diagnostic_fraction.pdf",
+      "chars": 3233,
+      "width": 1800,
+      "height": 1274.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2.pdf",
+      "chars": 2549,
+      "width": 1044,
+      "height": 1274.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2.pdf",
+      "chars": 2518,
+      "width": 1044,
+      "height": 1274.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2.pdf",
+      "chars": 3216,
+      "width": 1800,
+      "height": 1274.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "figure_comparison_20261019/global_s1_st_focal_s2.pdf",
+      "chars": 2545,
+      "width": 1044,
+      "height": 1274.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2.pdf",
+      "chars": 2538,
+      "width": 1044,
+      "height": 1274.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "global/figures/s1_parameter_by_oxygen.pdf",
+      "chars": 807,
+      "width": 1080,
+      "height": 446.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "global/figures/s2_focal_pairs_by_oxygen.pdf",
+      "chars": 1205,
+      "width": 1080,
+      "height": 842.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "global/figures/s2_pair_by_oxygen.pdf",
+      "chars": 2239,
+      "width": 1152,
+      "height": 1656,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "global/figures/st_parameter_by_oxygen.pdf",
+      "chars": 805,
+      "width": 1080,
+      "height": 446.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "neighborhood10pct/figures/s1_parameter_by_oxygen.pdf",
+      "chars": 806,
+      "width": 1080,
+      "height": 446.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_diagnostic_fraction.pdf",
+      "chars": 2196,
+      "width": 1152,
+      "height": 1656,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_focal_pairs_by_oxygen.pdf",
+      "chars": 1206,
+      "width": 1080,
+      "height": 842.4,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_pair_by_oxygen.pdf",
+      "chars": 2256,
+      "width": 1152,
+      "height": 1656,
+      "outside_page": 0,
+      "pages": 1
+    },
+    {
+      "path": "neighborhood10pct/figures/st_parameter_by_oxygen.pdf",
+      "chars": 806,
+      "width": 1080,
+      "height": 446.4,
+      "outside_page": 0,
+      "pages": 1
+    }
+  ]
+}

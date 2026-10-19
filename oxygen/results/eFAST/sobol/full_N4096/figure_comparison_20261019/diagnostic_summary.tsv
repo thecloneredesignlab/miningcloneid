@@ -1,0 +1,13 @@
+scope	output	index	total_cells	passed_cells	pass_fraction	negative_scope_summary_cells	scope_summary_cells
+global	dominant_mean_ploidy	S1	2814	2600	0.923951670220327	550	2814
+global	dominant_mean_ploidy	ST	2814	650	0.23098791755508175	0	2814
+global	dominant_mean_ploidy	S2	18291	12983	0.7098026351757695	5529	18291
+global	dominant_growth_rate	S1	2814	2723	0.9676616915422885	413	2814
+global	dominant_growth_rate	ST	2814	2814	1.0	0	2814
+global	dominant_growth_rate	S2	18291	16689	0.9124159422666885	5775	18291
+neighborhood10pct	dominant_mean_ploidy	S1	1407000	1375914	0.9779061833688699	149	2814
+neighborhood10pct	dominant_mean_ploidy	ST	1407000	1261275	0.8964285714285715	0	2814
+neighborhood10pct	dominant_mean_ploidy	S2	9145500	8550969	0.93499196326062	5678	18291
+neighborhood10pct	dominant_growth_rate	S1	1407000	1406032	0.9993120113717129	351	2814
+neighborhood10pct	dominant_growth_rate	ST	1407000	1403211	0.9973070362473347	0	2814
+neighborhood10pct	dominant_growth_rate	S2	9145500	9131137	0.9984295008474113	5909	18291

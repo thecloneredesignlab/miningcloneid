@@ -1,0 +1,46 @@
+{
+  "status": "complete",
+  "stem": "neighborhood10pct/full/seed356/figures/s1_parameter_by_oxygen",
+  "renderer": {
+    "batch_sha256": "a568041a7d9d7c25e2b12af55498baf4cd8c7533b8eea5ad76a644ced6155413",
+    "helper_sha256": "63aa8bf2a5cbe369273a506d445bb4cdacb1da7f144ed017d61202953921f9d1",
+    "scale": "symlog",
+    "base": 10,
+    "linthresh": 0.025,
+    "linscale": 1,
+    "oxygen_ticks": [
+      0.0,
+      0.025,
+      0.1,
+      0.5,
+      1.0,
+      3.0,
+      5.0
+    ],
+    "boundaries": [
+      1.0,
+      3.0
+    ],
+    "zero_retained": true,
+    "cell_edges": "physical oxygen midpoints, clipped to 0 and 5",
+    "positive_palette": "#54278f",
+    "model_evaluations": 0,
+    "sensitivity_estimations": 0
+  },
+  "source": {
+    "neighborhood10pct/full/seed356/indices_summary.tsv.gz": "b7e8e45650a4cf12747084e2cc5977083520a18ea69fc8fd3d7fb4a525a896cc"
+  },
+  "completed_utc": "2026-10-19T18:10:04.432625+00:00",
+  "files": [
+    {
+      "path": "neighborhood10pct/full/seed356/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "f938b124fd91e517b9280ecf963086a2742765e0385763e3b2f3ede569dc5d76",
+      "bytes": 38040
+    },
+    {
+      "path": "neighborhood10pct/full/seed356/figures/s1_parameter_by_oxygen.png",
+      "sha256": "93b9774b7620d9f7d6f0c0270930413178e0840207fcc1fcd828fee7a039e05e",
+      "bytes": 149496
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # Local N4096 figure redraw and global/neighborhood comparison
 
+Current summary display: [three annotations and oxygen-dependent row order](../row_annotations_20261019/README.md). This supersedes the earlier summary-figure display; individual seed/case figures retain the symlog overlay.
+
 This directory is a local figure overlay dated 2026-10-19. It uses the two
 existing scope summary tables without evaluating the model or re-estimating
 any sensitivity index. The original five repeats, all 500 neighborhoods and
@@ -35,9 +37,8 @@ The original 91-pair S2 estimates are unchanged. New focal-pair PDFs are saved a
   and outputs have separate color bars. Standalone scope panels retain their
   own ranges to show within-scope detail; compare absolute values using the
   assembled groups, not standalone color darkness.
-- Row order is identical across scopes. Focal pairs are grouped under
-  p_mis_base, then mu_hp, then gamma_mu. Pairs involving two focal parameters
-  appear once, under the first focal parameter. This gives 13 + 12 + 11 = 36 rows.
+- Cross-scope groups use neighborhood ploidy row order for each index. Standalone scope figures use their own ploidy row order; growth follows that order. S1/ST show three left annotations: Figure 4 process, original Figure 4B O2 correlation category and current ploidy-based Sobol O2 preference. S2 shows only process and O2 correlation. Rows with High >= Low descend by High-window score, followed by rows with Low > High ascending by Low-window score; there is no unresolved/middle sorting block. The third annotation is shown only for S1/ST and is not used to sort.
+- Focal pairs remain 36 unique pairs involving p_mis_base, mu_hp or gamma_mu, but are sorted by oxygen preference rather than fixed focal-parameter blocks. The two halves in S2 annotations 1/2 follow the first/second parameter named in the row.
 - The oxygen axis now uses base-10 symlog with a 0.025% linear threshold to
   retain O2=0. Major ticks are 0,0.025,0.1,0.5,1,3,5%. Black dashed lines at 1%
   and 3% separate Low [0,1]%, Mid (1,3)%, and High [3,5]% regions.
@@ -78,7 +79,7 @@ Requires Python with NumPy and Matplotlib. This redraw used NumPy 2.2.6 and
 Matplotlib 3.9.4; exact runtime metadata is in the receipt.
 
 ```sh
-python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/redraw_full_n4096_local.py \
+python3 oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/redraw_full_n4096_annotated.py \
   --root oxygen/results/eFAST/sobol/full_N4096
 ```
 
@@ -93,3 +94,5 @@ remain separate. Purple/blue/neutral are the only data palette roots. All raw
 estimates are retained; the companion diagnostic map supplies the separate
 uncertainty information. Final QA uses rasterized PDF pages, PDF text checks,
 pair/row completeness checks and unchanged numerical-source hashes.
+
+Current classification scores and exact orders are in `../row_annotations_20261019/classification.tsv` and `row_order.tsv`. Classification uses normalized trapezoid windows; the earlier `oxygen_band_comparison.tsv` retains its original arithmetic summaries. Third-column labels have no 0.3 magnitude gate and do not indicate effect direction or proof of a nonzero contribution. Current image hashes and QA are in the annotation audit; earlier manifests remain historical.

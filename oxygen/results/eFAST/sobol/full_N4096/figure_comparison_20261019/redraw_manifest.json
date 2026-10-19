@@ -197,6 +197,12 @@
     }
   ],
   "current_display_overlay": {
+    "directory": "../row_annotations_20261019",
+    "completion": "../row_annotations_20261019/completion.json",
+    "validation": "../row_annotations_20261019/validation.json",
+    "note": "Current 15 summaries: S1/ST have three annotations; S2 has two. Order directly uses High/Low scores with no middle block and never uses annotation 3."
+  },
+  "previous_display_overlay": {
     "directory": "../axis_redraw_20261019",
     "completion": "../axis_redraw_20261019/completion.json",
     "pdf_validation": "../axis_redraw_20261019/pdf_validation.json",

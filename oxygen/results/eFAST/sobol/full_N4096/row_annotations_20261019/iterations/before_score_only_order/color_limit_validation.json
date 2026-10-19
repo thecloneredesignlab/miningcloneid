@@ -1,0 +1,295 @@
+{
+  "status": "passed",
+  "checked_panels": 48,
+  "source": "../figure_comparison_20261019/color_scales.tsv",
+  "checks": [
+    {
+      "figure": "neighborhood10pct/figures/st_parameter_by_oxygen",
+      "panel": "A",
+      "vmin": 0,
+      "vmax": 0.5558627810427179
+    },
+    {
+      "figure": "neighborhood10pct/figures/st_parameter_by_oxygen",
+      "panel": "B",
+      "vmin": 0,
+      "vmax": 0.31278152018646543
+    },
+    {
+      "figure": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2",
+      "panel": "A",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2",
+      "panel": "B",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2",
+      "panel": "C",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2",
+      "panel": "D",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    },
+    {
+      "figure": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2",
+      "panel": "E",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2",
+      "panel": "F",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2",
+      "panel": "A",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2",
+      "panel": "B",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2",
+      "panel": "C",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2",
+      "panel": "D",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2",
+      "panel": "E",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2",
+      "panel": "F",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "neighborhood10pct/figures/s1_parameter_by_oxygen",
+      "panel": "A",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "neighborhood10pct/figures/s1_parameter_by_oxygen",
+      "panel": "B",
+      "vmin": -0.25998701932938595,
+      "vmax": 0.25998701932938595
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2",
+      "panel": "A",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2",
+      "panel": "B",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2",
+      "panel": "C",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2",
+      "panel": "D",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2",
+      "panel": "E",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2",
+      "panel": "F",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "figure_comparison_20261019/global_s1_st_focal_s2",
+      "panel": "A",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "figure_comparison_20261019/global_s1_st_focal_s2",
+      "panel": "B",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "figure_comparison_20261019/global_s1_st_focal_s2",
+      "panel": "C",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "figure_comparison_20261019/global_s1_st_focal_s2",
+      "panel": "D",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    },
+    {
+      "figure": "figure_comparison_20261019/global_s1_st_focal_s2",
+      "panel": "E",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "figure_comparison_20261019/global_s1_st_focal_s2",
+      "panel": "F",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "global/figures/s1_parameter_by_oxygen",
+      "panel": "A",
+      "vmin": -0.1014157637977614,
+      "vmax": 0.1014157637977614
+    },
+    {
+      "figure": "global/figures/s1_parameter_by_oxygen",
+      "panel": "B",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "neighborhood10pct/figures/s2_focal_pairs_by_oxygen",
+      "panel": "A",
+      "vmin": -0.016621250017507264,
+      "vmax": 0.016621250017507264
+    },
+    {
+      "figure": "neighborhood10pct/figures/s2_focal_pairs_by_oxygen",
+      "panel": "B",
+      "vmin": -0.012292184669818865,
+      "vmax": 0.012292184669818865
+    },
+    {
+      "figure": "global/figures/s2_focal_pairs_by_oxygen",
+      "panel": "A",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "global/figures/s2_focal_pairs_by_oxygen",
+      "panel": "B",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "A",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "B",
+      "vmin": -0.24446598820873083,
+      "vmax": 0.24446598820873083
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "C",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "D",
+      "vmin": -0.45041284178738633,
+      "vmax": 0.45041284178738633
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "E",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "F",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "G",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "H",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "I",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "J",
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "K",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2",
+      "panel": "L",
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395
+    },
+    {
+      "figure": "global/figures/st_parameter_by_oxygen",
+      "panel": "A",
+      "vmin": 0,
+      "vmax": 0.5796228836978127
+    },
+    {
+      "figure": "global/figures/st_parameter_by_oxygen",
+      "panel": "B",
+      "vmin": 0,
+      "vmax": 0.733195291933959
+    }
+  ]
+}

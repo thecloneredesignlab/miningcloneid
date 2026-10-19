@@ -30,3 +30,7 @@ are unchanged. The 54 parameter response surfaces are unchanged.
 The earlier collection receipt and file hashes above describe the original
 collected artifacts. Current image identities and verification are recorded in
 `axis_redraw_20261019/completion.json` and `figure_manifest.tsv`.
+
+## Annotated summary display (2026-10-19)
+
+The current 15 summary/comparison figures have three row annotations for S1/ST and two for S2. Row order directly compares high/low oxygen window scores and does not use the third annotation. Cross-scope groups share neighborhood ploidy order; each scope retains its own Sobol O2-preference annotation. See [current display and validation](row_annotations_20261019/README.md). Numerical results and individual seed/case figures are unchanged.

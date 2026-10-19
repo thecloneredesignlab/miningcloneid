@@ -1,0 +1,2961 @@
+{
+  "stem": "global/figures/s2_focal_pairs_by_oxygen",
+  "panels": [
+    {
+      "panel": "A",
+      "scope": "global",
+      "output": "dominant_mean_ploidy",
+      "index": "S2",
+      "kind": "S2",
+      "ordering_scope": "global",
+      "ordering_output": "dominant_mean_ploidy",
+      "keys": [
+        [
+          "p_mis_base",
+          "gamma_growth"
+        ],
+        [
+          "p_mis_base",
+          "O2_crit"
+        ],
+        [
+          "p_mis_base",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "gamma_mu"
+        ],
+        [
+          "buffer_smax",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "p_misseg"
+        ],
+        [
+          "gamma_mu",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "p_wgd"
+        ],
+        [
+          "p_mis_base",
+          "alpha_o2"
+        ],
+        [
+          "p_mis_base",
+          "buffer_beta"
+        ],
+        [
+          "p_mis_base",
+          "k_o_mis"
+        ],
+        [
+          "p_mis_base",
+          "buffer_n_exp"
+        ],
+        [
+          "p_wgd",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "buffer_smax"
+        ],
+        [
+          "buffer_beta",
+          "gamma_mu"
+        ],
+        [
+          "buffer_beta",
+          "mu_hp"
+        ],
+        [
+          "alpha_o2",
+          "mu_hp"
+        ],
+        [
+          "p_wgd",
+          "gamma_mu"
+        ],
+        [
+          "alpha_o2",
+          "gamma_mu"
+        ],
+        [
+          "mu_hp",
+          "n_O"
+        ],
+        [
+          "gamma_mu",
+          "O2_crit"
+        ],
+        [
+          "buffer_smax",
+          "gamma_mu"
+        ],
+        [
+          "buffer_n_exp",
+          "gamma_mu"
+        ],
+        [
+          "buffer_n_exp",
+          "mu_hp"
+        ],
+        [
+          "gamma_growth",
+          "mu_hp"
+        ],
+        [
+          "mu_hp",
+          "gamma_mu"
+        ],
+        [
+          "gamma_growth",
+          "gamma_mu"
+        ],
+        [
+          "k_o_mis",
+          "gamma_mu"
+        ],
+        [
+          "mu_hp",
+          "O2_crit"
+        ],
+        [
+          "k_o_mis",
+          "mu_hp"
+        ],
+        [
+          "lam_max",
+          "mu_hp"
+        ],
+        [
+          "lam_max",
+          "gamma_mu"
+        ],
+        [
+          "p_misseg",
+          "gamma_mu"
+        ],
+        [
+          "p_misseg",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "mu_hp"
+        ],
+        [
+          "lam_max",
+          "p_mis_base"
+        ]
+      ],
+      "labels": [
+        "p_mis_base \u00d7 gamma_growth",
+        "p_mis_base \u00d7 O2_crit",
+        "p_mis_base \u00d7 n_O",
+        "p_mis_base \u00d7 gamma_mu",
+        "mu_hp \u00d7 buffer_smax",
+        "p_mis_base \u00d7 p_misseg",
+        "gamma_mu \u00d7 n_O",
+        "p_mis_base \u00d7 p_wgd",
+        "p_mis_base \u00d7 alpha_o2",
+        "p_mis_base \u00d7 buffer_beta",
+        "p_mis_base \u00d7 k_o_mis",
+        "p_mis_base \u00d7 buffer_n_exp",
+        "mu_hp \u00d7 p_wgd",
+        "p_mis_base \u00d7 buffer_smax",
+        "gamma_mu \u00d7 buffer_beta",
+        "mu_hp \u00d7 buffer_beta",
+        "mu_hp \u00d7 alpha_o2",
+        "gamma_mu \u00d7 p_wgd",
+        "gamma_mu \u00d7 alpha_o2",
+        "mu_hp \u00d7 n_O",
+        "gamma_mu \u00d7 O2_crit",
+        "gamma_mu \u00d7 buffer_smax",
+        "gamma_mu \u00d7 buffer_n_exp",
+        "mu_hp \u00d7 buffer_n_exp",
+        "mu_hp \u00d7 gamma_growth",
+        "mu_hp \u00d7 gamma_mu",
+        "gamma_mu \u00d7 gamma_growth",
+        "gamma_mu \u00d7 k_o_mis",
+        "mu_hp \u00d7 O2_crit",
+        "mu_hp \u00d7 k_o_mis",
+        "mu_hp \u00d7 lam_max",
+        "gamma_mu \u00d7 lam_max",
+        "gamma_mu \u00d7 p_misseg",
+        "mu_hp \u00d7 p_misseg",
+        "p_mis_base \u00d7 mu_hp",
+        "p_mis_base \u00d7 lam_max"
+      ],
+      "displayed_members": [
+        [
+          "p_mis_base",
+          "gamma_growth"
+        ],
+        [
+          "p_mis_base",
+          "O2_crit"
+        ],
+        [
+          "p_mis_base",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "gamma_mu"
+        ],
+        [
+          "mu_hp",
+          "buffer_smax"
+        ],
+        [
+          "p_mis_base",
+          "p_misseg"
+        ],
+        [
+          "gamma_mu",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "p_wgd"
+        ],
+        [
+          "p_mis_base",
+          "alpha_o2"
+        ],
+        [
+          "p_mis_base",
+          "buffer_beta"
+        ],
+        [
+          "p_mis_base",
+          "k_o_mis"
+        ],
+        [
+          "p_mis_base",
+          "buffer_n_exp"
+        ],
+        [
+          "mu_hp",
+          "p_wgd"
+        ],
+        [
+          "p_mis_base",
+          "buffer_smax"
+        ],
+        [
+          "gamma_mu",
+          "buffer_beta"
+        ],
+        [
+          "mu_hp",
+          "buffer_beta"
+        ],
+        [
+          "mu_hp",
+          "alpha_o2"
+        ],
+        [
+          "gamma_mu",
+          "p_wgd"
+        ],
+        [
+          "gamma_mu",
+          "alpha_o2"
+        ],
+        [
+          "mu_hp",
+          "n_O"
+        ],
+        [
+          "gamma_mu",
+          "O2_crit"
+        ],
+        [
+          "gamma_mu",
+          "buffer_smax"
+        ],
+        [
+          "gamma_mu",
+          "buffer_n_exp"
+        ],
+        [
+          "mu_hp",
+          "buffer_n_exp"
+        ],
+        [
+          "mu_hp",
+          "gamma_growth"
+        ],
+        [
+          "mu_hp",
+          "gamma_mu"
+        ],
+        [
+          "gamma_mu",
+          "gamma_growth"
+        ],
+        [
+          "gamma_mu",
+          "k_o_mis"
+        ],
+        [
+          "mu_hp",
+          "O2_crit"
+        ],
+        [
+          "mu_hp",
+          "k_o_mis"
+        ],
+        [
+          "mu_hp",
+          "lam_max"
+        ],
+        [
+          "gamma_mu",
+          "lam_max"
+        ],
+        [
+          "gamma_mu",
+          "p_misseg"
+        ],
+        [
+          "mu_hp",
+          "p_misseg"
+        ],
+        [
+          "p_mis_base",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "lam_max"
+        ]
+      ],
+      "sort_sides": [
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High"
+      ],
+      "sorting_uses_third_annotation": false,
+      "sensitivity_groups": [],
+      "annotation_columns": 2,
+      "process_groups": [
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Division and genome change",
+          "Oxygen response"
+        ],
+        [
+          "Division and genome change",
+          "Oxygen response"
+        ],
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Division and genome change",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Division and genome change",
+          "Division and genome change"
+        ],
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Division and genome change",
+          "Post-missegregation survival"
+        ],
+        [
+          "Division and genome change",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Division and genome change",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Division and genome change",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Division and genome change",
+          "Division and genome change"
+        ]
+      ],
+      "correlation_groups": [
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "Low O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "High O2"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "Low O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "High O2",
+          "Low O2"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ]
+      ],
+      "annotation_rgb": [
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ]
+      ],
+      "vmin": -0.061407090987237636,
+      "vmax": 0.061407090987237636,
+      "displayed_data_sha256": "94ae1aa4d5f579bfce7b04d73fe347eb9816def79c064d504d7207351505a1ce",
+      "row_alignment_error_points": 0.0,
+      "xlabel_colorbar_gap_points": 9.940000000000031,
+      "colorbar_footer_gap_points": 28.804000000000006,
+      "header_panel_title_gap_points": 14.65600000000004
+    },
+    {
+      "panel": "B",
+      "scope": "global",
+      "output": "dominant_growth_rate",
+      "index": "S2",
+      "kind": "S2",
+      "ordering_scope": "global",
+      "ordering_output": "dominant_mean_ploidy",
+      "keys": [
+        [
+          "p_mis_base",
+          "gamma_growth"
+        ],
+        [
+          "p_mis_base",
+          "O2_crit"
+        ],
+        [
+          "p_mis_base",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "gamma_mu"
+        ],
+        [
+          "buffer_smax",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "p_misseg"
+        ],
+        [
+          "gamma_mu",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "p_wgd"
+        ],
+        [
+          "p_mis_base",
+          "alpha_o2"
+        ],
+        [
+          "p_mis_base",
+          "buffer_beta"
+        ],
+        [
+          "p_mis_base",
+          "k_o_mis"
+        ],
+        [
+          "p_mis_base",
+          "buffer_n_exp"
+        ],
+        [
+          "p_wgd",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "buffer_smax"
+        ],
+        [
+          "buffer_beta",
+          "gamma_mu"
+        ],
+        [
+          "buffer_beta",
+          "mu_hp"
+        ],
+        [
+          "alpha_o2",
+          "mu_hp"
+        ],
+        [
+          "p_wgd",
+          "gamma_mu"
+        ],
+        [
+          "alpha_o2",
+          "gamma_mu"
+        ],
+        [
+          "mu_hp",
+          "n_O"
+        ],
+        [
+          "gamma_mu",
+          "O2_crit"
+        ],
+        [
+          "buffer_smax",
+          "gamma_mu"
+        ],
+        [
+          "buffer_n_exp",
+          "gamma_mu"
+        ],
+        [
+          "buffer_n_exp",
+          "mu_hp"
+        ],
+        [
+          "gamma_growth",
+          "mu_hp"
+        ],
+        [
+          "mu_hp",
+          "gamma_mu"
+        ],
+        [
+          "gamma_growth",
+          "gamma_mu"
+        ],
+        [
+          "k_o_mis",
+          "gamma_mu"
+        ],
+        [
+          "mu_hp",
+          "O2_crit"
+        ],
+        [
+          "k_o_mis",
+          "mu_hp"
+        ],
+        [
+          "lam_max",
+          "mu_hp"
+        ],
+        [
+          "lam_max",
+          "gamma_mu"
+        ],
+        [
+          "p_misseg",
+          "gamma_mu"
+        ],
+        [
+          "p_misseg",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "mu_hp"
+        ],
+        [
+          "lam_max",
+          "p_mis_base"
+        ]
+      ],
+      "labels": [
+        "p_mis_base \u00d7 gamma_growth",
+        "p_mis_base \u00d7 O2_crit",
+        "p_mis_base \u00d7 n_O",
+        "p_mis_base \u00d7 gamma_mu",
+        "mu_hp \u00d7 buffer_smax",
+        "p_mis_base \u00d7 p_misseg",
+        "gamma_mu \u00d7 n_O",
+        "p_mis_base \u00d7 p_wgd",
+        "p_mis_base \u00d7 alpha_o2",
+        "p_mis_base \u00d7 buffer_beta",
+        "p_mis_base \u00d7 k_o_mis",
+        "p_mis_base \u00d7 buffer_n_exp",
+        "mu_hp \u00d7 p_wgd",
+        "p_mis_base \u00d7 buffer_smax",
+        "gamma_mu \u00d7 buffer_beta",
+        "mu_hp \u00d7 buffer_beta",
+        "mu_hp \u00d7 alpha_o2",
+        "gamma_mu \u00d7 p_wgd",
+        "gamma_mu \u00d7 alpha_o2",
+        "mu_hp \u00d7 n_O",
+        "gamma_mu \u00d7 O2_crit",
+        "gamma_mu \u00d7 buffer_smax",
+        "gamma_mu \u00d7 buffer_n_exp",
+        "mu_hp \u00d7 buffer_n_exp",
+        "mu_hp \u00d7 gamma_growth",
+        "mu_hp \u00d7 gamma_mu",
+        "gamma_mu \u00d7 gamma_growth",
+        "gamma_mu \u00d7 k_o_mis",
+        "mu_hp \u00d7 O2_crit",
+        "mu_hp \u00d7 k_o_mis",
+        "mu_hp \u00d7 lam_max",
+        "gamma_mu \u00d7 lam_max",
+        "gamma_mu \u00d7 p_misseg",
+        "mu_hp \u00d7 p_misseg",
+        "p_mis_base \u00d7 mu_hp",
+        "p_mis_base \u00d7 lam_max"
+      ],
+      "displayed_members": [
+        [
+          "p_mis_base",
+          "gamma_growth"
+        ],
+        [
+          "p_mis_base",
+          "O2_crit"
+        ],
+        [
+          "p_mis_base",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "gamma_mu"
+        ],
+        [
+          "mu_hp",
+          "buffer_smax"
+        ],
+        [
+          "p_mis_base",
+          "p_misseg"
+        ],
+        [
+          "gamma_mu",
+          "n_O"
+        ],
+        [
+          "p_mis_base",
+          "p_wgd"
+        ],
+        [
+          "p_mis_base",
+          "alpha_o2"
+        ],
+        [
+          "p_mis_base",
+          "buffer_beta"
+        ],
+        [
+          "p_mis_base",
+          "k_o_mis"
+        ],
+        [
+          "p_mis_base",
+          "buffer_n_exp"
+        ],
+        [
+          "mu_hp",
+          "p_wgd"
+        ],
+        [
+          "p_mis_base",
+          "buffer_smax"
+        ],
+        [
+          "gamma_mu",
+          "buffer_beta"
+        ],
+        [
+          "mu_hp",
+          "buffer_beta"
+        ],
+        [
+          "mu_hp",
+          "alpha_o2"
+        ],
+        [
+          "gamma_mu",
+          "p_wgd"
+        ],
+        [
+          "gamma_mu",
+          "alpha_o2"
+        ],
+        [
+          "mu_hp",
+          "n_O"
+        ],
+        [
+          "gamma_mu",
+          "O2_crit"
+        ],
+        [
+          "gamma_mu",
+          "buffer_smax"
+        ],
+        [
+          "gamma_mu",
+          "buffer_n_exp"
+        ],
+        [
+          "mu_hp",
+          "buffer_n_exp"
+        ],
+        [
+          "mu_hp",
+          "gamma_growth"
+        ],
+        [
+          "mu_hp",
+          "gamma_mu"
+        ],
+        [
+          "gamma_mu",
+          "gamma_growth"
+        ],
+        [
+          "gamma_mu",
+          "k_o_mis"
+        ],
+        [
+          "mu_hp",
+          "O2_crit"
+        ],
+        [
+          "mu_hp",
+          "k_o_mis"
+        ],
+        [
+          "mu_hp",
+          "lam_max"
+        ],
+        [
+          "gamma_mu",
+          "lam_max"
+        ],
+        [
+          "gamma_mu",
+          "p_misseg"
+        ],
+        [
+          "mu_hp",
+          "p_misseg"
+        ],
+        [
+          "p_mis_base",
+          "mu_hp"
+        ],
+        [
+          "p_mis_base",
+          "lam_max"
+        ]
+      ],
+      "sort_sides": [
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "High >= Low",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High",
+        "Low > High"
+      ],
+      "sorting_uses_third_annotation": false,
+      "sensitivity_groups": [],
+      "annotation_columns": 2,
+      "process_groups": [
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Division and genome change",
+          "Oxygen response"
+        ],
+        [
+          "Division and genome change",
+          "Oxygen response"
+        ],
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Division and genome change",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Division and genome change",
+          "Division and genome change"
+        ],
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Division and genome change",
+          "Post-missegregation survival"
+        ],
+        [
+          "Division and genome change",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Division and genome change",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Division and genome change",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Post-missegregation survival"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Oxygen response"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Division and genome change"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Ploidy-linked growth and death",
+          "Stress-linked missegregation"
+        ],
+        [
+          "Division and genome change",
+          "Ploidy-linked growth and death"
+        ],
+        [
+          "Division and genome change",
+          "Division and genome change"
+        ]
+      ],
+      "correlation_groups": [
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "Low O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "High O2"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "Low O2"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "No resolved O2 preference"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "Low O2",
+          "High O2"
+        ],
+        [
+          "High O2",
+          "Low O2"
+        ],
+        [
+          "High O2",
+          "No resolved O2 preference"
+        ]
+      ],
+      "annotation_rgb": [
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.47843137254901963,
+            0.5450980392156862,
+            0.22745098039215686
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.3058823529411765,
+            0.4745098039215686,
+            0.6549019607843137
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.8823529411764706,
+            0.3411764705882353,
+            0.34901960784313724
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.8470588235294118,
+            0.611764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.12941176470588237,
+            0.4,
+            0.6745098039215687
+          ]
+        ],
+        [
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6901960784313725,
+            0.47843137254901963,
+            0.6313725490196078
+          ],
+          [
+            0.6980392156862745,
+            0.09411764705882353,
+            0.16862745098039217
+          ],
+          [
+            0.5490196078431373,
+            0.5490196078431373,
+            0.5490196078431373
+          ]
+        ]
+      ],
+      "vmin": -0.14130001945170395,
+      "vmax": 0.14130001945170395,
+      "displayed_data_sha256": "da3191c89cf632dc55c00a54cc31871aa993caf443474daaad9c8e3ba9339665",
+      "row_alignment_error_points": 0.0,
+      "xlabel_colorbar_gap_points": 9.940000000000031,
+      "colorbar_footer_gap_points": 28.804000000000006,
+      "header_panel_title_gap_points": 14.65600000000004
+    }
+  ],
+  "files": [
+    {
+      "path": "global/figures/s2_focal_pairs_by_oxygen.pdf",
+      "sha256": "b99f873b2e97066c2984484d5168ef3ff741dafa944950239d8ec242394ae139"
+    },
+    {
+      "path": "global/figures/s2_focal_pairs_by_oxygen.png",
+      "sha256": "c632bddc66363bf132e69ae78974815118fdb7418849824e6b39d74a8375b75f"
+    }
+  ]
+}

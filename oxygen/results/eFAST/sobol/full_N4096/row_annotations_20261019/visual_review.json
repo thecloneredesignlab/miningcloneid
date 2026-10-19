@@ -1,0 +1,37 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-19T19:05:50.638Z",
+  "method": "Visual inspection of final PDF rasterizations produced by pdftoppm",
+  "reviewed": [
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2.pdf",
+      "sha256": "2900ad54c1d54ba7396ada185b432ebd7bd8c7261bf78d9c8fd7725d0133c70a"
+    },
+    {
+      "path": "global/figures/s2_focal_pairs_by_oxygen.pdf",
+      "sha256": "b99f873b2e97066c2984484d5168ef3ff741dafa944950239d8ec242394ae139"
+    },
+    {
+      "path": "neighborhood10pct/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "fa5618468eb40ae0736129d5e379533701c1004c1c19261bf6b33bb8f3bb2a61"
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_pair_by_oxygen.pdf",
+      "sha256": "45ba4e3d84cd96df89d50bbf24e26ea8575ace241d37df356ea4956ed45be3ba"
+    }
+  ],
+  "findings": [
+    "S1/ST display annotation columns 1, 2 and 3.",
+    "S2 displays only annotation columns 1 and 2, including standalone S2 legends.",
+    "Raw High/Low score comparison sets order with no unresolved/middle sorting block.",
+    "Shared neighborhood-ploidy ordering is aligned in cross-scope figures.",
+    "Headers, panel titles, axis labels, colorbars and footer legends are separated.",
+    "No clipped row labels or annotation alignment problems observed."
+  ],
+  "geometry": {
+    "min_header_panel_title_gap_points": 3.532000000000007,
+    "min_xlabel_colorbar_gap_points": 9.939999999999745,
+    "min_colorbar_footer_gap_points": 28.80399999999978,
+    "max_row_alignment_error_points": 0
+  }
+}

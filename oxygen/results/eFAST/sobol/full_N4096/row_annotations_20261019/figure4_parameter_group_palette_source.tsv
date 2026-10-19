@@ -1,0 +1,6 @@
+parameter_group	display_label	color	group_order
+Division and genome change	Division + genome change	#B07AA1	1
+Stress-linked missegregation	Stress-linked missegregation	#E15759	2
+Oxygen response	Oxygen response	#4E79A7	3
+Ploidy-linked growth and death	Ploidy-linked growth + death	#D89C2B	4
+Post-missegregation survival	Post-missegregation survival	#7A8B3A	5

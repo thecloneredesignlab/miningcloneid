@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-19T18:59:23.113Z",
+  "method": "Visual inspection of final PDF pages rasterized with pdftoppm",
+  "reviewed": [
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2.pdf",
+      "sha256": "7ac0f31761d98674cf33f683ad245336b55b8807b6589665d6e98bf78a29bf27"
+    },
+    {
+      "path": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2.pdf",
+      "sha256": "923986eff104d16e04594d2935bfc9c4307b2e56b04210f86a7421fece19d340"
+    },
+    {
+      "path": "global/figures/s2_pair_by_oxygen.pdf",
+      "sha256": "4a37df87ff4ef9ad5ed809f7541cec8c648359269dfa056ed59a20dd49ffb0f3"
+    }
+  ],
+  "findings": [
+    "All three annotation columns and their legends are visible.",
+    "S2 split cells follow the first/second named parameter.",
+    "Shared cross-scope row order is aligned.",
+    "Axis labels, colorbars, footer notes and legends have clear spacing.",
+    "No clipped labels or visual overlaps observed on reviewed pages."
+  ],
+  "geometry_checks": {
+    "min_xlabel_colorbar_gap_points": 9.939999999999745,
+    "min_colorbar_footer_gap_points": 28.80399999999978,
+    "max_row_alignment_error_points": 0
+  }
+}

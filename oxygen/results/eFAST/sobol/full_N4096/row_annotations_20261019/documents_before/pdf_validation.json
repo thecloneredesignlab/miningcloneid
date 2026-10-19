@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-19T17:41:32.643Z",
+  "pdf_text_and_page_boundaries": {
+    "n_files": 12,
+    "all_single_page": true,
+    "characters_outside_page": 0,
+    "all_contain_three_focal_parameter_labels": true
+  },
+  "pdf_raster_visual_review": [
+    "global_neighborhood_s1_st_focal_s2.pdf",
+    "global_neighborhood_ploidy_s1_st_focal_s2.pdf",
+    "../neighborhood10pct/figures/s2_focal_pairs_by_oxygen.pdf"
+  ],
+  "layout_findings": "No clipping or label/colorbar overlap observed in reviewed PDF raster pages.",
+  "data_checks": {
+    "unique_focal_pairs": 36,
+    "scope_output_pair_oxygen_rows": 28944,
+    "numerical_sources_unchanged": true,
+    "model_evaluations": 0,
+    "sensitivity_estimations": 0
+  },
+  "palette_check": "Positive RGBA mapping at 0, half maximum and maximum is identical for S1/ST palettes.",
+  "current_display_overlay": {
+    "directory": "../axis_redraw_20261019",
+    "completion": "../axis_redraw_20261019/completion.json",
+    "pdf_validation": "../axis_redraw_20261019/pdf_validation.json",
+    "note": "This receipt describes the earlier linear-axis rendering; current oxygen-axis image identities and QA are in the display-overlay audit."
+  }
+}

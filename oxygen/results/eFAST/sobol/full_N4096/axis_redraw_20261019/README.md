@@ -81,3 +81,7 @@ axis geometry, expected row-label, region-label collision and page-boundary
 checks. The final 12-panel comparison, global 91-pair S2 and seed500 91-pair S2
 PDF rasterizations were inspected visually. See `visual_review.json` for exact
 reviewed identities. Model evaluations and sensitivity estimations: zero.
+
+## Subsequent summary display
+
+The later [row-annotation overlay](../row_annotations_20261019/README.md) supersedes 15 summary/comparison figures (30 files). Its backups preserve the symlog versions verified here. The remaining 1,506 individual seed/case figures retain this directory's display and identities. Original completion hashes remain historical provenance for the earlier complete symlog export.

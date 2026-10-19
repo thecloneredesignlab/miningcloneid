@@ -1,0 +1,102 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-10-19T19:04:52.408820+00:00",
+  "pdfs": [
+    {
+      "path": "neighborhood10pct/figures/st_parameter_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "figure_comparison_20261019/neighborhood10pct_s1_st_focal_s2.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_growth_s1_st_focal_s2.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "neighborhood10pct/figures/s1_parameter_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_ploidy_s1_st_focal_s2.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "figure_comparison_20261019/global_s1_st_focal_s2.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "global/figures/s1_parameter_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_diagnostic_fraction.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_diagnostic_fraction.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_focal_pairs_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "global/figures/s2_focal_pairs_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "neighborhood10pct/figures/s2_pair_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "global/figures/s2_pair_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "figure_comparison_20261019/global_neighborhood_s1_st_focal_s2.pdf",
+      "pages": 1,
+      "outside_page": 0
+    },
+    {
+      "path": "global/figures/st_parameter_by_oxygen.pdf",
+      "pages": 1,
+      "outside_page": 0
+    }
+  ],
+  "independent_bootstrap_and_sort_check": {
+    "status": "passed",
+    "full_curve_oracle_scopes": 2,
+    "draws_each": 23,
+    "physical_window_integration": true,
+    "pointwise_median_before_integration": true,
+    "requested_sort_directions": true,
+    "third_annotation_does_not_affect_sort": true,
+    "no_middle_sort_block": true,
+    "ties_join_high_side": true,
+    "signed_scores_preserved": true
+  },
+  "classification_rows": 238,
+  "bootstrap_reps": 5000,
+  "displayed_values_verified": true,
+  "pair_completeness_verified": true,
+  "annotation_and_order_verified": true,
+  "unchanged_numerical_files": 2107,
+  "unchanged_response_images": 108,
+  "unchanged_other_oxygen_images": 3012,
+  "original_backups_verified": true
+}

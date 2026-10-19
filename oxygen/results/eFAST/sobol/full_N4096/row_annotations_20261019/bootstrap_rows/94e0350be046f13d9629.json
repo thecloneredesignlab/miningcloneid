@@ -1,0 +1,17 @@
+{
+  "config": {
+    "version": "paired-whole-curve-bootstrap-v1",
+    "source_id": "93dcafed53c265a4b0e0aa90b073d83b68aa3d04d6ffac613a44321799957f81",
+    "reps": 5000,
+    "seed": 5826
+  },
+  "scores": {
+    "low_score": 0.00048580615227538683,
+    "high_score": 0.00012464690601100213,
+    "low_minus_high": 0.0003611592462643847,
+    "global_peak": 0.0015536657701483458,
+    "bootstrap_sign_p": 0.005598880223955209,
+    "bootstrap_delta_q025": 9.868129313883472e-05,
+    "bootstrap_delta_q975": 0.0006270173302508173
+  }
+}

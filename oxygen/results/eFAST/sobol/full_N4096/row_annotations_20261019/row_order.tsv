@@ -1,0 +1,311 @@
+scope	kind	display_order	parameter_i	parameter_j	sort_side	high_score	low_score
+global	S1	1	p_mis_base		High >= Low	0.04420745150112301	0.04206241208066668
+global	S1	2	buffer_smax		High >= Low	0.020204033413150094	-0.004204737537972014
+global	S1	3	O2_crit		High >= Low	0.009651380981788561	0.0005870238385803498
+global	S1	4	buffer_n_exp		High >= Low	0.005961840130605109	-0.0017586472802628597
+global	S1	5	alpha_o2		High >= Low	0.005513734925090078	0.0013108036850636464
+global	S1	6	p_wgd		High >= Low	0.0025574139835017823	4.769099367662453e-05
+global	S1	7	gamma_growth		High >= Low	0.0025474433456847668	0.0015923035263637612
+global	S1	8	buffer_beta		High >= Low	0.0014976254297903238	6.478719744715001e-05
+global	S1	9	n_O		Low > High	-0.00112641145256486	0.0021195152305079554
+global	S1	10	k_o_mis		Low > High	0.0025416447269652302	0.003650567833554857
+global	S1	11	mu_hp		Low > High	0.004154803978254603	0.01988282087303757
+global	S1	12	gamma_mu		Low > High	0.015736107026292284	0.02166988922918916
+global	S1	13	p_misseg		Low > High	0.0044617502253645105	0.059779193428094124
+global	S1	14	lam_max		Low > High	0.008393600725890545	0.061632917073976584
+global	ST	1	n_O		High >= Low	0.5117260831062538	0.18565549410067694
+global	ST	2	p_mis_base		High >= Low	0.49576436061258616	0.3540692861473671
+global	ST	3	O2_crit		High >= Low	0.46537854399226986	0.30904474133344945
+global	ST	4	buffer_smax		High >= Low	0.24240401945384965	0.11283220083249204
+global	ST	5	gamma_growth		High >= Low	0.2278312288856193	0.1685404987848355
+global	ST	6	buffer_n_exp		High >= Low	0.15683978589652867	0.05703495200861677
+global	ST	7	buffer_beta		High >= Low	0.1450250638283309	0.10470774071009877
+global	ST	8	alpha_o2		High >= Low	0.12589930505137464	0.10541898402587915
+global	ST	9	p_wgd		High >= Low	0.02306229210935956	0.00024810668942730577
+global	ST	10	k_o_mis		Low > High	0.18290548057156425	0.24933704834991427
+global	ST	11	gamma_mu		Low > High	0.3025386779896113	0.329393488989873
+global	ST	12	mu_hp		Low > High	0.27993882454277164	0.41122351765811227
+global	ST	13	p_misseg		Low > High	0.30050488713004553	0.5089574021243912
+global	ST	14	lam_max		Low > High	0.3783566715631435	0.5270014595111023
+global	S2	1	p_mis_base	gamma_growth	High >= Low	0.026353316389757964	0.0004760044595213509
+global	S2	2	p_mis_base	O2_crit	High >= Low	0.024001800064240762	0.004108626362202767
+global	S2	3	p_mis_base	n_O	High >= Low	0.012400534871106525	-0.005416175846318351
+global	S2	4	p_mis_base	gamma_mu	High >= Low	0.009805492709342434	0.004275423886754439
+global	S2	5	buffer_smax	mu_hp	High >= Low	0.00667445829739399	0.0030505988259249602
+global	S2	6	p_mis_base	p_misseg	High >= Low	0.0052125110364614514	-0.0019529920022690976
+global	S2	7	gamma_mu	n_O	High >= Low	0.004973028093636249	-0.0029348840635150123
+global	S2	8	p_mis_base	p_wgd	High >= Low	0.004571605065696046	-0.005134591881274071
+global	S2	9	p_mis_base	alpha_o2	High >= Low	0.0029168512644453795	-0.0005885194671343583
+global	S2	10	p_mis_base	buffer_beta	High >= Low	0.002076416489082988	0.00012044120442536633
+global	S2	11	p_mis_base	k_o_mis	High >= Low	0.0010809751946131638	-0.005428339209666051
+global	S2	12	p_mis_base	buffer_n_exp	High >= Low	0.0010117188021766077	-0.005816730340618826
+global	S2	13	p_wgd	mu_hp	High >= Low	0.0007849379521022456	-0.0001311889123567582
+global	S2	14	p_mis_base	buffer_smax	High >= Low	-0.004615235185021924	-0.005213495235844851
+global	S2	15	buffer_beta	gamma_mu	Low > High	-0.004891148634270891	-0.0025863699540437483
+global	S2	16	buffer_beta	mu_hp	Low > High	-0.0022689070159669917	-0.0013790319827147682
+global	S2	17	alpha_o2	mu_hp	Low > High	-0.005941492766909378	-0.001276440425839226
+global	S2	18	p_wgd	gamma_mu	Low > High	-0.0015334970627422426	-7.671504988169026e-05
+global	S2	19	alpha_o2	gamma_mu	Low > High	-0.004611896926610905	2.2148137908158965e-05
+global	S2	20	mu_hp	n_O	Low > High	-3.7139419390983243e-05	0.0009333722779431686
+global	S2	21	gamma_mu	O2_crit	Low > High	-0.0015092001653782276	0.0009819727180653685
+global	S2	22	buffer_smax	gamma_mu	Low > High	0.0008351030398036762	0.0015243608546696246
+global	S2	23	buffer_n_exp	gamma_mu	Low > High	-0.0008904769709591075	0.0015422904956408409
+global	S2	24	buffer_n_exp	mu_hp	Low > High	0.0017131466417409883	0.002103816487683481
+global	S2	25	gamma_growth	mu_hp	Low > High	-0.0004046813426256423	0.005237226323448621
+global	S2	26	mu_hp	gamma_mu	Low > High	0.004968599292730528	0.005468504574679053
+global	S2	27	gamma_growth	gamma_mu	Low > High	-0.006155338305656063	0.005717714167753712
+global	S2	28	k_o_mis	gamma_mu	Low > High	0.007287556621253268	0.008480433539890999
+global	S2	29	mu_hp	O2_crit	Low > High	-0.0028226964617706694	0.012009912741206904
+global	S2	30	k_o_mis	mu_hp	Low > High	0.0004918996835044818	0.012954775571801112
+global	S2	31	lam_max	mu_hp	Low > High	0.01236089787767632	0.022036910387139674
+global	S2	32	lam_max	gamma_mu	Low > High	0.01976933163570879	0.022091943362988455
+global	S2	33	p_misseg	gamma_mu	Low > High	0.012154300072786721	0.02399755146956239
+global	S2	34	p_misseg	mu_hp	Low > High	0.011170033617577988	0.02439811005313692
+global	S2	35	p_mis_base	mu_hp	Low > High	0.007067218182213881	0.024866252506778996
+global	S2	36	lam_max	p_mis_base	Low > High	0.030182169469210866	0.034258653881768505
+global	S2_all	1	p_mis_base	gamma_growth	High >= Low	0.026353316389757964	0.0004760044595213509
+global	S2_all	2	lam_max	n_O	High >= Low	0.024871604468632492	0.00919689418353849
+global	S2_all	3	p_mis_base	O2_crit	High >= Low	0.024001800064240762	0.004108626362202767
+global	S2_all	4	buffer_smax	n_O	High >= Low	0.022272038740433923	0.0032360761988770043
+global	S2_all	5	buffer_smax	buffer_n_exp	High >= Low	0.02171208025630649	0.004858338560028604
+global	S2_all	6	lam_max	buffer_beta	High >= Low	0.017428604025399707	0.012473924712778368
+global	S2_all	7	p_misseg	buffer_n_exp	High >= Low	0.01716491261908725	0.003825433734160236
+global	S2_all	8	lam_max	alpha_o2	High >= Low	0.016907491564847422	0.01136686660811378
+global	S2_all	9	p_misseg	n_O	High >= Low	0.016493592339354962	0.001101881316023295
+global	S2_all	10	lam_max	buffer_n_exp	High >= Low	0.016393271800349205	0.013452740513013487
+global	S2_all	11	lam_max	k_o_mis	High >= Low	0.016031137277301412	0.01146538224737768
+global	S2_all	12	lam_max	p_wgd	High >= Low	0.015945425816020726	0.011679901906519456
+global	S2_all	13	p_misseg	buffer_smax	High >= Low	0.01579900882590376	0.006200685849912981
+global	S2_all	14	p_misseg	gamma_growth	High >= Low	0.015138075580895742	0.0006264666752400396
+global	S2_all	15	lam_max	O2_crit	High >= Low	0.014903279687225825	0.010695769960110228
+global	S2_all	16	p_misseg	buffer_beta	High >= Low	0.01468299328782275	0.004382778400461326
+global	S2_all	17	lam_max	gamma_growth	High >= Low	0.013488532850036875	0.010580731681610708
+global	S2_all	18	p_mis_base	n_O	High >= Low	0.012400534871106525	-0.005416175846318351
+global	S2_all	19	p_misseg	p_wgd	High >= Low	0.012363370796201808	0.0032857751360145077
+global	S2_all	20	buffer_smax	O2_crit	High >= Low	0.011068248594522956	0.0032898148913908156
+global	S2_all	21	p_mis_base	gamma_mu	High >= Low	0.009805492709342434	0.004275423886754439
+global	S2_all	22	p_misseg	alpha_o2	High >= Low	0.008592434723096832	0.0014398741334663671
+global	S2_all	23	buffer_smax	buffer_beta	High >= Low	0.00859052286682321	0.002830337562995608
+global	S2_all	24	buffer_n_exp	n_O	High >= Low	0.006804210314680264	0.001614960211147491
+global	S2_all	25	buffer_smax	mu_hp	High >= Low	0.00667445829739399	0.0030505988259249602
+global	S2_all	26	buffer_smax	p_wgd	High >= Low	0.006390405500813601	0.002913872343067015
+global	S2_all	27	p_mis_base	p_misseg	High >= Low	0.0052125110364614514	-0.0019529920022690976
+global	S2_all	28	gamma_mu	n_O	High >= Low	0.004973028093636249	-0.0029348840635150123
+global	S2_all	29	p_mis_base	p_wgd	High >= Low	0.004571605065696046	-0.005134591881274071
+global	S2_all	30	buffer_beta	gamma_growth	High >= Low	0.004526508172239915	-0.0019497182244808224
+global	S2_all	31	buffer_smax	gamma_growth	High >= Low	0.004381994920920085	0.00268611762003623
+global	S2_all	32	buffer_beta	buffer_n_exp	High >= Low	0.004065094639420416	-0.0012036220461652172
+global	S2_all	33	p_mis_base	alpha_o2	High >= Low	0.0029168512644453795	-0.0005885194671343583
+global	S2_all	34	p_mis_base	buffer_beta	High >= Low	0.002076416489082988	0.00012044120442536633
+global	S2_all	35	p_wgd	O2_crit	High >= Low	0.0017228535388621063	-8.940940077679105e-05
+global	S2_all	36	p_wgd	n_O	High >= Low	0.0015970390645034306	-8.274794350807214e-05
+global	S2_all	37	buffer_beta	alpha_o2	High >= Low	0.0014242863591527027	-0.0012234302832943066
+global	S2_all	38	p_mis_base	k_o_mis	High >= Low	0.0010809751946131638	-0.005428339209666051
+global	S2_all	39	p_mis_base	buffer_n_exp	High >= Low	0.0010117188021766077	-0.005816730340618826
+global	S2_all	40	buffer_beta	O2_crit	High >= Low	0.0008165391320154746	-0.002496103255444033
+global	S2_all	41	p_wgd	mu_hp	High >= Low	0.0007849379521022456	-0.0001311889123567582
+global	S2_all	42	buffer_beta	p_wgd	High >= Low	0.0007048618150934166	-0.0014627218969038827
+global	S2_all	43	buffer_beta	n_O	High >= Low	-0.0001955864009809879	-0.0026190371472400407
+global	S2_all	44	p_mis_base	buffer_smax	High >= Low	-0.004615235185021924	-0.005213495235844851
+global	S2_all	45	buffer_beta	gamma_mu	Low > High	-0.004891148634270891	-0.0025863699540437483
+global	S2_all	46	buffer_beta	mu_hp	Low > High	-0.0022689070159669917	-0.0013790319827147682
+global	S2_all	47	alpha_o2	mu_hp	Low > High	-0.005941492766909378	-0.001276440425839226
+global	S2_all	48	p_wgd	gamma_growth	Low > High	-0.001335033307709605	-9.535664607696839e-05
+global	S2_all	49	p_wgd	gamma_mu	Low > High	-0.0015334970627422426	-7.671504988169026e-05
+global	S2_all	50	p_wgd	alpha_o2	Low > High	-0.0012364612487636324	-6.48360099895357e-05
+global	S2_all	51	alpha_o2	gamma_mu	Low > High	-0.004611896926610905	2.2148137908158965e-05
+global	S2_all	52	alpha_o2	gamma_growth	Low > High	-0.0038694507184967985	0.00029650916669201634
+global	S2_all	53	alpha_o2	n_O	Low > High	-0.004282049887267472	0.000829900113980463
+global	S2_all	54	mu_hp	n_O	Low > High	-3.7139419390983243e-05	0.0009333722779431686
+global	S2_all	55	gamma_mu	O2_crit	Low > High	-0.0015092001653782276	0.0009819727180653685
+global	S2_all	56	buffer_n_exp	gamma_growth	Low > High	-0.003081044332341628	0.0011218712116231788
+global	S2_all	57	buffer_n_exp	O2_crit	Low > High	-0.00023337364780748858	0.0011358177984102315
+global	S2_all	58	O2_crit	n_O	Low > High	-0.0025678891277687147	0.0011461601896200712
+global	S2_all	59	buffer_smax	gamma_mu	Low > High	0.0008351030398036762	0.0015243608546696246
+global	S2_all	60	buffer_n_exp	gamma_mu	Low > High	-0.0008904769709591075	0.0015422904956408409
+global	S2_all	61	buffer_n_exp	p_wgd	Low > High	0.00016163673877004153	0.0017802086616853987
+global	S2_all	62	buffer_n_exp	alpha_o2	Low > High	-0.00027934726226490857	0.0018084579434610364
+global	S2_all	63	buffer_n_exp	mu_hp	Low > High	0.0017131466417409883	0.002103816487683481
+global	S2_all	64	alpha_o2	O2_crit	Low > High	-0.004408783887877776	0.002633760807636277
+global	S2_all	65	buffer_smax	alpha_o2	Low > High	0.0008524828408146855	0.0027940822452942023
+global	S2_all	66	gamma_growth	O2_crit	Low > High	-0.00043391644947556203	0.004153511431963582
+global	S2_all	67	gamma_growth	mu_hp	Low > High	-0.0004046813426256423	0.005237226323448621
+global	S2_all	68	gamma_growth	n_O	Low > High	0.0009719870610429757	0.005263487745833437
+global	S2_all	69	mu_hp	gamma_mu	Low > High	0.004968599292730528	0.005468504574679053
+global	S2_all	70	gamma_growth	gamma_mu	Low > High	-0.006155338305656063	0.005717714167753712
+global	S2_all	71	k_o_mis	alpha_o2	Low > High	0.002672528010892382	0.007568657387438651
+global	S2_all	72	k_o_mis	p_wgd	Low > High	0.006501146026248607	0.007604978343994001
+global	S2_all	73	k_o_mis	O2_crit	Low > High	0.004094823323209751	0.008018932204282176
+global	S2_all	74	k_o_mis	gamma_growth	Low > High	0.002742917702266018	0.008265537604193468
+global	S2_all	75	k_o_mis	gamma_mu	Low > High	0.007287556621253268	0.008480433539890999
+global	S2_all	76	k_o_mis	buffer_beta	Low > High	0.004446148860157345	0.008560823664892098
+global	S2_all	77	k_o_mis	buffer_smax	Low > High	0.0035232068642602776	0.008646888353959922
+global	S2_all	78	k_o_mis	n_O	Low > High	0.007096630933010148	0.009068574620108655
+global	S2_all	79	k_o_mis	buffer_n_exp	Low > High	0.004674763945082497	0.009213883450409653
+global	S2_all	80	p_misseg	O2_crit	Low > High	0.002463402041693672	0.009540392572726805
+global	S2_all	81	mu_hp	O2_crit	Low > High	-0.0028226964617706694	0.012009912741206904
+global	S2_all	82	k_o_mis	mu_hp	Low > High	0.0004918996835044818	0.012954775571801112
+global	S2_all	83	lam_max	buffer_smax	Low > High	0.013790154781631174	0.014994192980854542
+global	S2_all	84	p_misseg	k_o_mis	Low > High	0.015587601608792979	0.019024796389987685
+global	S2_all	85	lam_max	mu_hp	Low > High	0.01236089787767632	0.022036910387139674
+global	S2_all	86	lam_max	gamma_mu	Low > High	0.01976933163570879	0.022091943362988455
+global	S2_all	87	p_misseg	gamma_mu	Low > High	0.012154300072786721	0.02399755146956239
+global	S2_all	88	p_misseg	mu_hp	Low > High	0.011170033617577988	0.02439811005313692
+global	S2_all	89	p_mis_base	mu_hp	Low > High	0.007067218182213881	0.024866252506778996
+global	S2_all	90	lam_max	p_mis_base	Low > High	0.030182169469210866	0.034258653881768505
+global	S2_all	91	lam_max	p_misseg	Low > High	0.028353724604650583	0.07301285969804899
+neighborhood10pct	S1	1	buffer_smax		High >= Low	0.2378544583454279	0.053179869335956816
+neighborhood10pct	S1	2	p_mis_base		High >= Low	0.08628629428553936	0.005122825279126988
+neighborhood10pct	S1	3	n_O		High >= Low	0.013574911968815054	0.0011977285481990522
+neighborhood10pct	S1	4	p_wgd		High >= Low	1.0541285021457636e-06	-1.4836372382779203e-07
+neighborhood10pct	S1	5	buffer_n_exp		Low > High	0.00025636009344823696	0.0004976641262021874
+neighborhood10pct	S1	6	gamma_growth		Low > High	1.635040897606648e-05	0.0006024891183045926
+neighborhood10pct	S1	7	alpha_o2		Low > High	3.480051533615859e-05	0.0014486739047891938
+neighborhood10pct	S1	8	lam_max		Low > High	1.4166119387117235e-07	0.002501310771693897
+neighborhood10pct	S1	9	gamma_mu		Low > High	0.001491525936202941	0.010550529507074802
+neighborhood10pct	S1	10	k_o_mis		Low > High	0.0016699119531854816	0.011827520406663008
+neighborhood10pct	S1	11	p_misseg		Low > High	0.0010074160657925298	0.01822016220122063
+neighborhood10pct	S1	12	mu_hp		Low > High	0.0024219287698218446	0.028642672044580975
+neighborhood10pct	S1	13	O2_crit		Low > High	0.017133709823750797	0.03554750754952239
+neighborhood10pct	S1	14	buffer_beta		Low > High	0.056312040685811554	0.12140677927058746
+neighborhood10pct	ST	1	buffer_smax		High >= Low	0.45675779116129855	0.27654433809416845
+neighborhood10pct	ST	2	p_mis_base		High >= Low	0.2992335255366048	0.05337974213414441
+neighborhood10pct	ST	3	n_O		High >= Low	0.13067456338390182	0.05518300271165588
+neighborhood10pct	ST	4	buffer_n_exp		High >= Low	0.018718300740651807	0.016088405677427788
+neighborhood10pct	ST	5	p_wgd		High >= Low	3.853011207170814e-05	7.315723517823648e-06
+neighborhood10pct	ST	6	gamma_growth		Low > High	0.0028139755181442665	0.019235876232223625
+neighborhood10pct	ST	7	lam_max		Low > High	0.0003919704525781043	0.024042020115152607
+neighborhood10pct	ST	8	alpha_o2		Low > High	0.005890921736223057	0.03166800758182503
+neighborhood10pct	ST	9	gamma_mu		Low > High	0.04099501999174186	0.09226079206357579
+neighborhood10pct	ST	10	k_o_mis		Low > High	0.05373909653847636	0.1299535020241419
+neighborhood10pct	ST	11	p_misseg		Low > High	0.033866051937593025	0.13186084107761512
+neighborhood10pct	ST	12	mu_hp		Low > High	0.05666273474666098	0.17443569480784796
+neighborhood10pct	ST	13	O2_crit		Low > High	0.1717536465234491	0.2579838745148773
+neighborhood10pct	ST	14	buffer_beta		Low > High	0.38407046798554734	0.45937344422427784
+neighborhood10pct	S2	1	p_mis_base	buffer_beta	High >= Low	0.010105717385925302	0.000788186643608049
+neighborhood10pct	S2	2	p_mis_base	buffer_smax	High >= Low	0.006618762789170857	0.0005909652524096531
+neighborhood10pct	S2	3	p_mis_base	O2_crit	High >= Low	0.0059815767335288155	0.0004220049454772295
+neighborhood10pct	S2	4	p_mis_base	n_O	High >= Low	0.003493619626586726	1.0959911255760141e-05
+neighborhood10pct	S2	5	buffer_beta	gamma_mu	High >= Low	0.0014155897304519499	0.0010905688179367874
+neighborhood10pct	S2	6	p_mis_base	mu_hp	High >= Low	0.001032672165845247	0.0002974633071732799
+neighborhood10pct	S2	7	p_mis_base	p_misseg	High >= Low	0.00048780211394417166	0.0002643151959216154
+neighborhood10pct	S2	8	p_mis_base	k_o_mis	High >= Low	0.0004499364376979943	-1.8699688542391873e-05
+neighborhood10pct	S2	9	p_mis_base	buffer_n_exp	High >= Low	0.0002142489996041896	-4.027748972771844e-06
+neighborhood10pct	S2	10	p_mis_base	gamma_mu	High >= Low	9.021068876089288e-05	6.538010792445561e-05
+neighborhood10pct	S2	11	p_mis_base	p_wgd	High >= Low	8.581240439164154e-05	-1.5977352422761834e-05
+neighborhood10pct	S2	12	gamma_mu	n_O	High >= Low	7.885003076695808e-05	-0.00012165535791464992
+neighborhood10pct	S2	13	p_mis_base	alpha_o2	High >= Low	5.4254997660433784e-05	2.78083734523273e-06
+neighborhood10pct	S2	14	buffer_n_exp	gamma_mu	High >= Low	3.990881180786118e-05	-1.0492861679273058e-05
+neighborhood10pct	S2	15	p_mis_base	gamma_growth	High >= Low	3.5535116758228585e-05	1.617045364405705e-05
+neighborhood10pct	S2	16	buffer_n_exp	mu_hp	High >= Low	2.1404583180885406e-05	-4.15747826013967e-05
+neighborhood10pct	S2	17	lam_max	gamma_mu	High >= Low	-6.548130876225065e-07	-4.776612691987639e-05
+neighborhood10pct	S2	18	lam_max	p_mis_base	High >= Low	-7.641832154025346e-07	-6.614225643989204e-05
+neighborhood10pct	S2	19	p_wgd	gamma_mu	Low > High	-1.6892614779822702e-06	2.588650732162094e-07
+neighborhood10pct	S2	20	p_wgd	mu_hp	Low > High	-2.325082419137621e-06	1.1881268886095412e-06
+neighborhood10pct	S2	21	alpha_o2	gamma_mu	Low > High	3.369454878639754e-05	4.952904548711185e-05
+neighborhood10pct	S2	22	lam_max	mu_hp	Low > High	-5.857993604056055e-07	8.105192292450178e-05
+neighborhood10pct	S2	23	gamma_growth	gamma_mu	Low > High	-5.533486345634303e-06	0.0001661118665573447
+neighborhood10pct	S2	24	alpha_o2	mu_hp	Low > High	3.496194179041878e-05	0.00016616662763066256
+neighborhood10pct	S2	25	gamma_growth	mu_hp	Low > High	-6.628250704980585e-06	0.00018772642223505306
+neighborhood10pct	S2	26	k_o_mis	gamma_mu	Low > High	-7.538038489708068e-05	0.00024217718861058523
+neighborhood10pct	S2	27	p_misseg	gamma_mu	Low > High	3.3035845848545017e-07	0.00041793048757252544
+neighborhood10pct	S2	28	mu_hp	n_O	Low > High	0.00012464690601100213	0.00048580615227538683
+neighborhood10pct	S2	29	mu_hp	gamma_mu	Low > High	-0.00011231145586648229	0.0007666807057976309
+neighborhood10pct	S2	30	gamma_mu	O2_crit	Low > High	0.00014258522208984083	0.0008154027511679276
+neighborhood10pct	S2	31	k_o_mis	mu_hp	Low > High	4.5006601146454775e-05	0.0011790944666802807
+neighborhood10pct	S2	32	buffer_smax	gamma_mu	Low > High	0.0008538901116410066	0.001443474587584674
+neighborhood10pct	S2	33	p_misseg	mu_hp	Low > High	2.9930718392580476e-05	0.0014890298929459106
+neighborhood10pct	S2	34	buffer_smax	mu_hp	Low > High	0.0003257487856529408	0.002460869884556383
+neighborhood10pct	S2	35	mu_hp	O2_crit	Low > High	0.00022496015293807034	0.004524632781889668
+neighborhood10pct	S2	36	buffer_beta	mu_hp	Low > High	0.0017830756164976072	0.005140758319759713
+neighborhood10pct	S2_all	1	buffer_smax	buffer_beta	High >= Low	0.02175048345073957	0.01149816099658128
+neighborhood10pct	S2_all	2	p_mis_base	buffer_beta	High >= Low	0.010105717385925302	0.000788186643608049
+neighborhood10pct	S2_all	3	p_mis_base	buffer_smax	High >= Low	0.006618762789170857	0.0005909652524096531
+neighborhood10pct	S2_all	4	p_mis_base	O2_crit	High >= Low	0.0059815767335288155	0.0004220049454772295
+neighborhood10pct	S2_all	5	p_mis_base	n_O	High >= Low	0.003493619626586726	1.0959911255760141e-05
+neighborhood10pct	S2_all	6	buffer_beta	n_O	High >= Low	0.0025671342772901227	-0.00017485912098568206
+neighborhood10pct	S2_all	7	O2_crit	n_O	High >= Low	0.002348133154369992	0.0018941890302347684
+neighborhood10pct	S2_all	8	buffer_beta	buffer_n_exp	High >= Low	0.002230066844247755	0.00036322625072040095
+neighborhood10pct	S2_all	9	buffer_smax	n_O	High >= Low	0.0015271289246046296	0.0008504143488629258
+neighborhood10pct	S2_all	10	buffer_beta	gamma_mu	High >= Low	0.0014155897304519499	0.0010905688179367874
+neighborhood10pct	S2_all	11	buffer_beta	p_wgd	High >= Low	0.0010953573457651907	-0.000793688978841594
+neighborhood10pct	S2_all	12	buffer_beta	alpha_o2	High >= Low	0.0010673416625671245	-0.00017021502564195336
+neighborhood10pct	S2_all	13	buffer_beta	gamma_growth	High >= Low	0.0010510589613587152	-0.0002533154779894066
+neighborhood10pct	S2_all	14	p_mis_base	mu_hp	High >= Low	0.001032672165845247	0.0002974633071732799
+neighborhood10pct	S2_all	15	buffer_smax	buffer_n_exp	High >= Low	0.0006063423350243834	0.0005422942964806766
+neighborhood10pct	S2_all	16	p_mis_base	p_misseg	High >= Low	0.00048780211394417166	0.0002643151959216154
+neighborhood10pct	S2_all	17	p_mis_base	k_o_mis	High >= Low	0.0004499364376979943	-1.8699688542391873e-05
+neighborhood10pct	S2_all	18	p_mis_base	buffer_n_exp	High >= Low	0.0002142489996041896	-4.027748972771844e-06
+neighborhood10pct	S2_all	19	p_misseg	n_O	High >= Low	0.00012741859887827175	5.5337377872885924e-05
+neighborhood10pct	S2_all	20	p_mis_base	gamma_mu	High >= Low	9.021068876089288e-05	6.538010792445561e-05
+neighborhood10pct	S2_all	21	p_mis_base	p_wgd	High >= Low	8.581240439164154e-05	-1.5977352422761834e-05
+neighborhood10pct	S2_all	22	gamma_mu	n_O	High >= Low	7.885003076695808e-05	-0.00012165535791464992
+neighborhood10pct	S2_all	23	buffer_n_exp	O2_crit	High >= Low	5.988988367734913e-05	-2.5750201306234475e-05
+neighborhood10pct	S2_all	24	buffer_n_exp	n_O	High >= Low	5.842681920394062e-05	1.0643798283439259e-06
+neighborhood10pct	S2_all	25	p_mis_base	alpha_o2	High >= Low	5.4254997660433784e-05	2.78083734523273e-06
+neighborhood10pct	S2_all	26	buffer_n_exp	gamma_mu	High >= Low	3.990881180786118e-05	-1.0492861679273058e-05
+neighborhood10pct	S2_all	27	buffer_n_exp	alpha_o2	High >= Low	3.9287446127670456e-05	1.0135988191998703e-05
+neighborhood10pct	S2_all	28	p_mis_base	gamma_growth	High >= Low	3.5535116758228585e-05	1.617045364405705e-05
+neighborhood10pct	S2_all	29	buffer_n_exp	p_wgd	High >= Low	3.3113243771742693e-05	-3.418867210547536e-06
+neighborhood10pct	S2_all	30	buffer_n_exp	gamma_growth	High >= Low	3.0235323488530814e-05	5.106467624096156e-07
+neighborhood10pct	S2_all	31	buffer_n_exp	mu_hp	High >= Low	2.1404583180885406e-05	-4.15747826013967e-05
+neighborhood10pct	S2_all	32	lam_max	p_wgd	High >= Low	-5.568640343236522e-07	-5.662582578808626e-05
+neighborhood10pct	S2_all	33	lam_max	k_o_mis	High >= Low	-6.078522929034604e-07	-6.235537714077955e-05
+neighborhood10pct	S2_all	34	lam_max	alpha_o2	High >= Low	-6.199823828958735e-07	-3.519932764429539e-05
+neighborhood10pct	S2_all	35	lam_max	buffer_n_exp	High >= Low	-6.434964771744763e-07	-4.8172989249149284e-05
+neighborhood10pct	S2_all	36	lam_max	gamma_growth	High >= Low	-6.4586846360095e-07	-5.7686313323097586e-05
+neighborhood10pct	S2_all	37	lam_max	gamma_mu	High >= Low	-6.548130876225065e-07	-4.776612691987639e-05
+neighborhood10pct	S2_all	38	lam_max	n_O	High >= Low	-6.850257779053705e-07	-5.797777239194729e-05
+neighborhood10pct	S2_all	39	lam_max	p_mis_base	High >= Low	-7.641832154025346e-07	-6.614225643989204e-05
+neighborhood10pct	S2_all	40	p_misseg	p_wgd	High >= Low	-6.421440495614014e-06	-4.440081400577672e-05
+neighborhood10pct	S2_all	41	p_wgd	O2_crit	Low > High	-5.412605001709006e-07	1.3089422822777136e-07
+neighborhood10pct	S2_all	42	p_wgd	gamma_growth	Low > High	-2.3727175441631753e-06	2.5183749174852737e-07
+neighborhood10pct	S2_all	43	p_wgd	gamma_mu	Low > High	-1.6892614779822702e-06	2.588650732162094e-07
+neighborhood10pct	S2_all	44	p_wgd	alpha_o2	Low > High	-1.8129134979312428e-06	2.6848206465349344e-07
+neighborhood10pct	S2_all	45	p_wgd	n_O	Low > High	-2.9693169470033486e-06	2.9423395291060033e-07
+neighborhood10pct	S2_all	46	p_wgd	mu_hp	Low > High	-2.325082419137621e-06	1.1881268886095412e-06
+neighborhood10pct	S2_all	47	lam_max	p_misseg	Low > High	-5.894176198135884e-07	3.841386316920134e-05
+neighborhood10pct	S2_all	48	alpha_o2	gamma_mu	Low > High	3.369454878639754e-05	4.952904548711185e-05
+neighborhood10pct	S2_all	49	lam_max	buffer_smax	Low > High	-5.7918044183711577e-08	6.441657069863134e-05
+neighborhood10pct	S2_all	50	p_misseg	buffer_n_exp	Low > High	4.542452195567656e-06	6.657673286232505e-05
+neighborhood10pct	S2_all	51	alpha_o2	gamma_growth	Low > High	4.240360230240834e-05	6.791631106325396e-05
+neighborhood10pct	S2_all	52	alpha_o2	n_O	Low > High	2.7310095482615576e-05	7.118334928914242e-05
+neighborhood10pct	S2_all	53	k_o_mis	p_wgd	Low > High	-9.906787073385881e-05	7.513137745995035e-05
+neighborhood10pct	S2_all	54	lam_max	mu_hp	Low > High	-5.857993604056055e-07	8.105192292450178e-05
+neighborhood10pct	S2_all	55	lam_max	O2_crit	Low > High	-4.34641772664313e-07	8.415066126580731e-05
+neighborhood10pct	S2_all	56	k_o_mis	alpha_o2	Low > High	-9.012389677286025e-05	8.510969575059989e-05
+neighborhood10pct	S2_all	57	p_misseg	gamma_growth	Low > High	-3.3484032011420737e-06	9.494580290541764e-05
+neighborhood10pct	S2_all	58	k_o_mis	gamma_growth	Low > High	-9.68862015775474e-05	0.00010397233470762696
+neighborhood10pct	S2_all	59	gamma_growth	n_O	Low > High	-1.3400030644675637e-05	0.00010434585261596538
+neighborhood10pct	S2_all	60	k_o_mis	buffer_n_exp	Low > High	-9.420259953240749e-05	0.0001256396189785174
+neighborhood10pct	S2_all	61	p_misseg	alpha_o2	Low > High	-3.5903036440282768e-06	0.0001438494667258125
+neighborhood10pct	S2_all	62	gamma_growth	gamma_mu	Low > High	-5.533486345634303e-06	0.0001661118665573447
+neighborhood10pct	S2_all	63	alpha_o2	mu_hp	Low > High	3.496194179041878e-05	0.00016616662763066256
+neighborhood10pct	S2_all	64	gamma_growth	mu_hp	Low > High	-6.628250704980585e-06	0.00018772642223505306
+neighborhood10pct	S2_all	65	k_o_mis	gamma_mu	Low > High	-7.538038489708068e-05	0.00024217718861058523
+neighborhood10pct	S2_all	66	buffer_smax	p_wgd	Low > High	-0.00016431199492747823	0.00026714910569091495
+neighborhood10pct	S2_all	67	gamma_growth	O2_crit	Low > High	-5.1701049750869824e-06	0.0002986992799467646
+neighborhood10pct	S2_all	68	alpha_o2	O2_crit	Low > High	3.800904356222959e-05	0.00031529937066382765
+neighborhood10pct	S2_all	69	lam_max	buffer_beta	Low > High	1.5120851494682833e-06	0.00032997731704874746
+neighborhood10pct	S2_all	70	k_o_mis	n_O	Low > High	0.0002146927592738682	0.00033594718862973473
+neighborhood10pct	S2_all	71	p_misseg	k_o_mis	Low > High	1.5282013197672488e-05	0.00039589927177910954
+neighborhood10pct	S2_all	72	p_misseg	gamma_mu	Low > High	3.3035845848545017e-07	0.00041793048757252544
+neighborhood10pct	S2_all	73	mu_hp	n_O	Low > High	0.00012464690601100213	0.00048580615227538683
+neighborhood10pct	S2_all	74	mu_hp	gamma_mu	Low > High	-0.00011231145586648229	0.0007666807057976309
+neighborhood10pct	S2_all	75	buffer_smax	gamma_growth	Low > High	7.058925193746247e-06	0.0007707218034252918
+neighborhood10pct	S2_all	76	gamma_mu	O2_crit	Low > High	0.00014258522208984083	0.0008154027511679276
+neighborhood10pct	S2_all	77	buffer_smax	alpha_o2	Low > High	-1.66424514156245e-05	0.0008285223741743078
+neighborhood10pct	S2_all	78	k_o_mis	mu_hp	Low > High	4.5006601146454775e-05	0.0011790944666802807
+neighborhood10pct	S2_all	79	buffer_smax	gamma_mu	Low > High	0.0008538901116410066	0.001443474587584674
+neighborhood10pct	S2_all	80	k_o_mis	buffer_smax	Low > High	0.0003453962892517496	0.00145308731960038
+neighborhood10pct	S2_all	81	p_misseg	mu_hp	Low > High	2.9930718392580476e-05	0.0014890298929459106
+neighborhood10pct	S2_all	82	k_o_mis	buffer_beta	Low > High	4.0790933291057495e-05	0.0017442586152814589
+neighborhood10pct	S2_all	83	p_misseg	O2_crit	Low > High	0.0002255779569398638	0.002232323913219768
+neighborhood10pct	S2_all	84	p_misseg	buffer_smax	Low > High	0.0005734387876889758	0.00241372309804451
+neighborhood10pct	S2_all	85	buffer_smax	mu_hp	Low > High	0.0003257487856529408	0.002460869884556383
+neighborhood10pct	S2_all	86	k_o_mis	O2_crit	Low > High	0.00047579229752594995	0.0028214795025588322
+neighborhood10pct	S2_all	87	p_misseg	buffer_beta	Low > High	0.0004169314991302102	0.0038335716661472238
+neighborhood10pct	S2_all	88	mu_hp	O2_crit	Low > High	0.00022496015293807034	0.004524632781889668
+neighborhood10pct	S2_all	89	buffer_beta	mu_hp	Low > High	0.0017830756164976072	0.005140758319759713
+neighborhood10pct	S2_all	90	buffer_beta	O2_crit	Low > High	0.004767983124647943	0.006903218328741504
+neighborhood10pct	S2_all	91	buffer_smax	O2_crit	Low > High	0.0033827463523664995	0.0073719387530040426

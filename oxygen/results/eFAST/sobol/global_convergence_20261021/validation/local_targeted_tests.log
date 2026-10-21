@@ -1,0 +1,18 @@
+test_production_assembler_preserves_sample_block_and_oxygen_order (test_global_convergence.NumericalTests.test_production_assembler_preserves_sample_block_and_oxygen_order) ... ok
+test_o2_sort_and_bootstrap_match_whole_curve_resampling (test_global_convergence.NumericalTests.test_o2_sort_and_bootstrap_match_whole_curve_resampling) ... /private/tmp/global_convergence_deps/matplotlib/_fontconfig_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one_of'
+  prop = Group((name + Suppress("=") + comma_separated(value)) | oneOf(_CONSTANTS))
+/private/tmp/global_convergence_deps/matplotlib/_fontconfig_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+/private/tmp/global_convergence_deps/matplotlib/_fontconfig_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+Matplotlib is building the font cache; this may take a moment.
+/private/tmp/global_convergence_deps/matplotlib/_mathtext.py:45: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+In /private/tmp/global_convergence_deps/matplotlib/mpl-data/stylelib/classic.mplstyle: 'parseString' deprecated - use 'parse_string'
+In /private/tmp/global_convergence_deps/matplotlib/mpl-data/stylelib/classic.mplstyle: 'resetCache' deprecated - use 'reset_cache'
+ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 21.931s
+
+OK

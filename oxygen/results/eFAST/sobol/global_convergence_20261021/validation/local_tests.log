@@ -1,0 +1,24 @@
+test_all_five_high_resolution_prefixes_and_tail_interleaving (__main__.NumericalTests.test_all_five_high_resolution_prefixes_and_tail_interleaving) ... ok
+test_o2_sort_and_bootstrap_match_whole_curve_resampling (__main__.NumericalTests.test_o2_sort_and_bootstrap_match_whole_curve_resampling) ... /private/tmp/global_convergence_deps/matplotlib/_fontconfig_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one_of'
+  prop = Group((name + Suppress("=") + comma_separated(value)) | oneOf(_CONSTANTS))
+/private/tmp/global_convergence_deps/matplotlib/_fontconfig_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+/private/tmp/global_convergence_deps/matplotlib/_fontconfig_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+Matplotlib is building the font cache; this may take a moment.
+/private/tmp/global_convergence_deps/matplotlib/_mathtext.py:45: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+In /private/tmp/global_convergence_deps/matplotlib/mpl-data/stylelib/classic.mplstyle: 'parseString' deprecated - use 'parse_string'
+In /private/tmp/global_convergence_deps/matplotlib/mpl-data/stylelib/classic.mplstyle: 'resetCache' deprecated - use 'reset_cache'
+ok
+test_old_plus_new_outputs_equal_one_shot_estimator (__main__.NumericalTests.test_old_plus_new_outputs_equal_one_shot_estimator) ... ok
+test_production_assembler_preserves_sample_block_and_oxygen_order (__main__.NumericalTests.test_production_assembler_preserves_sample_block_and_oxygen_order) ... ok
+test_all_new_sample_blocks_are_covered_once (__main__.PolicyTests.test_all_new_sample_blocks_are_covered_once) ... ok
+test_colored_and_plain_startup_errors_retry_but_payload_errors_do_not (__main__.PolicyTests.test_colored_and_plain_startup_errors_retry_but_payload_errors_do_not) ... ok
+test_statistics_cover_five_complete_oxygen_grids (__main__.PolicyTests.test_statistics_cover_five_complete_oxygen_grids) ... ok
+test_submission_has_only_two_global_levels_and_no_diagnostic_gate (__main__.PolicyTests.test_submission_has_only_two_global_levels_and_no_diagnostic_gate) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 174.236s
+
+OK

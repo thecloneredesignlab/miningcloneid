@@ -1,0 +1,24 @@
+{
+  "scope": "global",
+  "numerical_tests": {
+    "passed": 8,
+    "skipped": 0,
+    "environment": "local Python 3.12; SALib 1.5.2; NumPy 2.2.6",
+    "full_prefix_checks": "all five scrambles at N4096, N32768, N65536 nested in N131072",
+    "estimator_parity": "synthetic cached prefix plus new tails equals one-shot S1/ST/S2 and bootstrap widths"
+  },
+  "targeted_after_identity_changes": {
+    "passed": 2
+  },
+  "shell_syntax": "passed",
+  "startup_retry": "plain and ANSI-colored UID error retried; ordinary payload error not retried",
+  "plot_smoke": "complete synthetic renderer including all heatmaps, combined figure and convergence curves",
+  "visual_review": "combined PNG inspected after explicit colorbar rows fixed overlap; synthetic data is labeled",
+  "no_neighborhood_submission": true,
+  "expected_model_tasks": {
+    "N65536": 1200,
+    "N131072": 2400
+  },
+  "n_oxygen": 201,
+  "n_repeats": 5
+}

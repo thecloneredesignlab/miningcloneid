@@ -1,0 +1,41 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+From https://github.com/thecloneredesignlab/miningcloneid
+ * branch              soft_couping_eFAST -> FETCH_HEAD
+Updating 9166a2dd..3757e8d3
+error: The following untracked working tree files would be overwritten by merge:
+	oxygen/code/O2_supply_demand_MAP/analysis/eFAST/AGENTS.md
+	oxygen/code/O2_supply_demand_MAP/analysis/eFAST/archive_neighborhood.py
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/cache_portability.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/completion.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/context.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/eigensystem_double.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/eigenvalues_double.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/matrix.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/matrix.tsv.gz
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/precision_100.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/precision_50.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/result.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/transition_rates.tsv
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0001/vectors_double.tsv.gz
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/context.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/eigensystem_double.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/eigenvalues_double.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/matrix.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/matrix.tsv.gz
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/precision_100.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/precision_50.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/result.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/transition_rates.tsv
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0002/vectors_double.tsv.gz
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0003/context.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0003/eigensystem_double.rds
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/points/task_0003/eigenvalues_double.json
+	oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnost
+Aborting
+Traceback (most recent call last):
+  File "<stdin>", line 9, in <module>
+  File "/usr/lib64/python3.6/subprocess.py", line 311, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['git', '-C', '/share/lab_crd/taoli/Project/soft_couping_eFAST', 'pull', '--ff-only', 'origin', 'soft_couping_eFAST']' returned non-zero exit status 1.

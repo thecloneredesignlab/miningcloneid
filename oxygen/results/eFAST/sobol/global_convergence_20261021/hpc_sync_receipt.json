@@ -1,0 +1,70 @@
+{
+  "status": "verified",
+  "revision": "3757e8d339526e87a5a57aaade5146e14e5ad9ef",
+  "hpc_checkout_revision": "9166a2ddeccbd1d0e04405c4e4fb3f5172a12b9e",
+  "method": "exact committed global files only; full pull blocked by unrelated untracked archive files",
+  "files": [
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/global_convergence.py",
+      "sha256": "b0cd9d4fa03b5ad5c039f3d59fa258de7bc07bb99ec05a57e4f9b8e5dc57d978",
+      "verified": true
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/global_convergence_plot.py",
+      "sha256": "cf7b8cac3fee8933a19e6045a3589325230c3439935dc0bc97774af837b031df",
+      "verified": true
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/submit_global_convergence.py",
+      "sha256": "5062cd5fab3b3c4a938b8e7f66f11c3137b636e01211a03daf3661563c8a6286",
+      "verified": true
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/test_global_convergence.py",
+      "sha256": "3e8080f305c4ac309ecadc373f34c70e38348234f8cf16da151e58358330f640",
+      "verified": true
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/run_global_convergence.sbatch",
+      "sha256": "d962a8da37076588844771c0f04e1ac7bbbefa02213c0feefab40bc427f64cc7",
+      "verified": true
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/retry_global_startup.sh",
+      "sha256": "266544c8e90eb6b2917c99520f3ec12c3fd22bb92b445e1c9f8ff8440e319dd0",
+      "verified": true
+    },
+    {
+      "path": "oxygen/results/eFAST/sobol/global_convergence_20261021/README.md",
+      "sha256": "a1c5fdb8c2f2a1b13eeb50cac39f5cf0ea2b3b5ce09288043b846659ec793f8d",
+      "verified": true
+    },
+    {
+      "path": "oxygen/results/eFAST/sobol/global_convergence_20261021/validation/local_targeted_tests.log",
+      "sha256": "c4b66fa6b34a752124c8abf997968b0b1d965d234b3c4e0ae06c646af4f2f49a",
+      "verified": true
+    },
+    {
+      "path": "oxygen/results/eFAST/sobol/global_convergence_20261021/validation/local_tests.log",
+      "sha256": "25048dc4b698833680fbb1956af25c7f0b80a221d7e74dc9e44e35fe9e7ba9ce",
+      "verified": true
+    },
+    {
+      "path": "oxygen/results/eFAST/sobol/global_convergence_20261021/validation/local_validation.json",
+      "sha256": "18a2edce8ee2e2765bdde548d7f6cc2e7d607886de1edebefdfa4c2982669402",
+      "verified": true
+    },
+    {
+      "path": "oxygen/results/eFAST/sobol/global_convergence_20261021/validation/synthetic_combined_preview.png",
+      "sha256": "c9feb9b64d96d6c261c2d30f0ca005599b4d6a6e37e89838b220906249846775",
+      "verified": true
+    },
+    {
+      "path": "oxygen/results/eFAST/sobol/global_convergence_20261021/validation/synthetic_plot_smoke.log",
+      "sha256": "7bbf2066b48e4adf7faba3cf261cc9e85b1d56e8f0d298664376c2e0d0dbc2c6",
+      "verified": true
+    }
+  ],
+  "utc": "2026-10-21T15:48:21.408689Z",
+  "archive_files_changed": 0
+}

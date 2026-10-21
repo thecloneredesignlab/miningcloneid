@@ -1,0 +1,68 @@
+{
+  "checked_hpc_local_time": "2026-10-21T11:55:19.612747",
+  "scope": "global",
+  "code_revision": "3757e8d339526e87a5a57aaade5146e14e5ad9ef",
+  "resource_verification": "passed",
+  "all_8_monitors_running": true,
+  "original_sif_tests": {
+    "passed": 8,
+    "skipped": 0,
+    "elapsed_seconds": 86.169
+  },
+  "source_audit_status": "running; repeats 1 and 2 certified at this snapshot",
+  "production_status": "waiting on source audit and reusable model smoke",
+  "queue_counts": {
+    "21262946": {
+      "RUNNING": 1
+    },
+    "21262947": {
+      "PENDING": 1
+    },
+    "21262948": {
+      "PENDING": 1200
+    },
+    "21262949": {
+      "PENDING": 130
+    },
+    "21262950": {
+      "PENDING": 1
+    },
+    "21262951": {
+      "PENDING": 2400
+    },
+    "21262952": {
+      "PENDING": 130
+    },
+    "21262953": {
+      "PENDING": 1
+    },
+    "21262954": {
+      "RUNNING": 1
+    },
+    "21262955": {
+      "RUNNING": 1
+    },
+    "21262956": {
+      "RUNNING": 1
+    },
+    "21262957": {
+      "RUNNING": 1
+    },
+    "21262958": {
+      "RUNNING": 1
+    },
+    "21262959": {
+      "RUNNING": 1
+    },
+    "21262960": {
+      "RUNNING": 1
+    },
+    "21262961": {
+      "RUNNING": 1
+    }
+  },
+  "failures": [],
+  "convergence_policy": "diagnostic_only",
+  "full_pull": "blocked by pre-existing untracked archive files; no overwrite or move; exact committed global files synchronized and verified",
+  "frozen_controller_hashes_match_local_commit": true
+}

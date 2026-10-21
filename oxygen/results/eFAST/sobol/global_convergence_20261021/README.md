@@ -62,3 +62,29 @@ or a numerical convergence test. Negative S1/S2 estimates are sampling noise.
 
 The approved upper bound for this continuation is N131072. A further increase
 is not submitted automatically, and passing every diagnostic is not promised.
+
+## Submitted run
+
+Code revision: `3757e8d339526e87a5a57aaade5146e14e5ad9ef`. Submitted 2026-10-21 at 15:48 UTC.
+
+| Stage | Scientific job | Add-six-hour monitor |
+|---|---:|---:|
+| Prepare and audit | 21262946 | 21262954 |
+| Reusable model smoke | 21262947 | 21262955 |
+| N65536 model (1200 tasks) | 21262948 | 21262956 |
+| N65536 statistics (130 tasks) | 21262949 | 21262957 |
+| N65536 report | 21262950 | 21262958 |
+| N131072 model (2400 tasks) | 21262951 | 21262959 |
+| N131072 statistics (130 tasks) | 21262952 | 21262960 |
+| N131072 report | 21262953 | 21262961 |
+
+The full HPC repository pull was blocked by pre-existing untracked archived
+files. Those files were preserved. Only this change's 12 new global files were
+synchronized directly from the committed Git objects and verified byte-for-byte
+before submission. `hpc_sync_receipt.json` records both the code revision and
+the unchanged HPC checkout revision. Workers execute the frozen code from the
+new stage, never the checkout's unrelated mutable working files.
+
+Submission and running monitors are not scientific completion. Each level has
+its own completion receipt, and the initial audit and reusable smoke precede
+all production model tasks.

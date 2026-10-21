@@ -1,0 +1,13 @@
+{
+  "state": "archived",
+  "archived_on": "2026-10-21",
+  "scope": [
+    "efast_neighborhood",
+    "sobol_neighborhood"
+  ],
+  "archive": "oxygen/results/eFAST/archives/neighborhood_20261021",
+  "new_neighborhood_work_allowed": false,
+  "resume_requires": "explicit user request and integrity/identity validation",
+  "global_analysis_in_scope": false,
+  "original_scientific_status_preserved": true
+}

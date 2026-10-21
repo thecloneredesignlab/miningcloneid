@@ -1,0 +1,9 @@
+{
+  "path": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+  "bytes": 4968341504,
+  "sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "checked_utc": "2026-10-21T14:56:54.456833Z",
+  "expected_sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+  "independent_copy": false,
+  "expected_hash_matches": true
+}

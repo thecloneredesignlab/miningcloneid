@@ -278,3 +278,10 @@ data/DrugResponseData_PDX/.DS_Store
 !/oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/
 /oxygen/results/eFAST/neighborhood10pct/pilot/N8193_M4_and_N4097_M8/phase_spectrum_diagnostics/boundary_effect_review/compiled_review_template.tar.gz
 /oxygen/code/O2_supply_demand_MAP/analysis/eFAST/boundary_review/__pycache__/
+
+# Resumable neighborhood archive: metadata, code and fitted-input snapshots.
+!/oxygen/results/eFAST/archives/
+/oxygen/results/eFAST/archives/*/payload/
+/oxygen/results/eFAST/archives/**/.DS_Store
+/oxygen/results/eFAST/archives/**/__pycache__/
+!/oxygen/results/eFAST/NEIGHBORHOOD_ARCHIVED.json

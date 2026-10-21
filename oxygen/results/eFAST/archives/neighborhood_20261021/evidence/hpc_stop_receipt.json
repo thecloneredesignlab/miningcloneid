@@ -1,0 +1,127 @@
+{
+  "created_utc": "2026-10-21T14:51:54.435946Z",
+  "scope": "eFAST and Sobol neighborhood only",
+  "before": "21140549|sref_report_neighborhood|PENDING\n21140548|sref_analyze_n8192|PENDING\n17431948|ood-rstudio-cont_4482173_20260615::app=OOD-rstudio-cont,|RUNNING\n20760634|ood-rstudio-cont_4482173_20261008::app=OOD-rstudio-cont,|RUNNING\n21258961|sum159-sc7d|RUNNING\n21140562|sobol_add6_21140548|RUNNING\n21140563|sobol_add6_21140549|RUNNING\n",
+  "matched_jobs": {
+    "21140548": {
+      "stage": "analyze_n8192",
+      "job_id": "21140548",
+      "role": "analyze",
+      "scope": "neighborhood10pct",
+      "N": 8192,
+      "array_count": 2485,
+      "memory": "8G",
+      "dependencies": [
+        "21140547"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.154524Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=8G",
+        "--job-name=sref_analyze_n8192",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=analyze,SOBOL_REFINEMENT_SCOPE=neighborhood10pct,SOBOL_REFINEMENT_N=8192",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_n8192_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/analyze_n8192_%A_%a.err",
+        "--array=1-2485",
+        "--dependency=afterok:21140547",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    "21140549": {
+      "stage": "report_neighborhood",
+      "job_id": "21140549",
+      "role": "report",
+      "scope": "neighborhood10pct",
+      "N": 0,
+      "array_count": 0,
+      "memory": "16G",
+      "dependencies": [
+        "21140548"
+      ],
+      "submitted_utc": "2026-10-18T21:45:58.186965Z",
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=sref_report_neighborhood",
+        "--comment=sref:e4af059ea385aaf2",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018",
+        "--export=ALL,SOBOL_REFINEMENT_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018,SOBOL_REFINEMENT_ROLE=report,SOBOL_REFINEMENT_SCOPE=neighborhood10pct",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/report_neighborhood_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/logs/report_neighborhood_%A_%a.err",
+        "--dependency=afterok:21140548",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/refinement_20261018/slurm/code_snapshot/run_refinement.sbatch"
+      ]
+    },
+    "21140562": {
+      "target_job_id": "21140548",
+      "monitor_job_id": "21140562",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.805822Z"
+    },
+    "21140563": {
+      "target_job_id": "21140549",
+      "monitor_job_id": "21140563",
+      "predecessor": "",
+      "submitted_utc": "2026-10-18T21:45:58.855324Z"
+    }
+  },
+  "cancelled_job_ids": [
+    "21140548",
+    "21140549",
+    "21140562",
+    "21140563"
+  ],
+  "commands": [
+    {
+      "argv": [
+        "scancel",
+        "21140548"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "scancel",
+        "21140549"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "scancel",
+        "21140562"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "scancel",
+        "21140563"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "after": "21140562|sobol_add6_21140548|COMPLETING\n21140563|sobol_add6_21140549|COMPLETING\n17431948|ood-rstudio-cont_4482173_20260615::app=OOD-rstudio-cont,|RUNNING\n20760634|ood-rstudio-cont_4482173_20261008::app=OOD-rstudio-cont,|RUNNING\n21258961|sum159-sc7d|RUNNING\n"
+}

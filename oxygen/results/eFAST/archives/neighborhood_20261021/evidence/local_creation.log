@@ -1,0 +1,56 @@
+Inventory efast_neighborhood
+Inventory sobol_neighborhood_pilot
+Inventory sobol_neighborhood_N4096
+Inventory shared_sobol_pilot
+Inventory shared_sobol_inputs
+Inventory shared_sobol_runtime
+Inventory shared_sobol_N4096_inputs
+Inventory shared_sobol_N4096_runtime
+Inventory shared_sobol_N4096_recovery
+Inventoried 25000 files
+Inventory shared_sobol_N4096_diagnostics
+Inventory shared_sobol_refinement_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+{
+  "status": "sealed",
+  "started_utc": "2026-10-21T14:55:22.748131Z",
+  "repo": "/Users/4482173/Documents/GitHub/soft_couping_eFAST",
+  "location": "local",
+  "archive_mode": "in_place_results_with_independent_code_and_fit_snapshots",
+  "source_head": "b1b7fc69e6137738a06c4c4a49ec754adaa6e94c",
+  "source_branch": "soft_couping_eFAST",
+  "archive_tool_sha256": "c27ea8088269d40b00fa071dffa0a1c1285d24e19dd96e3b1a42cc9597caaaf6",
+  "code": {
+    "file": "local_code.tar.gz",
+    "sha256": "b21ad2158997c17a7b4f56653d2830acc7e00d10dca7e7f01bc82c7ab747f940",
+    "files": 705,
+    "bytes": 2273575,
+    "manifest": "local_code_manifest.json",
+    "manifest_sha256": "b75ba23a21f6c400a55c1846365d9b252a4eed382d986edf6fd1701a47c93f99",
+    "readback_verified": true
+  },
+  "completed_utc": "2026-10-21T14:55:48.594572Z",
+  "bulk_payloads_copied": false,
+  "original_scientific_status_modified": false
+}

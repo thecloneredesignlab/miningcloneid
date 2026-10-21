@@ -1,0 +1,120 @@
+Inventory efast_neighborhood
+Inventoried 25000 files
+Inventoried 50000 files
+Inventoried 75000 files
+Inventoried 100000 files
+Inventoried 125000 files
+Inventoried 150000 files
+Inventoried 175000 files
+Inventoried 200000 files
+Inventoried 225000 files
+Inventoried 250000 files
+Inventoried 275000 files
+Inventoried 300000 files
+Inventoried 325000 files
+Inventoried 350000 files
+Inventoried 375000 files
+Inventoried 400000 files
+Inventory sobol_neighborhood_pilot
+Inventoried 425000 files
+Inventory sobol_neighborhood_N4096
+Inventoried 450000 files
+Inventoried 475000 files
+Inventoried 500000 files
+Inventoried 525000 files
+Inventoried 550000 files
+Inventoried 575000 files
+Inventoried 600000 files
+Inventoried 625000 files
+Inventoried 650000 files
+Inventoried 675000 files
+Inventory sobol_neighborhood_refinement
+Inventoried 700000 files
+Inventoried 725000 files
+Inventoried 750000 files
+Inventoried 775000 files
+Inventoried 800000 files
+Inventoried 825000 files
+Inventoried 850000 files
+Inventoried 875000 files
+Inventoried 900000 files
+Inventory shared_sobol_pilot
+Inventory shared_sobol_inputs
+Inventory shared_sobol_runtime
+Inventoried 925000 files
+Inventory shared_sobol_N4096_inputs
+Inventory shared_sobol_N4096_runtime
+Inventoried 950000 files
+Inventoried 975000 files
+Inventoried 1000000 files
+Inventoried 1025000 files
+Inventoried 1050000 files
+Inventoried 1075000 files
+Inventory shared_sobol_N4096_recovery
+Inventoried 1100000 files
+Inventoried 1125000 files
+Inventory shared_sobol_N4096_diagnostics
+Inventory shared_sobol_refinement_control
+Inventoried 1150000 files
+Inventoried 1175000 files
+Inventoried 1200000 files
+Inventoried 1225000 files
+Inventoried 1250000 files
+Inventoried 1275000 files
+Inventoried 1300000 files
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+Inventory shared_sobol_stage_control
+{
+  "status": "sealed",
+  "started_utc": "2026-10-21T14:55:34.420334Z",
+  "repo": "/share/lab_crd/taoli/Project/soft_couping_eFAST",
+  "location": "hpc",
+  "archive_mode": "in_place_results_with_independent_code_and_fit_snapshots",
+  "source_head": "9166a2ddeccbd1d0e04405c4e4fb3f5172a12b9e",
+  "source_branch": "soft_couping_eFAST",
+  "archive_tool_sha256": "c27ea8088269d40b00fa071dffa0a1c1285d24e19dd96e3b1a42cc9597caaaf6",
+  "code": {
+    "file": "hpc_code.tar.gz",
+    "sha256": "356c2d5412b42eb3ffe295361fa0401e022da35dd5a62ad8f9d1a123f6017abd",
+    "files": 698,
+    "bytes": 2219051,
+    "manifest": "hpc_code_manifest.json",
+    "manifest_sha256": "f59cbb690e598dee0093cfc966c8adca4dbbb74add8269b920b54c0484fea020",
+    "readback_verified": true
+  },
+  "fit_inputs": {
+    "file": "hpc_fit_inputs.tar.gz",
+    "sha256": "df05a36c38329f18ede8e44acb789e3fd3dcd8cda0d1d7460cc2f6b4697fba96",
+    "files": 2000,
+    "bytes": 5257273,
+    "manifest": "hpc_fit_inputs_manifest.json",
+    "manifest_sha256": "e951e592d742d6e50e75c2320d2f794a4c66c0b1ffcd095b1521a793312e8bd8",
+    "readback_verified": true,
+    "original_root": "/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253",
+    "verified_endpoints": 500,
+    "seed_manifest_sha256": "dd495d6cac544e63f7d7637a40d234a351f217f33faa381a48849eeff30179d6"
+  },
+  "completed_utc": "2026-10-21T15:30:40.856342Z",
+  "bulk_payloads_copied": false,
+  "original_scientific_status_modified": false
+}

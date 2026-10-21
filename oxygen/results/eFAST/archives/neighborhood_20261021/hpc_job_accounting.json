@@ -1,0 +1,221 @@
+{
+  "checked_utc": "2026-10-21T14:56:48.925972Z",
+  "command": [
+    "sacct",
+    "-X",
+    "--array",
+    "-n",
+    "-P",
+    "-j",
+    "21140536,21140537,21140538,21140539,21140540,21140541,21140542,21140543,21140544,21140545,21140546,21140547,21140548,21140549,21140550,21140551,21140552,21140553,21140554,21140555,21140556,21140557,21140558,21140559,21140560,21140561,21140562,21140563",
+    "-o",
+    "JobID%40,JobName%40,State%40,ExitCode"
+  ],
+  "groups": [
+    {
+      "parent": "21140536",
+      "name": "sref_prepare",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140537",
+      "name": "sref_audit_global",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140538",
+      "name": "sref_audit_neighborhood",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 500
+    },
+    {
+      "parent": "21140539",
+      "name": "sref_smoke",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140540",
+      "name": "sref_model_g8192",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 150
+    },
+    {
+      "parent": "21140541",
+      "name": "sref_analyze_g8192",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 130
+    },
+    {
+      "parent": "21140542",
+      "name": "sref_model_g16384",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 300
+    },
+    {
+      "parent": "21140543",
+      "name": "sref_analyze_g16384",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 130
+    },
+    {
+      "parent": "21140544",
+      "name": "sref_model_g32768",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 600
+    },
+    {
+      "parent": "21140545",
+      "name": "sref_analyze_g32768",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 130
+    },
+    {
+      "parent": "21140546",
+      "name": "sref_report_global",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140547",
+      "name": "sref_model_n8192",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 74518
+    },
+    {
+      "parent": "21140547",
+      "name": "sref_model_n8192",
+      "state": "FAILED",
+      "exit_code": "127:0",
+      "count": 32
+    },
+    {
+      "parent": "21140548",
+      "name": "sref_analyze_n8192",
+      "state": "CANCELLED by 107865",
+      "exit_code": "0:0",
+      "count": 2485
+    },
+    {
+      "parent": "21140549",
+      "name": "sref_report_neighborhood",
+      "state": "CANCELLED by 107865",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140550",
+      "name": "sobol_add6_21140536",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140551",
+      "name": "sobol_add6_21140537",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140552",
+      "name": "sobol_add6_21140538",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140553",
+      "name": "sobol_add6_21140539",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140554",
+      "name": "sobol_add6_21140540",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140555",
+      "name": "sobol_add6_21140541",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140556",
+      "name": "sobol_add6_21140542",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140557",
+      "name": "sobol_add6_21140543",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140558",
+      "name": "sobol_add6_21140544",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140559",
+      "name": "sobol_add6_21140545",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140560",
+      "name": "sobol_add6_21140546",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140561",
+      "name": "sobol_add6_21140547",
+      "state": "COMPLETED",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140562",
+      "name": "sobol_add6_21140548",
+      "state": "CANCELLED by 107865",
+      "exit_code": "0:0",
+      "count": 1
+    },
+    {
+      "parent": "21140563",
+      "name": "sobol_add6_21140549",
+      "state": "CANCELLED by 107865",
+      "exit_code": "0:0",
+      "count": 1
+    }
+  ],
+  "queue_after_stop": "17431948|ood-rstudio-cont_4482173_20260615::app=OOD-rstudio-cont,|RUNNING\n20760634|ood-rstudio-cont_4482173_20261008::app=OOD-rstudio-cont,|RUNNING\n21258961|sum159-sc7d|RUNNING\n",
+  "source_receipt_sha256": "f491202e2db43239a127539a8bc5bdd8332332971b9cae4a8ae06030fa5409f9"
+}

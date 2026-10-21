@@ -1,0 +1,25 @@
+{
+  "status": "pass",
+  "checked_utc": "2026-10-21T15:31:24.652864Z",
+  "manifest_sha256": "68744cc1c4c6029d5087dda910f0f744cbe7554aea058912442b098330739490",
+  "counts": {
+    "sha256_checked": 16368,
+    "files_checked": 16368
+  },
+  "failures": [],
+  "note": "Size/mtime checks do not certify content. Revalidate original trajectory/checkpoint identity receipts before reuse."
+}
+{
+  "status": "pass",
+  "checked_utc": "2026-10-21T15:31:20.339335Z",
+  "inventory_sha256": "35fabb2b645c5c3a1a18e2440b3d5bff84429e40ed67b7cdaa6ef3e974c482a5",
+  "files": 1301897,
+  "bytes": 2033706227766,
+  "fresh_sha256_files": 1095769,
+  "size_mtime_only_files": 206128,
+  "duplicate_paths": 0,
+  "scope_counts_match": true,
+  "critical_files": 16368,
+  "bulk_payload_content_rechecked": false,
+  "note": "Inventory digest/schema/counts checked; critical sources rehashed. Bulk stat-only records are not content-certified."
+}

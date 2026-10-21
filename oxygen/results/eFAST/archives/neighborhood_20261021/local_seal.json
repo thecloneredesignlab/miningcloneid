@@ -1,0 +1,104 @@
+{
+  "archive_mode": "in_place_results_with_independent_code_and_fit_snapshots",
+  "archive_tool_sha256": "c27ea8088269d40b00fa071dffa0a1c1285d24e19dd96e3b1a42cc9597caaaf6",
+  "bulk_payloads_copied": false,
+  "code": {
+    "bytes": 2273575,
+    "file": "local_code.tar.gz",
+    "files": 705,
+    "manifest": "local_code_manifest.json",
+    "manifest_sha256": "b75ba23a21f6c400a55c1846365d9b252a4eed382d986edf6fd1701a47c93f99",
+    "readback_verified": true,
+    "sha256": "b21ad2158997c17a7b4f56653d2830acc7e00d10dca7e7f01bc82c7ab747f940"
+  },
+  "completed_utc": "2026-10-21T14:55:48.594572Z",
+  "location": "local",
+  "original_scientific_status_modified": false,
+  "repo": "/Users/4482173/Documents/GitHub/soft_couping_eFAST",
+  "results": {
+    "absent_roots": [
+      "oxygen/results/eFAST/sobol/neighborhood_refinement"
+    ],
+    "file": "local_results.jsonl.gz",
+    "policy": "all content on local; on HPC all <=256KiB, JSON, Markdown, code snapshots, summaries and figures; others size/mtime only",
+    "scopes": {
+      "efast_neighborhood": {
+        "bytes": 7732521841,
+        "files": 13592,
+        "fresh_sha256": 13592,
+        "hashed_bytes": 7732521841
+      },
+      "shared_sobol_N4096_diagnostics": {
+        "bytes": 25119,
+        "files": 11,
+        "fresh_sha256": 11,
+        "hashed_bytes": 25119
+      },
+      "shared_sobol_N4096_inputs": {
+        "bytes": 14171994,
+        "files": 4,
+        "fresh_sha256": 4,
+        "hashed_bytes": 14171994
+      },
+      "shared_sobol_N4096_recovery": {
+        "bytes": 60925761,
+        "files": 13581,
+        "fresh_sha256": 13581,
+        "hashed_bytes": 60925761
+      },
+      "shared_sobol_N4096_runtime": {
+        "bytes": 4998734,
+        "files": 9,
+        "fresh_sha256": 9,
+        "hashed_bytes": 4998734
+      },
+      "shared_sobol_inputs": {
+        "bytes": 5537,
+        "files": 4,
+        "fresh_sha256": 4,
+        "hashed_bytes": 5537
+      },
+      "shared_sobol_pilot": {
+        "bytes": 49514411,
+        "files": 336,
+        "fresh_sha256": 336,
+        "hashed_bytes": 49514411
+      },
+      "shared_sobol_refinement_control": {
+        "bytes": 2662034,
+        "files": 12,
+        "fresh_sha256": 12,
+        "hashed_bytes": 2662034
+      },
+      "shared_sobol_runtime": {
+        "bytes": 376230,
+        "files": 9,
+        "fresh_sha256": 9,
+        "hashed_bytes": 376230
+      },
+      "shared_sobol_stage_control": {
+        "bytes": 3432098,
+        "files": 22,
+        "fresh_sha256": 22,
+        "hashed_bytes": 3432098
+      },
+      "sobol_neighborhood_N4096": {
+        "bytes": 1676357450,
+        "files": 6205,
+        "fresh_sha256": 6205,
+        "hashed_bytes": 1676357450
+      },
+      "sobol_neighborhood_pilot": {
+        "bytes": 39620836,
+        "files": 269,
+        "fresh_sha256": 269,
+        "hashed_bytes": 39620836
+      }
+    },
+    "sha256": "2aa21aa0eca21c297eab13cf6bfb82a86d1fcfb9ea82189e78d2cc38aaabf4a3"
+  },
+  "source_branch": "soft_couping_eFAST",
+  "source_head": "b1b7fc69e6137738a06c4c4a49ec754adaa6e94c",
+  "started_utc": "2026-10-21T14:55:22.748131Z",
+  "status": "sealed"
+}

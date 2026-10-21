@@ -1,0 +1,132 @@
+{
+  "archive_mode": "in_place_results_with_independent_code_and_fit_snapshots",
+  "archive_tool_sha256": "c27ea8088269d40b00fa071dffa0a1c1285d24e19dd96e3b1a42cc9597caaaf6",
+  "bulk_payloads_copied": false,
+  "code": {
+    "bytes": 2219051,
+    "file": "hpc_code.tar.gz",
+    "files": 698,
+    "manifest": "hpc_code_manifest.json",
+    "manifest_sha256": "f59cbb690e598dee0093cfc966c8adca4dbbb74add8269b920b54c0484fea020",
+    "readback_verified": true,
+    "sha256": "356c2d5412b42eb3ffe295361fa0401e022da35dd5a62ad8f9d1a123f6017abd"
+  },
+  "completed_utc": "2026-10-21T15:30:40.856342Z",
+  "fit_inputs": {
+    "bytes": 5257273,
+    "file": "hpc_fit_inputs.tar.gz",
+    "files": 2000,
+    "manifest": "hpc_fit_inputs_manifest.json",
+    "manifest_sha256": "e951e592d742d6e50e75c2320d2f794a4c66c0b1ffcd095b1521a793312e8bd8",
+    "original_root": "/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253",
+    "readback_verified": true,
+    "seed_manifest_sha256": "dd495d6cac544e63f7d7637a40d234a351f217f33faa381a48849eeff30179d6",
+    "sha256": "df05a36c38329f18ede8e44acb789e3fd3dcd8cda0d1d7460cc2f6b4697fba96",
+    "verified_endpoints": 500
+  },
+  "location": "hpc",
+  "original_scientific_status_modified": false,
+  "repo": "/share/lab_crd/taoli/Project/soft_couping_eFAST",
+  "results": {
+    "absent_roots": [],
+    "file": "hpc_results.jsonl.gz",
+    "policy": "all content on local; on HPC all <=256KiB, JSON, Markdown, code snapshots, summaries and figures; others size/mtime only",
+    "scopes": {
+      "efast_neighborhood": {
+        "bytes": 242013848821,
+        "files": 422583,
+        "fresh_sha256": 375700,
+        "hashed_bytes": 4310695470,
+        "size_mtime_only": 46883
+      },
+      "shared_sobol_N4096_diagnostics": {
+        "bytes": 26017,
+        "files": 21,
+        "fresh_sha256": 21,
+        "hashed_bytes": 26017
+      },
+      "shared_sobol_N4096_inputs": {
+        "bytes": 19697527,
+        "files": 9,
+        "fresh_sha256": 3,
+        "hashed_bytes": 156472,
+        "size_mtime_only": 6
+      },
+      "shared_sobol_N4096_recovery": {
+        "bytes": 364480365466,
+        "files": 65759,
+        "fresh_sha256": 64328,
+        "hashed_bytes": 1407465436,
+        "size_mtime_only": 1431
+      },
+      "shared_sobol_N4096_runtime": {
+        "bytes": 2552649226,
+        "files": 154854,
+        "fresh_sha256": 154852,
+        "hashed_bytes": 2542558804,
+        "size_mtime_only": 2
+      },
+      "shared_sobol_inputs": {
+        "bytes": 14021059,
+        "files": 5,
+        "fresh_sha256": 4,
+        "hashed_bytes": 5537,
+        "size_mtime_only": 1
+      },
+      "shared_sobol_pilot": {
+        "bytes": 3091372932,
+        "files": 15847,
+        "fresh_sha256": 10305,
+        "hashed_bytes": 44787349,
+        "size_mtime_only": 5542
+      },
+      "shared_sobol_refinement_control": {
+        "bytes": 1745764520,
+        "files": 155111,
+        "fresh_sha256": 154057,
+        "hashed_bytes": 1400966744,
+        "size_mtime_only": 1054
+      },
+      "shared_sobol_runtime": {
+        "bytes": 3957447,
+        "files": 2891,
+        "fresh_sha256": 2889,
+        "hashed_bytes": 777789,
+        "size_mtime_only": 2
+      },
+      "shared_sobol_stage_control": {
+        "bytes": 3430878,
+        "files": 22,
+        "fresh_sha256": 20,
+        "hashed_bytes": 145477,
+        "size_mtime_only": 2
+      },
+      "sobol_neighborhood_N4096": {
+        "bytes": 919807198768,
+        "files": 252414,
+        "fresh_sha256": 175555,
+        "hashed_bytes": 584253847,
+        "size_mtime_only": 76859
+      },
+      "sobol_neighborhood_pilot": {
+        "bytes": 474144581,
+        "files": 6581,
+        "fresh_sha256": 6453,
+        "hashed_bytes": 369880011,
+        "size_mtime_only": 128
+      },
+      "sobol_neighborhood_refinement": {
+        "bytes": 499499750524,
+        "files": 225800,
+        "fresh_sha256": 151582,
+        "hashed_bytes": 169616175,
+        "size_mtime_only": 74218
+      }
+    },
+    "sha256": "35fabb2b645c5c3a1a18e2440b3d5bff84429e40ed67b7cdaa6ef3e974c482a5"
+  },
+  "source_branch": "soft_couping_eFAST",
+  "source_head": "9166a2ddeccbd1d0e04405c4e4fb3f5172a12b9e",
+  "started_utc": "2026-10-21T14:55:34.420334Z",
+  "status": "sealed"
+}

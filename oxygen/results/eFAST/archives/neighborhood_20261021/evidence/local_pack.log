@@ -1,0 +1,11 @@
+{
+  "status": "complete",
+  "file": "payload/local_results.tar",
+  "bytes": 9644707840,
+  "sha256": "06518b2edeac29078570cd2a6c98fb370dc1e63f7f7313ecd925aaa25421a0cd",
+  "source_manifest_sha256": "2aa21aa0eca21c297eab13cf6bfb82a86d1fcfb9ea82189e78d2cc38aaabf4a3",
+  "files": 34054,
+  "all_member_sha256_checked": true,
+  "independent_copy": true,
+  "completed_utc": "2026-10-21T14:58:54.804068Z"
+}

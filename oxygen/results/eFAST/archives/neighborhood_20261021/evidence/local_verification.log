@@ -1,0 +1,11 @@
+{
+  "status": "pass",
+  "checked_utc": "2026-10-21T14:56:45.319733Z",
+  "manifest_sha256": "2aa21aa0eca21c297eab13cf6bfb82a86d1fcfb9ea82189e78d2cc38aaabf4a3",
+  "counts": {
+    "sha256_checked": 34054,
+    "files_checked": 34054
+  },
+  "failures": [],
+  "note": "Size/mtime checks do not certify content. Revalidate original trajectory/checkpoint identity receipts before reuse."
+}

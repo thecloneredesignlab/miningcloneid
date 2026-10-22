@@ -1,0 +1,113 @@
+{
+  "figure": 7,
+  "ensemble": "joint_winners",
+  "full_parameters": true,
+  "families": [
+    "C01",
+    "C02"
+  ],
+  "p_misseg": [
+    0.1,
+    0.3
+  ],
+  "oxygen_primary": {
+    "min": 0,
+    "max": 5,
+    "step": 0.25
+  },
+  "culture_extension": {
+    "min": 5.5,
+    "max": 20,
+    "step": 0.5
+  },
+  "initial_ploidy": [
+    2,
+    4
+  ],
+  "day": 1000,
+  "replicates": 200,
+  "intervention_q": [
+    0,
+    0.5,
+    1
+  ],
+  "threshold_N": 66,
+  "threshold_sensitivity": [
+    55,
+    77
+  ],
+  "Nmax_sensitivity": [
+    198,
+    242
+  ],
+  "snapshot_days": [
+    0,
+    10,
+    100,
+    500,
+    1000
+  ],
+  "bootstrap_resamples": 0,
+  "bootstrap_seed": 20261001,
+  "main_oxygen": [
+    5,
+    0.5
+  ],
+  "main_p_misseg": 0.1,
+  "supp5_p_misseg": 0.3,
+  "matrix_p_misseg": 0.1,
+  "matrix_thresholds_N": [
+    44,
+    55,
+    66,
+    77,
+    88
+  ],
+  "matrix_oxygen_invivo": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "matrix_oxygen_invitro": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    20
+  ],
+  "initialization": "Figure6 pure chromosome-state 2N/4N; explicit diagnostic override",
+  "save_passage_states": true,
+  "growth_denominator_tolerance": 1e-8,
+  "data_directory": "data/Figures/Figure7",
+  "analyses": [
+    "instantaneous",
+    "history"
+  ],
+  "direct_source_definition": {
+    "growth_definition": "current_first_generation_HL_proliferation",
+    "day": 1000,
+    "initial_direct_label": false,
+    "inherit_label": false,
+    "label_exit": "First division or death of the original direct H-to-L daughter",
+    "growth_formula": "100 * sum(J_LL D_L) / sum(J_LL X_L)",
+    "cohort_equation": "D_prime = K_HL X - (crowding * lambda + mu) D",
+    "subtract_death_from_growth": false,
+    "subtract_maternal_removal_from_growth": false,
+    "entrant_age_window": null,
+    "passage_label_update": "Conditional expected retained direct cells given saved total-state samples; no new RNG"
+  },
+  "pipeline": "complete_forward_pipeline",
+  "representative": {
+    "replicates": 2
+  },
+  "model_grid": {
+    "N_MIN": 22,
+    "N_MAX": 154,
+    "N_UNIT": 22
+  }
+}

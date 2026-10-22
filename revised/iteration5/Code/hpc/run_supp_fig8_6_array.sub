@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Legacy Slurm spool/task indices are retired. Use submit_Figure78.sh with an explicit current prepared root and --submit=yes." >&2
+exit 2

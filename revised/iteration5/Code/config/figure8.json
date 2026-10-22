@@ -1,0 +1,57 @@
+{
+  "data_directory": "data/Figures/Figure8",
+  "seeds_per_family": 500,
+  "pooled_seeds": 1000,
+  "quantile_type": 7,
+  "main_day": 1000,
+  "family_time": {
+    "width_inches": 20,
+    "height_inches": 18.5
+  },
+  "days": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000
+  ],
+  "oxygen_max": {
+    "in vivo": 5,
+    "in vitro": 20
+  },
+  "pipeline": "complete_forward_pipeline",
+  "replicates": 200,
+  "seeds_per_task": 50,
+  "oxygen_step": 0.1,
+  "fixed_p_misseg": [
+    0.01,
+    0.3
+  ],
+  "initial_Q": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    "Inf"
+  ],
+  "representative": {
+    "replicates": 2,
+    "oxygen": [
+      0,
+      0.5,
+      5
+    ]
+  },
+  "model_grid": {
+    "N_MIN": 22,
+    "N_MAX": 154,
+    "N_UNIT": 22
+  }
+}

@@ -1,0 +1,110 @@
+path	role	status	target
+Code/Figures/audit_Figure78_invitro_repair_completion.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/audit_Figure7_full_boundary.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/audit_Figure7_full_ledger.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/audit_Figure7_full_replay.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/audit_Figure8_time_snapshots_hpc.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/data_Figure7.R	generation	current	figure78_pipeline.R
+Code/Figures/data_Figure78_invitro_repair.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure7_proliferation.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure7_versions.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure7_versions_postprocess.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure8.R	generation	current	figure78_pipeline.R
+Code/Figures/data_Figure8_fitted_family.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure8_pooled_passage.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure8_three_start.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Figure8_time_snapshots.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Supp_Figure8_6.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/data_Supp_Figure8_7.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/draw_Figure7.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure78_all.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure78_invitro_repair.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure7_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure7_versions.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure8.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure8_family_time_snapshots.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Figure8_time_snapshots.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_1.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_1_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_2_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_3.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_3_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_4.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_4_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_5.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_5_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_6.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_6_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_7.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_7_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_1.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_3.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_4.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_5.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_6.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_7.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_8.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure8_9.R	drawing	current	figure78_render_only.R
+Code/Figures/figure78_entry_tools.py	static_validation	current	syntax/path/hash only
+Code/Figures/finalize_Figure7.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/finalize_Figure78_invitro_repair.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/finalize_Figure7_versions.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/finalize_Figure8.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/finalize_Figure8_time_snapshots.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/merge_Figure7_matrix_pdfs.py	pdf_packaging	current	current rendered pages
+Code/Figures/record_Figure7_versions_visual_review.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/render_Figure7_versions_qa.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/revise_Figure78.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/run_Figure7.R	generation	current	figure78_pipeline.R
+Code/Figures/run_Figure8.R	generation	current	figure78_pipeline.R
+Code/Figures/summarize_Figure78_invitro_repair.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
+Code/Figures/test_Figure78_full_parameters.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/test_Figure78_invitro_repair.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/test_Figure78_revision.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/validate_Figure78.R	retained_validation	current	figure78_render_only.R
+Code/Figures/validate_Figure78_cold_start.R	explicit_acceptance	current	current pipeline; separate runtime authorization required
+Code/Figures/validate_Figure78_full_parameters.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/validate_Figure78_full_pdf.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/validate_Figure78_invitro_repair.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/validate_Figure78_invitro_repair_pdf.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/validate_Figure78_pipeline.R	explicit_acceptance	current	current pipeline; separate runtime authorization required
+Code/Figures/validate_Figure78_render_only.py	explicit_acceptance	current	current pipeline; separate runtime authorization required
+Code/Figures/validate_Figure7_versions.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/validate_Figure7_versions_artifacts.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/Figures/validate_Figure8_time_snapshot_seed_tables.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/validate_Figure8_time_snapshots.R	validation_alias	compatibility_guard	validate_Figure78.R
+Code/Figures/validate_Figure8_time_snapshots_artifacts.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
+Code/config/figure78_hpc_paths.env	path_configuration	current	private locked model
+Code/hpc/figure78_Rscript.sh	hpc_current	current	current Figure7/8 pipeline
+Code/hpc/figure78_legacy_hpc.sh	hpc_current	current	current Figure7/8 pipeline
+Code/hpc/run_Figure78.sh	hpc_current	current	current Figure7/8 pipeline
+Code/hpc/run_Figure78_task.sh	hpc_current	current	current Figure7/8 pipeline
+Code/hpc/run_current_Figure78_array.sub	hpc_current	current	current Figure7/8 pipeline
+Code/hpc/run_figure78_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure78_followup_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure78_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure78_invitro_repair_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure78_invitro_repair_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure78_revision_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure7_versions_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure7_versions_replay_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure8_fitted_family_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure8_fitted_family_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure8_pooled_passage_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure8_pooled_passage_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_figure8_time_snapshots_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure8_time_snapshots_command.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_figure8_time_snapshots_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/run_supp_fig8_6_array.sub	hpc_guard	compatibility_guard	submit_Figure78.sh
+Code/hpc/run_supp_fig8_6_hpc.sh	hpc_alias	compatibility_guard	run_Figure78.sh
+Code/hpc/submit_Figure78.sh	hpc_current	current	current Figure7/8 pipeline
+Code/hpc/submit_figure78_followup_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_figure78_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_figure78_invitro_repair_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_figure78_revision_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_figure8_fitted_family_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_figure8_pooled_passage_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_figure8_time_snapshots_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/hpc/submit_supp_fig8_6_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh

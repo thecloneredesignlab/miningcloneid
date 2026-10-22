@@ -1,0 +1,5 @@
+stem	O2_pct	p_misseg	threshold_N	A_metric	B_metric
+assembled_fig7	0.5	0.1	66	flux_percent	growth_percent
+supp_fig7_5	0.5	0.3	66	flux_percent	growth_percent
+supp_fig7_6	5	0.1	66	flux_percent	growth_percent
+supp_fig7_7	5	0.3	66	flux_percent	growth_percent

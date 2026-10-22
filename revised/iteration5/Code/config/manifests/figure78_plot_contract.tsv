@@ -1,0 +1,27 @@
+product	figure	analysis	question	presentation	uncertainty	pdf_pages
+assembled_fig7	Figure7	instantaneous	Immediate H-to-L inflow and surviving direct-source gross proliferation	Approved two-panel blocks; 14 x 11 inches	Retained median and IQR	1
+supp_fig7_1	Figure7	instantaneous	Mother-to-daughter chromosome flux	Approved source-daughter heatmaps	Retained diagnostic data	1
+supp_fig7_2	Figure7	instantaneous	Low-ploidy population budget	Approved signed budget bars	Retained diagnostic data	1
+supp_fig7_3	Figure7	instantaneous	Immediate inflow across oxygen and blockade thresholds	Approved annotated matrices and overview	Retained median and IQR	8
+supp_fig7_4	Figure7	instantaneous	Direct-source gross proliferation across oxygen and thresholds	Approved annotated matrices and overview	Retained median and IQR	8
+supp_fig7_5	Figure7	instantaneous	O2 0.5 percent and p_misseg 0.3	Approved two-panel blocks	Retained median and IQR	1
+supp_fig7_6	Figure7	instantaneous	O2 5 percent and p_misseg 0.1	Approved two-panel blocks	Retained median and IQR	1
+supp_fig7_7	Figure7	instantaneous	O2 5 percent and p_misseg 0.3	Approved two-panel blocks	Retained median and IQR	1
+figure7_ver2	Figure7	history	Current low-cell lineage share and gross proliferation	Approved two-panel blocks; legacy publication name	Retained median and IQR	1
+supp_fig7_1_ver2	Figure7	history	Lineage-resolved mother-to-daughter flux	Approved lineage heatmaps	Retained diagnostic data	1
+supp_fig7_2_ver2	Figure7	history	Lineage-resolved low-ploidy population budget	Approved signed budget bars	Retained diagnostic data	1
+supp_fig7_3_ver2	Figure7	history	Current lineage cell share across oxygen and thresholds	Approved annotated matrices and overview	Retained median and IQR	8
+supp_fig7_4_ver2	Figure7	history	Current lineage proliferation share across oxygen and thresholds	Approved annotated matrices and overview	Retained median and IQR	8
+supp_fig7_5_ver2	Figure7	history	O2 0.5 percent and p_misseg 0.3	Approved two-panel blocks	Retained median and IQR	1
+supp_fig7_6_ver2	Figure7	history	O2 5 percent and p_misseg 0.1	Approved two-panel blocks	Retained median and IQR	1
+supp_fig7_7_ver2	Figure7	history	O2 5 percent and p_misseg 0.3	Approved two-panel blocks	Retained median and IQR	1
+assembled_fig8	Figure8	current	Empirical ploidy and WGD comparison plus finite-time vivo/culture predictions	Approved A-D layout; 13 x 12 inches	A/C/D median and IQR; B original SD bars and regression interval	1
+supp_fig8_1	Figure8	current	Empirical-model comparison with p_misseg 0.01	Approved median-IQR panel; 8 x 8 inches	Retained median and IQR	1
+supp_fig8_2	Figure8	current	Empirical-model comparison with p_misseg 0.3	Approved median-IQR panel; 8 x 8 inches	Retained median and IQR	1
+supp_fig8_3	Figure8	current	Family-specific fitted-p vivo mixture predictions	Approved C01/C02 panels and Q labels	500 seeds per family; median and IQR	1
+supp_fig8_4	Figure8	current	Pooled fixed-p vivo mixture predictions	Approved fixed-p panels and Q labels	1000 pooled seeds; median and IQR	1
+supp_fig8_5	Figure8	current	Family-specific fixed-p culture mixture predictions	Approved family/fixed-p panels and Q labels	500 seeds per family; median and IQR	1
+supp_fig8_6	Figure8	current	Pooled culture finite-time ploidy at 100 to 1000 days; O2 0 to 20	Approved 2 by 5 matrix	1000 pooled seeds; median and IQR	1
+supp_fig8_7	Figure8	current	Pooled vivo finite-time ploidy at 100 to 1000 days; O2 0 to 5	Approved 2 by 5 matrix	1000 pooled seeds; median and IQR	1
+supp_fig8_8	Figure8	current	Family-specific culture finite-time ploidy; O2 0 to 20	Approved stacked C01/C02 matrices	500 seeds per family; median and IQR	1
+supp_fig8_9	Figure8	current	Family-specific vivo finite-time ploidy; O2 0 to 5	Approved stacked C01/C02 matrices	500 seeds per family; median and IQR	1

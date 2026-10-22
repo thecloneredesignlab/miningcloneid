@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# A distinct name avoids macOS/Linux case-only collisions with retired adapters.
+# The absolute checkout survives Slurm spool relocation of BASH_SOURCE.
+workspace="${1:?Absolute current iteration5 workspace}"
+[[ "$workspace" == /* ]] || exit 2
+export FIGURE78_WORKSPACE="$workspace"
+exec bash "${workspace}/Code/hpc/run_Figure78_task.sh"

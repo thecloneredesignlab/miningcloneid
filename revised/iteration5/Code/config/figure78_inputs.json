@@ -1,0 +1,21 @@
+{
+  "fit_root": "../../../soft_couping_org/oxygen/results/fit_joint_unified_global_invitro_500seed_all_xxlarge_r442_exact_20260828_145253",
+  "model_root": "Code/vendor/figure78_model",
+  "families": {
+    "C01": {
+      "pair_id": "fit_joint_tsne_vi_seed366_C01_vt_seed144",
+      "winner_seed": 94
+    },
+    "C02": {
+      "pair_id": "fit_joint_tsne_vi_seed25_C02_vt_seed144",
+      "winner_seed": 80
+    }
+  },
+  "winner_policy": "approved complete joint-fit winners; one matching full parameter vector per context; not a 14-parameter projection",
+  "passage_source": "C01 seed1 raw experimental adapters; six lineages equal weight",
+  "parameter_scopes": {
+    "invivo": "shared_invivo",
+    "invitro": "invitro_effective"
+  },
+  "culture_config": "fit_result.rds$ctx$invitro_cfg"
+}

@@ -24,7 +24,7 @@ titles <- c(ploidy = "A  Mean viable ploidy", effective_o2_pct = "B  Effective O
 y_titles <- c(ploidy = "Mean viable ploidy (N/22)", effective_o2_pct = "Effective O2 (%)", tumor_size_mm3 = "Total tumor volume (mm³; pseudo-log10)")
 volume_max <- max(c(dt[metric == "tumor_size_mm3", q75], observed$observed_mean_mm3))
 top_power <- max(5, ceiling(log10(volume_max)))
-volume_breaks <- c(0, 1, 10^unique(c(5 * seq_len(floor(top_power / 5)), top_power)))
+volume_breaks <- c(0, 10^unique(c(5 * seq_len(floor(top_power / 5)), top_power)))
 volume_labels <- function(x) ifelse(x == 0, "0", ifelse(x == 1, "1", paste0("1e", round(log10(pmax(x, 1))))))
 panels <- lapply(supp4_4_metrics, function(metric_name) {
   dat <- dt[metric == metric_name]

@@ -27,3 +27,10 @@ the wrapper verifies the actual allocated host and otherwise preserves the runti
 Supply the local source commit and a SHA256 manifest of the eight task source files
 through `SUPP4_4_CODE_COMMIT` and `SUPP4_4_CODE_CHECKSUMS`. The approved rsync handoff
 is used while GitHub push is unavailable. All outputs remain inside iteration5.
+
+For render-only recovery, supply `SUPP4_4_RENDER_ONLY=1` and
+`SUPP4_4_DATA_CHECKSUMS` pointing to a nine-table SHA256 receipt from a completed
+data-validation stage. These data are checked before and after plotting; no seed
+is reselected or removed. Required physical measures and quantiles are explicitly
+parsed from their original numeric text to doubles, avoiding integer64 inference
+on long-horizon values while rejecting non-finite inputs.

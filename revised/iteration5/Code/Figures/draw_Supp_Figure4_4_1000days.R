@@ -6,7 +6,14 @@ root <- normalizePath(file.path(here, "../.."))
 source(file.path(here, "util/analysis/supp_figure4_4.R"))
 supp4_4_assert(basename(root) == "iteration5", "Only iteration5 is supported.")
 data_dir <- file.path(root, "data/Figures/Supp_Figure4_4_1000days")
-dt <- fread(file.path(data_dir, "timecourse_median_iqr.tsv"))
+quantile_columns <- c("q25", "median", "q75")
+dt <- fread(file.path(data_dir, "timecourse_median_iqr.tsv"), colClasses = list(character = quantile_columns))
+for (column in quantile_columns) {
+  value <- suppressWarnings(as.numeric(dt[[column]]))
+  supp4_4_assert(all(is.finite(value)), paste("Invalid numeric quantile", column))
+  set(dt, j = column, value = value)
+}
+supp4_4_assert(all(dt$q25 <= dt$median & dt$median <= dt$q75), "Invalid quantile ordering.")
 observed <- fread(file.path(data_dir, "observed_tumor_size.tsv"))
 supp4_4_assert(nrow(dt) == 6006L && all(dt$n_seeds == 500L) && all(dt$n_tumors == 4L), "Incomplete forecast summaries.")
 dt[, cohort := factor(cohort, levels = c("2N", "4N"))]

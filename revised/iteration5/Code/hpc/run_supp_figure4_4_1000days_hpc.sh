@@ -51,10 +51,22 @@ find "${ITERATION_ROOT}/data/Figures/Supp_Figure4_4" -maxdepth 1 -type f -print0
   sort -z | xargs -0 sha256sum >> "${RUN_ROOT}/protected_before.sha256"
 stage=UNIT_TESTS; status RUNNING
 container Rscript "${ITERATION_ROOT}/Code/Figures/test_Supp_Figure4_4.R"
-stage=VALIDATE_1000DAY_CACHES_AND_OVERLAP; status RUNNING
-container Rscript "${ITERATION_ROOT}/Code/Figures/data_Supp_Figure4_4_1000days.R"
+if [[ "${SUPP4_4_RENDER_ONLY:-0}" == 1 ]]; then
+  stage=REUSE_VALIDATED_DATA; status RUNNING
+  : "${SUPP4_4_DATA_CHECKSUMS:?Provide checksums of validated analysis tables}"
+  [[ "${SUPP4_4_DATA_CHECKSUMS}" == "${ITERATION_ROOT}/audit/"* ]] || exit 2
+  [[ "$(wc -l < "${SUPP4_4_DATA_CHECKSUMS}")" -eq 9 ]] || exit 2
+  sha256sum -c "${SUPP4_4_DATA_CHECKSUMS}" | tee "${RUN_ROOT}/reused_data_checks.txt"
+  cp "${SUPP4_4_DATA_CHECKSUMS}" "${RUN_ROOT}/reused_data_sha256.txt"
+else
+  stage=VALIDATE_1000DAY_CACHES_AND_OVERLAP; status RUNNING
+  container Rscript "${ITERATION_ROOT}/Code/Figures/data_Supp_Figure4_4_1000days.R"
+fi
 stage=RENDER_1000DAY_VERSION; status RUNNING
 container Rscript "${ITERATION_ROOT}/Code/Figures/draw_Supp_Figure4_4_1000days.R"
+if [[ "${SUPP4_4_RENDER_ONLY:-0}" == 1 ]]; then
+  sha256sum -c "${SUPP4_4_DATA_CHECKSUMS}" > "${RUN_ROOT}/reused_data_after_render.txt"
+fi
 stage=VERIFY_ORIGINAL_FIGURES_AND_DATA; status RUNNING
 sha256sum -c "${RUN_ROOT}/protected_before.sha256" > "${RUN_ROOT}/protected_check.txt"
 stage=OUTPUT_CHECKSUMS; status RUNNING

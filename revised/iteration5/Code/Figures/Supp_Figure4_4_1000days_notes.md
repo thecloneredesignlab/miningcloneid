@@ -20,7 +20,10 @@ median/IQR on a pseudo-log10 axis (sigma1mm3), retaining true zero observations.
 Ploidy and effectiveO2 remain linear. Never interpret this display choice as a
 change to the underlying raw-volume quantiles or as evidence of realistic growth.
 
-Run `Code/hpc/run_supp_figure4_4_1000days_hpc.sh` through Slurm on hpctpa3pc0028.
+Run `Code/hpc/run_supp_figure4_4_1000days_hpc.sh` through Slurm; hpctpa3pc0028 is
+the default. The user approved another available compute node when that node
+was fully booked. Override both `--nodelist` and `SUPP4_4_EXPECTED_NODE` together;
+the wrapper verifies the actual allocated host and otherwise preserves the runtime.
 Supply the local source commit and a SHA256 manifest of the eight task source files
 through `SUPP4_4_CODE_COMMIT` and `SUPP4_4_CODE_CHECKSUMS`. The approved rsync handoff
 is used while GitHub push is unavailable. All outputs remain inside iteration5.

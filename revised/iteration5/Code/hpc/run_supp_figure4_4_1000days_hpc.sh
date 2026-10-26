@@ -12,7 +12,8 @@ set -Eeuo pipefail
 ITERATION_ROOT=/share/lab_crd/taoli/Project/HypoxiaLTEEFigures/revised/iteration5
 FIT_ROOT=/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253
 SIF_IMAGE=/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif
-[[ "$(hostname -s)" == hpctpa3pc0028 ]] || { echo "Wrong compute node" >&2; exit 2; }
+EXPECTED_NODE="${SUPP4_4_EXPECTED_NODE:-hpctpa3pc0028}"
+[[ "$(hostname -s)" == "${EXPECTED_NODE}" ]] || { echo "Wrong compute node: expected ${EXPECTED_NODE}" >&2; exit 2; }
 : "${SLURM_JOB_ID:?Submit through Slurm}"
 : "${SUPP4_4_CODE_COMMIT:?Provide local source commit}"
 : "${SUPP4_4_CODE_CHECKSUMS:?Provide eight-file SHA256 manifest}"

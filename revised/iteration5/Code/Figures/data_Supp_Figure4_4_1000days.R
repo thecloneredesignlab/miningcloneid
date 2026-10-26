@@ -42,8 +42,21 @@ for (seed in 1:500) {
                    "1000" %in% strsplit(meta[["predict_horizons"]], ",", fixed = TRUE)[[1]] &&
                    meta[["N_UNIT"]] == "22" && meta[["start_with"]] == "chr_number" &&
                    normalizePath(meta[["fit_dir"]]) == normalizePath(fit), "Invalid forecast manifest.")
-  burden <- fread(paths[["burden"]])
-  ploidy <- fread(paths[["ploidy"]])
+  # Physical measures are doubles, not integer identifiers. Long-horizon
+  # integer-like values can exceed fread's integer64 inference; parse their
+  # original text explicitly and reject every invalid/non-finite conversion.
+  burden_numeric <- c("pred_burden_live_volume_mm3", "pred_burden_dead_hypoxia_volume_mm3",
+                       "pred_burden_dead_buffer_volume_mm3", "pred_burden_volume_mm3", "pred_o2_pct")
+  burden <- fread(paths[["burden"]], colClasses = list(character = burden_numeric))
+  ploidy <- fread(paths[["ploidy"]], colClasses = list(character = "weighted_mean_N"))
+  for (column in burden_numeric) {
+    value <- suppressWarnings(as.numeric(burden[[column]]))
+    supp4_4_assert(all(is.finite(value)), paste("Invalid numeric forecast value for seed", seed, column))
+    set(burden, j = column, value = value)
+  }
+  value <- suppressWarnings(as.numeric(ploidy$weighted_mean_N))
+  supp4_4_assert(all(is.finite(value)), paste("Invalid numeric forecast ploidy for seed", seed))
+  set(ploidy, j = "weighted_mean_N", value = value)
   setorderv(burden, key)
   setorderv(ploidy, key)
   supp4_4_assert(!anyDuplicated(burden[, ..key]) && !anyDuplicated(ploidy[, ..key]) &&

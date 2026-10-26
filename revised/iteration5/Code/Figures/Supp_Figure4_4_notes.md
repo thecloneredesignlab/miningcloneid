@@ -2,7 +2,11 @@
 
 This standalone addition does not rerender Figure 4 or other supplementary figures.
 Run the Slurm wrapper `Code/hpc/run_supp_figure4_4_hpc.sh` on hpctpa3pc0028 with
-`SUPP4_4_CODE_COMMIT` set to the verified task-source commit. It uses the established
+`SUPP4_4_CODE_COMMIT` set to the verified local task-source commit and
+`SUPP4_4_CODE_CHECKSUMS` set to the transferred eight-file SHA256 manifest under
+iteration5/audit. This supports the approved rsync handoff while GitHub push is
+unavailable, without changing HPC Git refs or requiring an unpublished commit object.
+It uses the established
 R 4.4.2 SIF and read-only original fit caches; every generated file is in iteration5.
 
 ## Statistical unit and definitions

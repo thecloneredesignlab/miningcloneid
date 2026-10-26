@@ -15,6 +15,8 @@ SIF_IMAGE="/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif"
 [[ "$(hostname -s)" == hpctpa3pc0028 ]] || { echo "Wrong compute node" >&2; exit 2; }
 : "${SLURM_JOB_ID:?Submit this script through Slurm}"
 : "${SUPP4_4_CODE_COMMIT:?Provide verified source commit}"
+: "${SUPP4_4_CODE_CHECKSUMS:?Provide rsync task-code SHA256 manifest}"
+[[ "${SUPP4_4_CODE_CHECKSUMS}" == "${ITERATION_ROOT}/audit/"* ]] || { echo "Checksum manifest must be inside iteration5/audit" >&2; exit 2; }
 cd "${ITERATION_ROOT}"
 RUN_ROOT="${ITERATION_ROOT}/audit/hpc_supp_figure4_4/${SLURM_JOB_ID}"
 mkdir -p "${RUN_ROOT}/tmp/home" "${RUN_ROOT}/tmp/cache"
@@ -27,20 +29,9 @@ status() {
 trap 'code=$?; status FAILED; exit "${code}"' ERR
 status RUNNING
 stage=VERIFY_TASK_CODE; status RUNNING
-for path in \
-  Code/Figures/util/analysis/supp_figure4_4.R \
-  Code/Figures/test_Supp_Figure4_4.R \
-  Code/Figures/data_Supp_Figure4_4.R \
-  Code/Figures/draw_Supp_Figure4_4.R \
-  Code/Figures/validate_Supp_Figure4_4.py \
-  Code/Figures/Supp_Figure4_4_notes.md \
-  Code/config/supp_figure4_4.Rprofile \
-  Code/hpc/run_supp_figure4_4_hpc.sh; do
-  expected=$(git rev-parse "${SUPP4_4_CODE_COMMIT}:revised/iteration5/${path}")
-  actual=$(git hash-object "${path}")
-  [[ "${actual}" == "${expected}" ]] || { echo "Code mismatch: ${path}" >&2; exit 2; }
-  printf '%s\t%s\n' "${actual}" "${path}" >> "${RUN_ROOT}/code_blobs.tsv"
-done
+[[ "$(wc -l < "${SUPP4_4_CODE_CHECKSUMS}")" -eq 8 ]] || { echo "Expected exactly eight task-code checksums" >&2; exit 2; }
+sha256sum -c "${SUPP4_4_CODE_CHECKSUMS}" | tee "${RUN_ROOT}/code_checks.txt"
+cp "${SUPP4_4_CODE_CHECKSUMS}" "${RUN_ROOT}/code_sha256.txt"
 if command -v apptainer >/dev/null 2>&1; then runtime=$(command -v apptainer); else runtime=$(command -v singularity); fi
 RED_LIB=/app/eb/software
 LD_PATH="${RED_LIB}/FlexiBLAS/3.4.4-GCC-13.3.0/lib64:${RED_LIB}/OpenBLAS/0.3.27-GCC-13.3.0/lib:${RED_LIB}/GCCcore/13.3.0/lib64:${RED_LIB}/binutils/2.42-GCCcore-13.3.0/lib:${RED_LIB}/libiconv/1.17-GCCcore-13.3.0/lib:${RED_LIB}/ICU/75.1-GCCcore-13.3.0/lib:/opt/rh/gcc-toolset-13/root/usr/lib64"

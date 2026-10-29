@@ -65,6 +65,8 @@ def r_command(workspace):
 def check_prepared(workspace, figure, data_root, index=None):
     model_sources(workspace)
     root = current_path(data_root, workspace)
+    if figure == 7 and root == (workspace/'data/Figures').resolve():
+        raise ValueError('Published Figure7 is read-only for generation; prepare an isolated campaign root')
     run = root/('Figure'+str(figure))
     required = [run/'prepared/analysis_bundle.rds', run/'prepared/task_manifest.tsv',
                 run/'provenance/preparation.tsv']
@@ -78,12 +80,21 @@ def check_prepared(workspace, figure, data_root, index=None):
         raise ValueError('Current task IDs must be complete and consecutive')
     if int(receipt[0]['n_tasks']) != len(tasks):
         raise ValueError('Preparation and task manifest counts disagree')
+    if figure == 7:
+        if receipt[0].get('engine') != 'Figure7_native_fit_last5_current':
+            raise ValueError('Figure7 HPC requires the native-fit last-five current campaign; legacy caches are forbidden')
+        for row in tasks:
+            expected = 'native_fit_last5' if row['model_context'] == 'in vitro' else 'unchanged_continuous'
+            if row.get('engine') != expected:
+                raise ValueError('Figure7 context engine mismatch')
+            if row['model_context'] == 'in vitro' and int(row['maximum_ploidy']) not in (137,139,141):
+                raise ValueError('Figure7 full grid certificate requires 137/139/141N')
     if index is not None and not 1 <= int(index) <= len(tasks):
         raise ValueError('Task index outside current manifest')
     return len(tasks)
 
 
-def static_check(workspace, parse_r=True):
+def static_check(workspace, parse_r=True, source_only=False):
     checks = []
     def check(name, condition, detail=''):
         checks.append({'check': name, 'passed': bool(condition), 'detail': detail})
@@ -97,18 +108,62 @@ def static_check(workspace, parse_r=True):
     inputs = [fit/f['pair_id']/('seed'+str(seed))/name for f in cfg['families'].values()
               for seed in range(1, 501) for name in ('joint_best_params_long.tsv','fit_config.rds','fit_result.rds')]
     check('all_3000_original_fit_inputs_exist', all(p.is_file() for p in inputs), len(inputs))
-    manifest = table(workspace/'Code/config/manifests/figure78_current_plot_inputs.tsv')
+    manifest = [] if source_only else table(workspace/'Code/config/manifests/figure78_current_plot_inputs.tsv')
+    current_figures = set()
+    # Newly generated data authenticate against their own completed current
+    # bundle, just as the renderer does. The old consolidation map is only for
+    # figures that still retain that older provenance layout (e.g. Figure8).
+    for number in (() if source_only else (7, 8)):
+        tag = 'Figure'+str(number)
+        run = workspace/'data/Figures'/tag
+        bundle = run/'prepared/analysis_bundle.rds'
+        if not bundle.is_file():
+            continue
+        done = table(run/'provenance/completion.tsv')
+        check('current_full_completion_'+tag, len(done)==1 and
+              done[0]['status']=='validated_complete' and done[0]['profile']=='full' and
+              done[0]['production_ensemble']=='TRUE')
+        record = done[0]
+        for rel, field in [('prepared/analysis_bundle.rds','bundle_sha256'),
+                           ('provenance/numerical_validation.tsv','validation_sha256'),
+                           ('provenance/plot_inputs.tsv','plot_manifest_sha256')]:
+            check('current_receipt_'+tag+'_'+field, sha(run/rel)==record[field])
+        validation = table(run/'provenance/numerical_validation.tsv')
+        check('current_numerical_gates_'+tag, bool(validation) and all(r['passed']=='TRUE' for r in validation))
+        rows = table(run/'provenance/plot_inputs.tsv')
+        for r in rows:
+            r['figure']=tag
+        historical = [r for r in manifest if tag=='Figure7' and r['figure']==tag and
+                      r.get('group')=='lineage' and
+                      r['relative_path'] not in {x['relative_path'] for x in rows} and
+                      (workspace/'data/Figures'/r['relative_path']).is_file()]
+        if tag=='Figure7':
+            wanted={'history_time_summary.tsv','history_source_daughter_flux_binned.tsv',
+                    'history_low_population_budget.tsv'}
+            check('preserved_original_historical_summary_bindings_'+tag,
+                  wanted <= {r['logical_name'] for r in historical+rows})
+        manifest = [r for r in manifest if r['figure']!=tag]+historical+rows
+        for r in table(run/'provenance/current_code_manifest.tsv'):
+            slot = re.sub(r'^.*/(Code/)',r'\1',r['path'])
+            check('current_code_portable_slot_'+tag+'_'+Path(slot).name, slot.startswith('Code/'))
+            p = current_path(slot, workspace)
+            check('current_code_hash_'+tag+'_'+Path(slot).name,sha(p)==r['sha256'])
+        current_figures.add(tag)
     for row in manifest:
         p = workspace/'data/Figures'/row['relative_path']
         check('retained_input_'+row['relative_path'], p.is_file() and sha(p) == row['sha256'])
         check('retained_input_not_archive_'+row['relative_path'],
               not any(x in p.resolve().parts for x in ('arxives','archives')))
-    check('all_95_retained_files', len(manifest) == 95)
+    if not source_only:
+        check('current_and_retained_input_inventory', bool(manifest) and
+              len({r['relative_path'] for r in manifest})==len(manifest))
     for rel in ('data/Figure3_PCAWG_included_samples.csv', 'data/Figure3_DepMap_included_lines.csv', 'originals/organ_lut.csv'):
         check('empirical_'+rel, (workspace/'data/share_bundle_figures_3_5'/rel).is_file())
-    bindings = table(workspace/'Code/config/manifests/figure78_bundle_bindings.tsv')
+    bindings = [] if source_only else table(workspace/'Code/config/manifests/figure78_bundle_bindings.tsv')
     by_name = {Path(r['relative_path']).name:r for r in lock}
     for row in bindings:
+        if row['relative_path'].split('/')[0] in current_figures:
+            continue
         p = workspace/'data/Figures'/row['relative_path']
         check('retained_binding_'+row['binding']+'_'+row['order'], sha(p) == row['sha256'])
         if row['binding'] in ('engine','initializer'):
@@ -119,7 +174,7 @@ def static_check(workspace, parse_r=True):
           len({r['path'].lower() for r in entries}) == len(entries))
     global_rows=[r for r in table(workspace/'Code/config/manifests/figure_entrypoints.tsv')
                  if re.match(r'^(Figure[78](?:_ver2)?|Supp_Figure[78](?:_|$))',r['figure'])]
-    check('global_registry_all_26_publication_products',len(global_rows)==26)
+    check('global_registry_all_27_publication_products',len(global_rows)==27)
     for row in global_rows:
         figure=7 if re.match(r'^(Figure7|Supp_Figure7)',row['figure']) else 8
         check('global_registry_current_'+row['figure'],
@@ -137,7 +192,7 @@ def static_check(workspace, parse_r=True):
         if p.suffix in ('.R','.py') and re.search(r'figure[78]|fig8',p.name,re.I):
             check('all_figure_entries_registered_'+p.name, str(p.relative_to(workspace)) in current)
     drawings = [r for r in entries if r['role'] == 'drawing']
-    check('31_drawing_entries', len(drawings) == 31)
+    check('32_drawing_entries', len(drawings) == 32)
     for r in drawings:
         check('unified_draw_'+r['path'], 'figure78_render_only.R' in (workspace/r['path']).read_text())
     for p in (workspace/'Code/hpc').iterdir():
@@ -189,7 +244,7 @@ def static_check(workspace, parse_r=True):
         check('reject_old_root_without_read_'+value,rejected)
     for figure in (7,8):
         run = workspace/'data/Figures'/('Figure'+str(figure))
-        if not (run/'prepared/analysis_bundle.rds').exists():
+        if figure == 7 or not (run/'prepared/analysis_bundle.rds').exists():
             rejected = False
             try:
                 check_prepared(workspace,figure,workspace/'data/Figures')
@@ -200,7 +255,8 @@ def static_check(workspace, parse_r=True):
                             [workspace/'Code/config/figure78_inputs.json',
                              workspace/'Code/config/manifests/figure78_entrypoints.tsv',
                              workspace/'Code/config/manifests/figure78_model_sources.tsv']))
-    return {'status':'static_passed','checks':checks,'registered_entries':len(entries),
+    return {'status':'source_static_passed' if source_only else 'static_passed',
+            'retained_dataset_validation':not source_only,'checks':checks,'registered_entries':len(entries),
             'locked_model_files':len(lock),'retained_inputs':len(manifest),
             'r_syntax_files':len(rfiles),'python_syntax_files':len(python_files),'shell_syntax_files':len(shells),
             'source_sha256':{str(p.relative_to(workspace)):sha(p) for p in source_paths},
@@ -231,6 +287,8 @@ def main(argv=None):
     ap.add_argument('--task-index',type=int)
     ap.add_argument('--report',type=Path)
     ap.add_argument('--parse-r',choices=('yes','no'),default='yes')
+    ap.add_argument('--source-only',choices=('yes','no'),default='no',
+                    help='Syntax/entry/model/raw-input checks only; explicitly does not certify retained numerical data')
     a = ap.parse_args(argv)
     workspace = current_path(a.workspace.resolve(),Path.cwd())
     if a.action == 'check-prepared':
@@ -238,7 +296,7 @@ def main(argv=None):
             ap.error('check-prepared requires --figure and --data-root')
         print(check_prepared(workspace,a.figure,a.data_root,a.task_index))
         return 0
-    result = static_check(workspace,a.parse_r == 'yes')
+    result = static_check(workspace,a.parse_r == 'yes',a.source_only == 'yes')
     if a.report:
         report = a.report.resolve()
         if workspace/'audit' not in report.parents:

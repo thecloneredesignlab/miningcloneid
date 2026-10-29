@@ -4,7 +4,7 @@ Code/Figures/audit_Figure7_full_boundary.R	validation_alias	compatibility_guard	
 Code/Figures/audit_Figure7_full_ledger.R	validation_alias	compatibility_guard	validate_Figure78.R
 Code/Figures/audit_Figure7_full_replay.R	validation_alias	compatibility_guard	validate_Figure78.R
 Code/Figures/audit_Figure8_time_snapshots_hpc.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
-Code/Figures/data_Figure7.R	generation	current	figure78_pipeline.R
+Code/Figures/data_Figure7.R	generation	current	figure7_current_pipeline.R
 Code/Figures/data_Figure78_invitro_repair.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
 Code/Figures/data_Figure7_proliferation.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
 Code/Figures/data_Figure7_versions.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
@@ -38,6 +38,7 @@ Code/Figures/draw_Supp_Figure7_6.R	drawing	current	figure78_render_only.R
 Code/Figures/draw_Supp_Figure7_6_ver2.R	drawing	current	figure78_render_only.R
 Code/Figures/draw_Supp_Figure7_7.R	drawing	current	figure78_render_only.R
 Code/Figures/draw_Supp_Figure7_7_ver2.R	drawing	current	figure78_render_only.R
+Code/Figures/draw_Supp_Figure7_8.R	drawing	current	figure78_render_only.R
 Code/Figures/draw_Supp_Figure8_1.R	drawing	current	figure78_render_only.R
 Code/Figures/draw_Supp_Figure8_2.R	drawing	current	figure78_render_only.R
 Code/Figures/draw_Supp_Figure8_3.R	drawing	current	figure78_render_only.R
@@ -57,13 +58,14 @@ Code/Figures/merge_Figure7_matrix_pdfs.py	pdf_packaging	current	current rendered
 Code/Figures/record_Figure7_versions_visual_review.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
 Code/Figures/render_Figure7_versions_qa.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
 Code/Figures/revise_Figure78.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
-Code/Figures/run_Figure7.R	generation	current	figure78_pipeline.R
+Code/Figures/run_Figure7.R	generation	current	figure7_current_pipeline.R
 Code/Figures/run_Figure8.R	generation	current	figure78_pipeline.R
 Code/Figures/summarize_Figure78_invitro_repair.R	generation_alias	compatibility_guard	run_Figure7.R|run_Figure8.R
 Code/Figures/test_Figure78_full_parameters.R	validation_alias	compatibility_guard	validate_Figure78.R
 Code/Figures/test_Figure78_invitro_repair.R	validation_alias	compatibility_guard	validate_Figure78.R
 Code/Figures/test_Figure78_revision.R	validation_alias	compatibility_guard	validate_Figure78.R
 Code/Figures/validate_Figure78.R	retained_validation	current	figure78_render_only.R
+Code/Figures/validate_Figure7_daily.R	explicit_acceptance	current	independent daily-source numerical examples
 Code/Figures/validate_Figure78_cold_start.R	explicit_acceptance	current	current pipeline; separate runtime authorization required
 Code/Figures/validate_Figure78_full_parameters.R	validation_alias	compatibility_guard	validate_Figure78.R
 Code/Figures/validate_Figure78_full_pdf.py	validation_alias	compatibility_guard	figure78_entry_tools.py|validate_Figure78.R
@@ -108,3 +110,20 @@ Code/hpc/submit_figure8_fitted_family_hpc.sh	hpc_alias	compatibility_guard	submi
 Code/hpc/submit_figure8_pooled_passage_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
 Code/hpc/submit_figure8_time_snapshots_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
 Code/hpc/submit_supp_fig8_6_hpc.sh	hpc_alias	compatibility_guard	submit_Figure78.sh
+Code/Figures/run_Figure7_passaged_acceptance.R	acceptance	current	figure7_passaged.R
+Code/Figures/test_Figure7_passaged.R	acceptance_helper	current	figure7_passaged.R
+Code/Figures/test_Figure7_current.R	acceptance	current	figure7_current_pipeline.R
+Code/Figures/validate_Figure7_current_figures.py	validation	current	current-only staged PDF/PNG inspection
+Code/hpc/submit_Figure7_current.sh	hpc_current	current	figure7_current_pipeline.R
+Code/hpc/run_Figure7_current_post.sh	hpc_current	current	figure7_current_pipeline.R
+Code/Figures/export_Figure7_population_cache.R	postprocessing	current	saved Figure7 population telemetry only
+Code/Figures/postprocess_Figure7_population_validity.R	postprocessing	current	figure7_population_validity.R
+Code/Figures/test_Figure7_population_validity.R	acceptance	current	figure7_population_validity.R
+Code/Figures/validate_Figure7_population_validity.py	validation	current	postprocessed population validity tables and plots
+Code/Figures/run_Figure7_fitted_p_misseg.R	generation_fitted	current	figure7_fitted_p_misseg.R
+Code/Figures/draw_Figure7_fitted_p_misseg.R	drawing_fitted	current	figure7_fitted_plotting.R
+Code/Figures/validate_Figure7_fitted_p_misseg.py	validation	current	fitted p_misseg tables and figures
+Code/Figures/publish_Figure7_fitted_p_misseg.py	publication	current	explicit allowlist publication after acceptance
+Code/hpc/submit_Figure7_fitted_p_misseg.sh	hpc_current	current	figure7_fitted_p_misseg.R
+Code/hpc/run_Figure7_fitted_worker.sh	hpc_current	current	figure7_fitted_p_misseg.R
+Code/hpc/run_Figure7_fitted_stage.sh	hpc_current	current	figure7_fitted_p_misseg.R

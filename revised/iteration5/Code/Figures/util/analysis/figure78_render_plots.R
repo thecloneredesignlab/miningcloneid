@@ -13,13 +13,17 @@ f78ro_plot7 <- function(ctx,row) {
   assign("f7_metric_label",f7_metric_labels(version,direct_growth=identical(row$key,"instantaneous7")),globalenv())
   if (stem %in% c("supp_fig7_1","supp_fig7_2")) return(f7_draw_sources(a,stem))
   if (stem %in% c("supp_fig7_1_ver2","supp_fig7_2_ver2")) return(f7_draw_lineage_diagnostics(a,stem))
+  if (stem=="supp_fig7_8") return(f7_draw_origin_populations(ctx,row))
   z <- f78ro_table(ctx,row$key,if(version=="history")"history_time_summary.tsv" else "instant_time_summary.tsv",frame=TRUE)
+  if(version=="instantaneous"&&(!"source_accounting"%in%names(z)||
+    any(z$source_accounting!="daily_viable_low_daughters")))
+    stop("Daily A/B figures require newly validated daily-source data; old B will not be relabeled")
   if (row$pages==8L) return(f78ro_matrix(a,z,if(grepl("supp_fig7_3",stem))"flux_percent" else "growth_percent",stem))
   spec <- data.table::fread(file.path(ctx$workspace,"Code/config/manifests/figure7_display_panels.tsv"))
   original <- if(stem=="figure7_ver2")"assembled_fig7" else sub("_ver2$","",stem)
   s <- spec[spec$stem==original,];stopifnot(nrow(s)==1L)
-  ta <- if(version=="instantaneous")"A  Immediate inflow" else "A  Historical lineage share"
-  tb <- if(version=="instantaneous")"B  Direct-source proliferation" else "B  Historical-lineage proliferation"
+  ta <- if(version=="instantaneous")"A  High-parent source" else "A  Historical lineage share"
+  tb <- if(version=="instantaneous")"B  Low-parent source" else "B  Historical-lineage proliferation"
   A <- f7_panel_block(z,s$O2_pct,s$p_misseg,paste0(ta,"; O2 = ",s$O2_pct,"%; p_misseg = ",s$p_misseg),"flux_percent")
   B <- f7_panel_block(z,s$O2_pct,s$p_misseg,paste0(tb,"; O2 = ",s$O2_pct,"%; p_misseg = ",s$p_misseg),"growth_percent")
   legend <- cowplot::get_legend(f7_line_plot(z[z$task_id==z$task_id[1],])+ggplot2::theme(legend.position="bottom"))

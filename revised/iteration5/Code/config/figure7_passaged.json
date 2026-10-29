@@ -1,0 +1,31 @@
+{
+  "figure": 7,
+  "status": "implementation_and_small_acceptance_only",
+  "days": 1000,
+  "routes": ["control", "O1", "O2"],
+  "template_segments": 5,
+  "template_sensitivity": [3, 10],
+  "template_eligibility": "raw measured positive initial/final counts and complete original observation window; no target>initial filter",
+  "extrapolation": "cycle each route's last complete measured tuples in original order",
+  "clock": "sum of selected passage days, including experimental prefix",
+  "final_segment": "select with full candidate window, then truncate retained path at day 1000",
+  "oxygen": "fixed scenario oxygen from the true root; do not replay observed oxygen",
+  "p_misseg": [0.1, 0.3],
+  "initial_ploidy": [2, 4],
+  "inoculum_feasibility_stop": false,
+  "passage": "native positive observation day nearest target; normalize composition and rescale to next tuple's inoculum",
+  "random_sampling": false,
+  "summary": "equal-route median and type-7 IQR; protocol spread, not stochastic or biological CI",
+  "candidate_grid_upper_N": [137, 139, 141],
+  "grid_limits": {
+    "share_pp": 0.5,
+    "mean_ploidy_N": 0.01,
+    "log_cells": 0.01,
+    "state_cdf": 0.01,
+    "upper_loss_fraction": 0.001
+  },
+  "full_campaign_authorized": false,
+  "redraw_authorized": false,
+  "historical_product_writes": false,
+  "figure8_changes": false
+}

@@ -3,20 +3,26 @@
 set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "${script_dir}/../config/figure78_hpc_paths.env"
-figure=;stage=;args=()
+figure=;stage=;condition_mode=;args=()
 for arg in "$@"; do
   case "$arg" in
     --figure=7|--figure=8) figure="${arg#*=}" ;;
     --stage=*) stage="${arg#*=}" ;;
+    --condition-mode=fitted_p_misseg) condition_mode=fitted_p_misseg; args+=("$arg") ;;
     --*=*) args+=("$arg") ;;
     *) echo "Use explicit --figure=7|8 --stage=...; legacy positional arguments are not accepted" >&2; exit 2 ;;
   esac
 done
 [[ "$figure" == 7 || "$figure" == 8 ]] && [[ -n "$stage" ]] || { echo "Specify --figure and --stage" >&2; exit 2; }
+if [[ "$condition_mode" == fitted_p_misseg ]]; then
+  [[ "$figure" == 7 ]] || { echo "Fitted-p adapter is Figure7 only" >&2; exit 2; }
+  exec "$FIGURE78_RSCRIPT" "${script_dir}/../Figures/run_Figure7_fitted_p_misseg.R" \
+    "--stage=$stage" "${args[@]}"
+fi
 case "$stage" in
   static) exec python3 "${script_dir}/../Figures/figure78_entry_tools.py" static "--workspace=$FIGURE78_WORKSPACE" "${args[@]}" ;;
   plot)
-    if [[ "$figure" == 7 && " ${args[*]} " != *" --analysis="* ]]; then args+=(--analysis=all); fi
+    if [[ "$figure" == 7 && " ${args[*]} " != *" --analysis="* ]]; then args+=(--analysis=instantaneous); fi
     exec "$FIGURE78_RSCRIPT" "${script_dir}/../Figures/draw_Figure${figure}.R" "${args[@]}" ;;
   retained-validate) exec "$FIGURE78_RSCRIPT" "${script_dir}/../Figures/validate_Figure78.R" "--figure=$figure" "${args[@]}" ;;
   plan|prepare|simulate|aggregate|validate|all)

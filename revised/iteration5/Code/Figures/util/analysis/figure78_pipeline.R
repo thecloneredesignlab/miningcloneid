@@ -49,7 +49,8 @@ fp_files <- function(a) file.path(a$code,c(paste0("run_Figure",a$figure,".R"),
   "util/analysis/figure78_model.R","util/analysis/figure78_culture.cpp",
   "util/analysis/figure78_paths.R",
   paste0("util/analysis/figure",a$figure,"_simulation.R"),
-  if(a$figure==7L)paste0("util/analysis/figure7_",c("continuous","history","direct"),".cpp") else
+  if(a$figure==7L)c("util/analysis/figure7_source_accounting.R",
+    paste0("util/analysis/figure7_",c("continuous","history","direct","daily"),".cpp")) else
     "util/analysis/figure8_empirical.R"))
 
 fp_init <- function(figure,script,args) {
@@ -300,7 +301,8 @@ fp_aggregate <- function(a) {
   tasks <- lapply(paths,function(path) {
     o <- fp_read(path);if(!identical(o$fingerprint,b$fingerprint))stop("Task provenance mismatch: ",path)
     # Discard large repeat/trajectory arrays before reading the next task.
-    if(a$figure==7L)list(outputs=lapply(o$outputs,function(v)c(v[c("metadata","summary","qc","diagnostics")],
+    if(a$figure==7L)list(outputs=lapply(o$outputs,function(v)c(v[c("metadata","summary","qc","diagnostics",
+        "source_counts_summary","population_summary","distribution_summary")],
       list(passage_events=v$trajectories$passage_events)))) else
       list(data=o$data)
   })
@@ -327,7 +329,7 @@ fp_validate <- function(a) {
   out <- data.table::rbindlist(checks);fp_write(out,file.path(a$run,"provenance/numerical_validation.tsv"))
   if(!all(out$passed))stop("Numerical validation failed: ",paste(out[passed==FALSE]$test,collapse=", "))
   # Register newly computed output bytes; no old-code hash is forged or disabled.
-  files <- list.files(file.path(a$run,"tables"),pattern="\\.tsv$",full.names=TRUE)
+  files <- list.files(file.path(a$run,"tables"),pattern="\\.tsv(\\.gz)?$",full.names=TRUE)
   files <- c(files,list.files(file.path(a$run,"seed_data"),pattern="\\.tsv.gz$",full.names=TRUE))
   fp_write(data.table::data.table(relative_path=substring(files,nchar(a$data_root)+2L),
     logical_name=basename(files),sha256=fp_sha(files)),file.path(a$run,"provenance/plot_inputs.tsv"))

@@ -6,7 +6,10 @@ f78ro_data <- function(ctx,key,files) {
   a <- ctx$contexts[[key]]
   if(is.null(a)) stop("Unknown dataset group: ",key)
   if(paste0("Figure",a$figure)%in%names(ctx$current)) {
-    rows <- ctx$inputs[ctx$inputs$figure==paste0("Figure",a$figure),]
+    historical <- a$figure==7L&&key=="lineage7"&&
+      (isTRUE(ctx$reading_historical7)||all(startsWith(files,"history_")))
+    rows <- ctx$inputs[ctx$inputs$figure==paste0("Figure",a$figure)&
+      ctx$inputs$group==if(historical)"lineage" else "current",]
     ix <- match(files,rows$logical_name)
     if(anyNA(ix))stop("Current pipeline table is not registered: ",paste(files[is.na(ix)],collapse=", "))
     paths <- file.path(ctx$data_root,rows$relative_path[ix]);f78ro_input(ctx,paths);return(paths)
@@ -44,7 +47,16 @@ f78ro_current_inputs <- function(ctx) {
     meta_paths <- c(bundle,receipt,table_manifest,validation,file.path(root,"provenance/current_code_manifest.tsv"))
     meta <- data.table::data.table(relative_path=substring(meta_paths,nchar(ctx$data_root)+2L),
       logical_name=basename(meta_paths),sha256=f78ro_hash(meta_paths),figure=tag,group="current")
-    ctx$inputs <- data.table::rbindlist(list(ctx$inputs[ctx$inputs$figure!=tag,],tables,meta),use.names=TRUE,fill=TRUE)
+    # A new current Figure7 generation does not re-sign or replace its preserved
+    # historical tables/receipts. Keep their original bindings when present;
+    # an isolated current-only campaign needs none of these legacy files.
+    preserved <- NULL
+    if(figure==7L) {
+      preserved <- ctx$inputs[ctx$inputs$figure==tag&
+        !ctx$inputs$relative_path%in%c(tables$relative_path,meta$relative_path),]
+      preserved <- preserved[file.exists(file.path(ctx$data_root,preserved$relative_path)),]
+    }
+    ctx$inputs <- data.table::rbindlist(list(ctx$inputs[ctx$inputs$figure!=tag,],preserved,tables,meta),use.names=TRUE,fill=TRUE)
     ctx$current[[tag]] <- list(bundle=bundle,validation=validation,receipt=done)
   }
   invisible(ctx)
@@ -57,6 +69,14 @@ f78ro_current_preflight <- function(ctx,figure) {
   checks <- data.table::fread(record$validation)
   if(!nrow(checks)||!all(checks$passed))stop("Current numerical validation is not complete")
   sources <- b$code_manifest
+  # A verified HPC-generated bundle retains its original immutable bytes and
+  # fingerprint. Resolve its Code-relative source slots in this checkout rather
+  # than requiring the HPC absolute mount to exist on a laptop. Every current
+  # source must still match the originally authenticated SHA256 exactly.
+  source_slots <- sub("^.*(/Code/)","Code/",sources$path)
+  if(any(!startsWith(source_slots,"Code/"))||any(grepl("(^|/)\\.\\.(/|$)",source_slots)))
+    stop("Unrecognized current numerical source slot in bundle")
+  sources$path <- file.path(ctx$workspace,source_slots)
   if(!identical(f78ro_hash(sources$path),sources$sha256))stop("Current numerical code no longer matches this generated dataset")
   ctx$authenticated <- unique(rbind(ctx$authenticated,as.data.frame(sources[,.(path,sha256)])))
   message("PASS: Figure",figure," current full simulation/data-generation provenance authenticated")
@@ -108,6 +128,47 @@ f78ro_preflight <- function(ctx) {
   # selected figure, including records that are not read by that one panel.
   f78ro_input(ctx,file.path(ctx$data_root,ctx$inputs$relative_path[ctx$inputs$figure%in%figures]))
   for(figure in unique(selected$figure))if(paste0("Figure",figure)%in%names(ctx$current))f78ro_current_preflight(ctx,figure)
+  if("supp_fig7_8"%in%ctx$products)f7pv_render_preflight(ctx)
+  if("Figure7"%in%names(ctx$current)&&any(selected$figure==7L&selected$analysis=="history")) {
+    # Authenticate historical products against their ORIGINAL numerical receipt,
+    # never the new current campaign's fingerprint or grid certificates.
+    ctx$reading_historical7 <- TRUE
+    tryCatch({
+      original <- ctx$inputs[ctx$inputs$figure=="Figure7"&ctx$inputs$group=="lineage"&
+        ctx$inputs$logical_name=="completion.tsv",]
+      if(nrow(original)) {
+        f78ro_complete(ctx,"lineage7")
+        f78ro_manifest_guard(ctx,"lineage7","code_manifest.tsv")
+        old <- readRDS(f78ro_data(ctx,"lineage7","analysis_bundle.rds"))
+        paths <- f78ro_binding(ctx,"figure7_code")
+        if(!identical(old$code_sha,f78ro_hash(paths))||
+          !identical(old$config,jsonlite::fromJSON(paths[1])))
+          stop("Preserved Figure7 historical provenance mismatch")
+      } else {
+        # The previous deployed dataset explicitly retained these three older
+        # summaries byte-for-byte, separately from its newly computed history.
+        # Its obsolete replay directory is not required or restored. Authenticate
+        # the preserved results against the ORIGINAL consolidation SHA manifest;
+        # do not present them as newly simulated or as replay-code authenticated.
+        wanted <- c("history_time_summary.tsv","history_source_daughter_flux_binned.tsv",
+          "history_low_population_budget.tsv")
+        retained <- ctx$inputs[ctx$inputs$figure=="Figure7"&ctx$inputs$group=="lineage"&
+          ctx$inputs$logical_name%in%wanted,]
+        if(nrow(retained)!=3L||!setequal(retained$logical_name,wanted))
+          stop("Missing original retained historical SHA bindings")
+        f78ro_data(ctx,"lineage7",wanted)
+        certificate <- file.path(ctx$data_root,"Figure7/provenance/preserved_history.tsv")
+        if(file.exists(certificate)) {
+          f78ro_no_archive(certificate);preserved <- data.table::fread(certificate)
+          i <- match(retained$logical_name,preserved$logical_name)
+          if(nrow(preserved)!=3L||anyNA(i)||
+            !identical(retained$sha256,as.character(preserved$preserved_sha256[i])))
+            stop("Retained historical preservation certificate disagrees with original SHA bindings")
+        }
+        message("PASS: Figure7 historical summaries match original retained SHA256; not new simulations or replay-code authentication")
+      }
+    },finally={ctx$reading_historical7 <- FALSE})
+  }
   if(7L%in%selected$figure&&!"Figure7"%in%names(ctx$current)) {
     f78ro_complete(ctx,"lineage7");f78ro_complete(ctx,"instantaneous7")
     f78ro_manifest_guard(ctx,"lineage7","code_manifest.tsv")

@@ -6,12 +6,8 @@ f7_metric_labels <- function (version, current_growth = FALSE, direct_growth = F
 {
     if (version == "instantaneous") 
         function(metric) if (metric == "flux_percent") 
-            "Immediate high-to-low inflow (%)"
-        else if (direct_growth) 
-            "Direct H-to-L-source share of low-cell proliferation (%)"
-        else if (current_growth) 
-            "H-to-L-source share of low-cell proliferation (%)"
-        else "Immediate inflow contribution to low-cell production (%)"
+            "Daily low-daughter production from high parents (%)"
+        else "Daily low-daughter production from low parents (%)"
     else function(metric) if (metric == "flux_percent") 
         "Historical H-to-L share of current low cells (%)"
     else "Historical-lineage contribution to low-cell proliferation (%)"

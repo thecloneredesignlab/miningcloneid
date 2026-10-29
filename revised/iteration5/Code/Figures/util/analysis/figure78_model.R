@@ -14,7 +14,7 @@ fp_engine <- function(a) {
   sys.source(file.path(runtime,"util/o2_supply_demand_map_invitro_lineage_simulation_utils.R"),envir=env)
   fun <- get("ivt_gaussian_initial_state",envir=env,inherits=FALSE);environment(fun) <- baseenv()
   assign("fp_gaussian_initial_state",fun,globalenv())
-  kernels <- c("figure78_culture.cpp",if(a$figure==7L)paste0("figure7_",c("continuous","history","direct"),".cpp"))
+  kernels <- c("figure78_culture.cpp",if(a$figure==7L)paste0("figure7_",c("continuous","history","direct","daily"),".cpp"))
   for(kernel in kernels)Rcpp::sourceCpp(file.path(a$code,"util/analysis",kernel),
     cacheDir=file.path(a$run,".cache/propagators"),showOutput=FALSE)
   invisible(runtime)

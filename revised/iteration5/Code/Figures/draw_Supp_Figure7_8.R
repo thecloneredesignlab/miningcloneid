@@ -1,0 +1,4 @@
+#!/usr/bin/env Rscript
+script <- normalizePath(sub("^--file=","",commandArgs(FALSE)[grepl("^--file=",commandArgs(FALSE))][1]))
+source(file.path(dirname(script),"util/analysis/figure78_render_only.R"))
+f78_render_cli(script,default_scope="all",default_products="supp_fig7_8")

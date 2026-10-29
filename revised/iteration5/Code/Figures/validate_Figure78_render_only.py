@@ -63,7 +63,7 @@ def main():
     baseline = snapshot()
     (audit/'baseline.json').write_text(json.dumps(baseline,indent=2)+'\n')
     matrices = {'supp_fig7_3','supp_fig7_4','supp_fig7_3_ver2','supp_fig7_4_ver2'}
-    stems = ['assembled_fig7']+[f'supp_fig7_{i}' for i in range(1,8)]+['figure7_ver2']+[
+    stems = ['assembled_fig7']+[f'supp_fig7_{i}' for i in range(1,9)]+['figure7_ver2']+[
         f'supp_fig7_{i}_ver2' for i in range(1,8)]+['assembled_fig8']+[f'supp_fig8_{i}' for i in range(1,10)]
     full_root = args.existing_full_root.resolve() if args.existing_full_root else audit/'full'
     if not args.existing_full_root:
@@ -86,7 +86,7 @@ def main():
         futures = [pool.submit(one,stem) for stem in stems]
         for future in as_completed(futures):
             stem,exit_code,coverage,pages,elapsed,tail = future.result()
-            check('individual_cli_'+stem,exit_code==0 and coverage and pages==(8 if stem in matrices else 1),
+            check('individual_cli_'+stem,exit_code==0 and coverage and pages==(48 if stem=='supp_fig7_8' else 8 if stem in matrices else 1),
                   f'exit={exit_code}; pages={pages}; seconds={elapsed:.1f}; '+('' if exit_code==0 else tail))
     expected_all = {x+'.'+ext for s in stems for x in [s,*components(s)] for ext in ('pdf','png')}
     found_all = {p.name for p in (full_root/'Figures').iterdir() if p.suffix in ('.pdf','.png')}
@@ -96,7 +96,7 @@ def main():
     image_comparisons = []
     for stem in stems:
         reader = PdfReader(full_root/'Figures'/f'{stem}.pdf')
-        expected_pages = 8 if stem in matrices else 1
+        expected_pages = 48 if stem=='supp_fig7_8' else 8 if stem in matrices else 1
         check('pdf_pages_'+stem,len(reader.pages)==expected_pages)
         pages_total += len(reader.pages)
         check('pdf_nonblank_'+stem,all(len(p.extract_text() or '')>100 and len(p.get_contents().get_data())>1000 for p in reader.pages))
@@ -113,7 +113,7 @@ def main():
                 check('png_byte_identity_'+stem,sha(full_root/'Figures'/f'{stem}.png')==sha(original_path))
     check('all_component_png_bytes_identical',all(sha(full_root/'Figures'/n)==sha(workspace/'Figures'/n)
           for n in expected_all if n.endswith('.png')))
-    check('canonical_pages_total' ,pages_total==54,pages_total)
+    check('canonical_pages_total' ,pages_total==102,pages_total)
     (audit/'image_comparisons.json').write_text(json.dumps(image_comparisons,indent=2)+'\n')
     if args.compare_pdf_raster:
         import pypdfium2 as pdfium

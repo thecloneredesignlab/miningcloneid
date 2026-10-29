@@ -4,4 +4,5 @@
 .analysis <- file.path(dirname(.script),"util/analysis")
 for(.module in c("figure78_pipeline.R","figure78_model.R","figure7_simulation.R"))
   source(file.path(.analysis,.module),local=globalenv())
-fp_cli(7L,.script)
+source(file.path(.analysis,"figure7_current_pipeline.R"),local=globalenv())
+f7c_cli(.script)

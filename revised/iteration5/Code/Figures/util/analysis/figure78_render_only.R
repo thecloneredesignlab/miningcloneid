@@ -1,6 +1,6 @@
 # Unified Figure7/8 rendering; never prepares, simulates, or reads archives.
 .f78ro_directory <- dirname(normalizePath(sys.frame(1)$ofile,mustWork=TRUE))
-.f78ro_names <- c("figure78_paths.R","figure78_plot_common.R","figure7_plotting.R","figure8_plotting.R",
+.f78ro_names <- c("figure78_paths.R","figure78_plot_common.R","figure7_plotting.R","figure7_population_validity.R","figure7_population_plotting.R","figure8_plotting.R",
   "figure78_render_io.R","figure78_provenance.R","figure78_render_plots.R")
 for(.f78ro_name in .f78ro_names)
   source(file.path(.f78ro_directory,.f78ro_name),local=globalenv())
@@ -16,7 +16,7 @@ f78ro_registry <- function() {
   z$key <- c("instantaneous7","lineage7","lineage7",rep("instantaneous7",5),rep("lineage7",8),
     rep("main8",3),rep("family_curves8",2),"main8",rep("time8",2),rep("family_time8",2))
   z$pages <- ifelse(z$stem%in%c("supp_fig7_3","supp_fig7_4","supp_fig7_3_ver2","supp_fig7_4_ver2"),8L,1L)
-  z
+  rbind(z,data.frame(stem="supp_fig7_8",figure=7L,analysis="instantaneous",key="instantaneous7",pages=48L))
 }
 f78ro_contexts <- function(ctx) {
   make <- function(figure,key,group) {
@@ -34,6 +34,7 @@ f78ro_contexts <- function(ctx) {
 f78ro_required_tables <- function(row) {
   stem <- row$stem
   if(row$figure==7L) {
+    if(stem=="supp_fig7_8")return(c("low_population_time_summary.tsv","low_population_distribution_summary.tsv"))
     if(stem%in%c("supp_fig7_1","supp_fig7_2"))
       return(c("source_daughter_flux_binned.tsv","winner_low_population_budget.tsv"))
     if(stem%in%c("supp_fig7_1_ver2","supp_fig7_2_ver2"))
@@ -112,10 +113,19 @@ f78_render_cli <- function(script,default_scope="all",default_products=NULL,vali
   config <- file.path(workspace,"Code/config")
   manifest <- file.path(config,"manifests")
   selected_figures <- unique(registry$figure[match(products,registry$stem)])
-  ctx$all_current <- all(file.exists(file.path(ctx$data_root,paste0("Figure",selected_figures),"prepared/analysis_bundle.rds")))
+  # Figure7-only Linux runs on headless compute nodes cannot use Xlib PNG.
+  # Choose the already available Cairo device, without changing plot builders,
+  # numerical inputs, local macOS output, or the Figure8/historical products.
+  if(identical(selected_figures,7L)&&identical(unname(Sys.info()["sysname"]),"Linux")&&
+    !nzchar(Sys.getenv("DISPLAY"))&&isTRUE(capabilities("cairo")))options(bitmapType="cairo")
+  selected_rows <- registry[match(products,registry$stem),]
+  retained_history7 <- any(selected_rows$figure==7L&selected_rows$analysis=="history")
+  ctx$all_current <- !retained_history7&&
+    all(file.exists(file.path(ctx$data_root,paste0("Figure",selected_figures),"prepared/analysis_bundle.rds")))
   if(ctx$all_current) {
     # A cold-start generated dataset needs none of the historical consolidation
-    # manifests or frozen old workers. Retained-result support is independent.
+    # manifests or frozen old workers. Explicitly selected historical products
+    # still need their ORIGINAL bindings, even alongside a new current bundle.
     ctx$inputs <- data.table::data.table(figure=character(),group=character(),logical_name=character(),
       relative_path=character(),sha256=character())
     ctx$migration <- ctx$frozen_sources <- ctx$bindings <- data.table::data.table()

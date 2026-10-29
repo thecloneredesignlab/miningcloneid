@@ -1,12 +1,13 @@
 product	figure	analysis	question	presentation	uncertainty	pdf_pages
-assembled_fig7	Figure7	instantaneous	Immediate H-to-L inflow and surviving direct-source gross proliferation	Approved two-panel blocks; 14 x 11 inches	Retained median and IQR	1
+assembled_fig7	Figure7	instantaneous	Daily viable low-daughter production: high-parent A and low-parent B, matched denominator	Approved two-panel blocks; 14 x 11 inches	Matched-repeat median and IQR; day zero NA	1
 supp_fig7_1	Figure7	instantaneous	Mother-to-daughter chromosome flux	Approved source-daughter heatmaps	Retained diagnostic data	1
 supp_fig7_2	Figure7	instantaneous	Low-ploidy population budget	Approved signed budget bars	Retained diagnostic data	1
-supp_fig7_3	Figure7	instantaneous	Immediate inflow across oxygen and blockade thresholds	Approved annotated matrices and overview	Retained median and IQR	8
-supp_fig7_4	Figure7	instantaneous	Direct-source gross proliferation across oxygen and thresholds	Approved annotated matrices and overview	Retained median and IQR	8
+supp_fig7_3	Figure7	instantaneous	Daily high-parent low-daughter share across oxygen and blockade thresholds	Approved annotated matrices and overview	Matched-repeat median and IQR	8
+supp_fig7_4	Figure7	instantaneous	Daily low-parent low-daughter share across oxygen and blockade thresholds	Approved annotated matrices and overview	Matched-repeat median and IQR	8
 supp_fig7_5	Figure7	instantaneous	O2 0.5 percent and p_misseg 0.3	Approved two-panel blocks	Retained median and IQR	1
 supp_fig7_6	Figure7	instantaneous	O2 5 percent and p_misseg 0.1	Approved two-panel blocks	Retained median and IQR	1
 supp_fig7_7	Figure7	instantaneous	O2 5 percent and p_misseg 0.3	Approved two-panel blocks	Retained median and IQR	1
+supp_fig7_8	Figure7	instantaneous	First-generation vs historical origin: current composition, proliferation, ploidy and cell-weighted distributions	24 time-profile pages and 24 unblocked CDF pages; PNG previews page 1	Time median/IQR across repeats; distribution equal-repeat mean CDF and repeat IQR	48
 figure7_ver2	Figure7	history	Current low-cell lineage share and gross proliferation	Approved two-panel blocks; legacy publication name	Retained median and IQR	1
 supp_fig7_1_ver2	Figure7	history	Lineage-resolved mother-to-daughter flux	Approved lineage heatmaps	Retained diagnostic data	1
 supp_fig7_2_ver2	Figure7	history	Lineage-resolved low-ploidy population budget	Approved signed budget bars	Retained diagnostic data	1

@@ -1,4 +1,5 @@
 # Figure7: own total trajectories -> two passive origin labels -> all products.
+source(file.path(.fp_module_directory,"figure7_source_accounting.R"),local=globalenv())
 f7_tasks <- function(a) {
   cfg <- a$cfg;parts <- list()
   for(ctx in c("in vivo","in vitro")) {
@@ -30,7 +31,16 @@ f7_direct_operator <- function(l,c,culture) {
     error <- max(abs(E[seq_len(n),seq_len(n)]-P))
     if(error>1e-9)stop("Augmented direct-origin propagation altered X")
   }
-  list(op=list(G=l$G,KH=c$KH,P=P,PU=PU,Q=Q,lambda=l$lambda,mu=l$mu,survive=survive),error=error)
+  rows <- matrix(0,2,n)
+  if(!culture) {
+    aug <- matrix(0,n+2L,n+2L);aug[seq_len(n),seq_len(n)] <- l$M
+    aug[n+1L,seq_len(n)] <- c$hl;aug[n+2L,seq_len(n)] <- c$ll
+    rows <- as.matrix(Matrix::expm(aug))[n+1:2,seq_len(n),drop=FALSE]
+    if(min(rows)< -1e-12)stop("Negative integrated daughter counter operator")
+    rows[rows<0] <- 0
+  }
+  list(op=list(G=l$G,KH=c$KH,P=P,PU=PU,Q=Q,lambda=l$lambda,mu=l$mu,survive=survive),
+    count_rows=rows,error=error)
 }
 f7_diagnostics <- function(l,r,t) {
   low <- l$ngrid<66L;cf <- if(t$model_context=="in vitro")r$final_crowding_factor else rep(1,ncol(r$final_state))
@@ -88,13 +98,22 @@ f7_simulate_task <- function(a,b,t) {
       isTRUE(pr$config$Crowding),mode,pr$config$K,b$rule$seed_cells[1],b$config$day)
     d <- f7_direct_cpp(p$op,r,x0,c$low,l$ngrid/l$N_unit,c$hl,c$ll,culture,dt,
       isTRUE(pr$config$Crowding),mode,pr$config$K,b$rule$seed_cells[1],b$config$day)
+    profiles <- t$threshold_N==b$config$threshold_N&&t$O2_pct%in%b$config$main_oxygen
+    daily <- f7_daily_cpp(p$op,r,x0,c$low,l$ngrid/l$N_unit,c$hl,c$ll,p$count_rows,
+      culture,dt,isTRUE(pr$config$Crowding),mode,pr$config$K,b$rule$seed_cells[1],
+      b$config$day,profiles,as.integer(b$config$snapshot_days))
     meta <- cbind(t,seed_number=e$seed_number,q=beta)
     nominal <- if(culture)b$replicates else 1L
     series <- data.table::rbindlist(list(
-      cbind(meta,analysis="instantaneous",metric="flux_percent",fp_summaries(r$flux_percent,nominal)),
-      cbind(meta,analysis="instantaneous",metric="growth_percent",fp_summaries(d$growth_percent,nominal)),
+      cbind(meta,analysis="instantaneous",metric="flux_percent",source_accounting="daily_viable_low_daughters",
+        fp_summaries(daily$high_parent_percent,nominal)),
+      cbind(meta,analysis="instantaneous",metric="growth_percent",source_accounting="daily_viable_low_daughters",
+        fp_summaries(daily$low_parent_percent,nominal)),
       cbind(meta,analysis="history",metric="flux_percent",fp_summaries(h$lineage_cell_share,nominal)),
-      cbind(meta,analysis="history",metric="growth_percent",fp_summaries(h$lineage_growth_share,nominal))))
+      cbind(meta,analysis="history",metric="growth_percent",fp_summaries(h$lineage_growth_share,nominal))),fill=TRUE)
+    source_counts_summary <- f7_count_summary(daily,meta,nominal)
+    population_summary <- if(profiles)f7_population_summary(daily,meta,nominal) else NULL
+    distribution_summary <- if(profiles)f7_distribution_summary(daily,meta,l,c) else NULL
     X <- r$final_state;D <- d$final_direct_state
     all_births <- colSums(sweep(X,1,c$ll,"*"));direct_births <- colSums(sweep(D,1,c$ll,"*"))
     mass <- colSums(X[c$low,,drop=FALSE]);cf <- if(culture)r$final_crowding_factor else rep(1,ncol(X))
@@ -110,14 +129,23 @@ f7_simulate_task <- function(a,b,t) {
       propagator_error=p$error,negative_state_clipping_count=r$negative_state_clipping_count+h$negative_state_clipping_count,
       direct_roundoff_corrections=d$roundoff_corrections,n_passages=nrow(r$passage_events),
       executed_repeats=r$executed_repeats,initial_direct_mass=sum(d$direct_cell_share[,1],na.rm=TRUE)))
+    qc[,`:=`(daily_passage_error=daily$passage_error,daily_final_state_error=daily$final_state_error,
+      daily_direct_state_error=max(abs(daily$final_direct_state-D)),daily_subset_error=daily$subset_error,
+      daily_complement_error=daily$complement_error,
+      daily_day_zero_empty=all(is.na(daily$high_parent_percent[,1]))&&all(is.na(daily$low_parent_percent[,1])))]
     qc[,passed:=direct_flux_error<1e-8&direct_ploidy_error<1e-8&passage_error<1e-8&final_state_error<1e-8&
       direct_subset_error<1e-9&direct_growth_balance_error<1e-12&history_metric_error<1e-8&history_balance_error<1e-9&
-      endpoint_growth_error<1e-6&propagator_error<1e-9&negative_state_clipping_count==0L&direct_roundoff_corrections==0L]
+      endpoint_growth_error<1e-6&propagator_error<1e-9&negative_state_clipping_count==0L&direct_roundoff_corrections==0L&
+      daily_passage_error<1e-8&daily_final_state_error<1e-8&daily_direct_state_error<1e-8&
+      daily_subset_error<1e-9&daily_complement_error<1e-10&daily_day_zero_empty]
     if(!all(qc$passed)||!identical(is.na(expected),is.na(got)))stop("Figure7 task numerical check failed")
     diag <- if(beta==0&&t$threshold_N==66L&&t$initial_ploidy==4&&t$p_misseg==.3&&t$O2_pct%in%c(0,5))
       f7_diagnostics(l,r,meta) else NULL
     outputs[[length(outputs)+1L]] <- list(metadata=meta,summary=series,qc=qc,diagnostics=diag,
-      trajectories=r,direct=d,history=h,intervention_qc=l$intervention_qc)
+      trajectories=r,direct=d,history=h,daily_counts=daily[c("HL_per_start_live_cell","LL_per_start_live_cell",
+        "log_start_live_cells","high_parent_percent","low_parent_percent")],
+      source_counts_summary=source_counts_summary,population_summary=population_summary,
+      distribution_summary=distribution_summary,intervention_qc=l$intervention_qc)
   }
   list(outputs=outputs)
 }
@@ -127,6 +155,10 @@ f7_aggregate <- function(a,b,tasks) {
   fp_write(z[analysis=="instantaneous"],file.path(a$run,"tables/instant_time_summary.tsv"))
   fp_write(z[analysis=="history"],file.path(a$run,"tables/history_time_summary.tsv"))
   fp_write(qc,file.path(a$run,"provenance/task_numerical_validation.tsv"))
+  for(spec in list(c("source_counts_summary","daily_source_counts_summary.tsv"),
+    c("population_summary","low_population_time_summary.tsv"),
+    c("distribution_summary","low_population_distribution_summary.tsv")))
+    fp_write(data.table::rbindlist(lapply(outputs,`[[`,spec[1]),fill=TRUE),file.path(a$run,"tables",spec[2]))
   diagnostics <- Filter(Negate(is.null),lapply(outputs,`[[`,"diagnostics"))
   for(spec in list(c("heat","source_daughter_flux_binned.tsv"),c("budget","winner_low_population_budget.tsv"),
     c("history_heat","history_source_daughter_flux_binned.tsv"),c("history_budget","history_low_population_budget.tsv")))
@@ -149,6 +181,28 @@ f7_validate <- function(a,b,check) {
   check("total_history_direct_trajectory_and_passage_agree",all(qc$passed))
   check("no_negative_state_clipping",all(qc$negative_state_clipping_count==0L))
   check("direct_label_initially_empty",all(qc$initial_direct_mass==0))
+  check("daily_counters_match_original_states_and_passages",all(qc$daily_passage_error<1e-8&
+    qc$daily_final_state_error<1e-8&qc$daily_direct_state_error<1e-8))
+  check("daily_repeat_source_shares_sum_100",all(qc$daily_complement_error<1e-10))
+  check("no_completed_interval_at_day_zero",all(qc$daily_day_zero_empty))
+  z <- data.table::fread(file.path(a$run,"tables/instant_time_summary.tsv"))
+  check("explicit_daily_production_definition",all(z$source_accounting=="daily_viable_low_daughters"))
+  A <- z[metric=="flux_percent"];B <- z[metric=="growth_percent"]
+  data.table::setorder(A,task_id,q,day);data.table::setorder(B,task_id,q,day)
+  check("paired_source_validity",identical(A$n_valid,B$n_valid)&&identical(is.na(A$median),is.na(B$median)))
+  ok <- is.finite(A$median)
+  check("daily_medians_complement",all(abs(A$median[ok]+B$median[ok]-100)<1e-9))
+  check("daily_iqr_complements_reversed",all(abs(A$q25[ok]+B$q75[ok]-100)<1e-9)&
+    all(abs(A$q75[ok]+B$q25[ok]-100)<1e-9))
+  check("daily_initial_values_NA",all(is.na(z[day==0]$median)))
+  pop <- data.table::fread(file.path(a$run,"tables/low_population_time_summary.tsv"))
+  check("five_explicit_origin_groups",setequal(unique(pop$group),c("all_low","direct_first_generation",
+    "other_low","historical_lineage","never_HL_lineage")))
+  check("empty_group_means_are_NA",all(is.na(pop[n_valid==0]$median)))
+  check("profile_means_within_low_compartment",all(pop[metric=="mean_ploidy"&is.finite(median)]$median<3+1e-12))
+  cdf <- data.table::fread(file.path(a$run,"tables/low_population_distribution_summary.tsv"))
+  check("within_cell_distribution_range",all(!is.finite(cdf$cdf)|(cdf$cdf>=-1e-9&cdf$cdf<=1+1e-9)))
+  check("empty_distribution_is_NA",all(is.na(cdf[n_valid_repeats==0]$cdf)))
   check("continuous_tumor_has_no_passage",all(qc[model_context=="in vivo"]$n_passages==0L))
   for(name in c("source_daughter_flux_binned.tsv","winner_low_population_budget.tsv",
     "history_source_daughter_flux_binned.tsv","history_low_population_budget.tsv")) {

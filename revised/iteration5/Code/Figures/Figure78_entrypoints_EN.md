@@ -3,6 +3,15 @@
 The same current code and private model layout is used locally and on HPC.
 `Code/config/manifests/figure78_entrypoints.tsv` is the complete entry inventory.
 
+Figure7 update (2026-10-24): generation now dispatches the native-fit passage /
+last-five cycling workflow in `Figure7_current_pipeline_EN.md`. Its320 conditions
+expand to660 grid workers; `submit_Figure7_current.sh` submits the full array and
+dependent numerical/grid collection. Figure7 generation and HPC drawing default
+to current products only; historical products require explicit selection and are
+not regenerated here. Figure8 is unchanged. During integration, `static
+--source-only=yes` explicitly does not certify old numerical data; final complete
+data/provenance checks remain mandatory.
+
 ## Paths and source policy
 
 - Model: workspace-relative `Code/vendor/figure78_model`; all 12 SHA-256 values

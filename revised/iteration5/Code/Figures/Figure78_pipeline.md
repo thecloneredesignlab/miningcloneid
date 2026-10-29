@@ -4,9 +4,17 @@ This is the execution guide for the current code. It covers parameter preparatio
 simulation, seed-level data generation, aggregation, validation, and plotting.
 It is not limited to retained-data rendering. Chinese: [中文说明](Figure78_pipeline_ZH.md).
 
+Figure7 superseding update (2026-10-24): use [the current Figure7 guide](Figure7_current_pipeline_EN.md).
+Its formal entry now generates current products only, with native-fit positive-observation-day
+passage, last-five cycling and three protocol routes. Old shared threshold/random-passage and
+historical-generation descriptions below do not describe the new current Figure7 run;
+they remain background for unchanged Figure8 / retained historical results. Historical
+Figure7 data and images are not regenerated. Current A/B use matched daily parental-source
+accounting as specified in the updated Figure7 calculation methods.
+
 ## Entry points and scope
 
-- `run_Figure7.R`: instantaneous and historical Figure7, supplementary figures1–7.
+- `run_Figure7.R`: current daily-source Figure7 and supplementary figures1–8; historical products are preserved, not generated.
 - `run_Figure8.R`: Figure8 and supplementary figures1–9.
 - `data_Figure7.R` / `data_Figure8.R`: the same real generation pipeline, not validator stubs.
 - `draw_Figure7.R` / `draw_Figure8.R`: drawing only; no implicit simulation.
@@ -86,9 +94,12 @@ Do not use this option merely to inspect or redraw existing results.
 
 Figure7 creates its own total trajectories, then replays passive history and
 non-inherited direct-origin labels against those same trajectories and passage
-samples. Instantaneous A is `100 F_HL/(F_HL+F_LL)`; instantaneous B is
-`100 sum(J_LL D_L)/sum(J_LL X_L)`. D contains only currently surviving direct H→L
-daughters before their first division. Their daughters do not inherit D. History A
+samples. Daily-source A is `100 C_HL/(C_HL+C_LL)`; B is `100 C_LL/(C_HL+C_LL)`.
+The C counters integrate expected viable low daughters over [d-1,d), classified
+by the mother's chromosome state. Day0 and zero production are NA. D contains
+only currently surviving direct H→L daughters before their first division; its
+proliferation and composition are now characterized in supp_fig7_8, not main B.
+Their daughters do not inherit D. History A
 is the current low-cell stock fraction of the permanently tagged lineage; history B
 is that lineage's current gross low-cell birth contribution. No growth share
 subtracts death. Figure7 intentionally uses pure2N/4N states in both contexts.

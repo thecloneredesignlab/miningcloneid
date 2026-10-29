@@ -65,7 +65,7 @@ for(id in b7$tasks$task_id) {
   }
 }
 check("independent_direct_and_historical_low_birth_subsets",checked_births==nrow(b7$tasks)*3L,checked_births)
-check("instantaneous_B_is_not_reused_flux_A",direct_vs_flux>0,direct_vs_flux)
+check("supp8_direct_proliferation_is_not_daily_or_endpoint_flux",direct_vs_flux>0,direct_vs_flux)
 if(!is.null(repeat_candidate)) {
   v <- repeat_candidate;t <- v$t;e <- v$e
   plain <- fp_culture(b7,v$pr,v$l,fp_pure_initial(v$l,t$initial_ploidy),e$pair_label,e$seed_number,
@@ -90,7 +90,9 @@ for(spec in list(list(context="in vivo",family="C01",threshold=44L),
 }
 fp_save(list(purpose="independent full-time threshold spotchecks",parent_fingerprint=b7$fingerprint,
   outputs=extra),file.path(audit,"independent_threshold_spotchecks.rds"))
-for(kind in c("instant","history")) {
+# Daily source integration intentionally changes instantaneous A/B. Only the
+# explicitly unchanged historical definition has a retained-value parity gate.
+for(kind in "history") {
   columns <- c("pair_label","model_context","O2_pct","p_misseg","threshold_N","initial_ploidy","q","metric","day","median","q25","q75")
   ref <- data.table::fread(file.path(workspace,"data/Figures/Figure7/tables",paste0(kind,"_time_summary.tsv")),select=columns)
   now <- data.table::fread(file.path(a7$run,"tables",paste0(kind,"_time_summary.tsv")),select=columns)

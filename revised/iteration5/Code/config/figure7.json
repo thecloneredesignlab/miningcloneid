@@ -88,7 +88,20 @@
     "instantaneous",
     "history"
   ],
+  "source_accounting": {
+    "definition": "daily_viable_low_daughters",
+    "window_days": 1,
+    "day_label": "right endpoint: plotted day d is [d-1,d)",
+    "A": "100 * C_HL / (C_HL + C_LL)",
+    "B": "100 * C_LL / (C_HL + C_LL)",
+    "classification": "mother chromosome state immediately before division",
+    "zero_production": "NA for both shares; day zero is NA",
+    "passage_is_birth": false,
+    "subtract_death": false,
+    "supplement_origin_product": "supp_fig7_8"
+  },
   "direct_source_definition": {
+    "product": "supp_fig7_8 only; not the new main-panel B",
     "growth_definition": "current_first_generation_HL_proliferation",
     "day": 1000,
     "initial_direct_label": false,

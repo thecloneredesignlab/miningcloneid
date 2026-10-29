@@ -3,6 +3,13 @@
 本地与 HPC 使用相同当前代码和专用模型布局。
 完整入口登记表：`Code/config/manifests/figure78_entrypoints.tsv`。
 
+2026-10-24 Figure7更新：完整生成现接入Figure7专用原生拟合传代/末5段循环流程，
+详见 `Figure7_current_pipeline_ZH.md`。320条件扩展为660个网格worker；
+使用 `submit_Figure7_current.sh` 取得全量array及依赖的网格/数值后处理。
+Figure7生成与HPC绘图默认仅当前版；历史版必须显式选择，且本次不重算/重绘。
+Figure8保持原流程。源码接入期间 `static --source-only=yes` 明确不认证旧数值数据；
+最终验收仍需完整数值/来源检查。
+
 ## 路径与模型规则
 
 - 专用模型固定为工作区内 `Code/vendor/figure78_model`；12个源文件逐一验证锁定 SHA-256。

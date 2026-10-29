@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "relative_mass_min": 1e-8,
+  "absolute_count_filter": false,
+  "expected_cells_lt1_flag_only": true,
+  "count_availability_filters_means": false,
+  "relative_mass_denominator": "all currently viable cells, not only low-ploidy cells",
+  "mean_metrics": ["mean_low_birth_rate", "mean_division_rate", "mean_ploidy"],
+  "require_all_protocol_routes": true,
+  "expected_routes": {"in vitro": 3, "in vivo": 1},
+  "structural_zero": "initially empty source labels; beta=1 direct/historical sources; pure4N never-HL low lineage; pure4N day0 or beta=1 all low groups",
+  "sensitivity_relative_mass": [1e-9, 1e-8, 1e-7],
+  "affects": "supp_fig7_8 time-course conditional means only",
+  "cdf_changes": false,
+  "population_or_birth_share_changes": false,
+  "simulation_calls": 0,
+  "job_submissions": 0
+}

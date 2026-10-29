@@ -1,0 +1,14 @@
+{
+  "status": "complete",
+  "completed_utc": "2026-10-29T19:40:54.578892Z",
+  "source_root": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+  "local_root": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+  "n_files": 80,
+  "total_bytes": 41027522,
+  "all_file_hashes_verified": true,
+  "source_unchanged_during_transfer": true,
+  "model_calls": 0,
+  "neighborhood_files_selected": 0,
+  "collector_sha256": "844c0defb66aadd564441207195b824c19f90bd106eb07d0e437f396144bbd2e",
+  "manifest_sha256": "f41c3c7883a186435c35af9248001245dc95c7891777f6b3fdf372f807781d6b"
+}

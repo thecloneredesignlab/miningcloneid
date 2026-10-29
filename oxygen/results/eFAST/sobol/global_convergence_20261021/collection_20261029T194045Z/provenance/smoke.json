@@ -1,0 +1,11 @@
+{
+  "status": "complete",
+  "checkpoint": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/increments/base032769_036864/R01/A/checkpoint.npz",
+  "checkpoint_sha256": "a89c495d314cd088eef43ceef3bf7284878753d52aaddf20002c8f94c34b8b07",
+  "sample_begin": 32768,
+  "certified_new_model_points": 32768,
+  "original_model_points_evaluated": 0,
+  "production_resumes_same_checkpoint": true,
+  "elapsed_seconds": 318.4322843551636,
+  "completed_utc": "2026-10-21T16:04:37.118830Z"
+}

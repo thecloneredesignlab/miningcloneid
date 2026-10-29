@@ -1,0 +1,7 @@
+N	output	index	newly_passed	lost_pass	still_not_passed
+65536	dominant_mean_ploidy	S1	214	0	0
+65536	dominant_mean_ploidy	ST	2109	0	55
+65536	dominant_mean_ploidy	S2	5308	0	0
+65536	dominant_growth_rate	S1	91	0	0
+65536	dominant_growth_rate	ST	0	0	0
+65536	dominant_growth_rate	S2	1602	0	0

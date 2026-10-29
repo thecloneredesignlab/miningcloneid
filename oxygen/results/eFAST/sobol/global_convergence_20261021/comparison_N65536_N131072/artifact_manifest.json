@@ -1,0 +1,225 @@
+{
+  "created_utc": "2026-10-29T19:56:28.909767+00:00",
+  "files": [
+    {
+      "path": "README.md",
+      "size": 3142,
+      "sha256": "60694da7c45d1ea6e107b40c131ac559f2aab124e49b950e78bf2ffdfb4a1c8a"
+    },
+    {
+      "path": "ST_and_36_S2_comparison.tsv.gz",
+      "size": 2494930,
+      "sha256": "9ed2efb4786d3915d21fa7c3aa34380d17af92395c9e3d3aae93bab2318e7826"
+    },
+    {
+      "path": "all_index_comparison.tsv.gz",
+      "size": 5946437,
+      "sha256": "871f1a67debaca6839781a091bafbe6d10f657754db9aeab1db370a6e253bd7a"
+    },
+    {
+      "path": "curves_source.tsv.gz",
+      "size": 2208825,
+      "sha256": "9b7c6c75dd299a555a15d192fec65b4a7ce4f48c836dbf637e6fdd7e2f9578b4"
+    },
+    {
+      "path": "diagnostic_summary.tsv",
+      "size": 3165,
+      "sha256": "3cd3bea1748e9d08e18abac992a4dd41d01cbdf7a6f400982c7a8d2dce53ef98"
+    },
+    {
+      "path": "diagnostic_summary_by_O2_band.tsv",
+      "size": 4816,
+      "sha256": "413f0c111390b799d62b70dd427cdb3d225975ead06a1121ca2a76226ee84e98"
+    },
+    {
+      "path": "environment.json",
+      "size": 953,
+      "sha256": "f159ac03fcf00e40377f4be56a3a31e15884d8c9b3af9d4a4cd481fe6ef7fd8f"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs.pdf",
+      "size": 691593,
+      "sha256": "9afbbd0d94ad9ca0103f30e91e71837fd8f9cf6d408da1d3018854d02c5c035c"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_01.png",
+      "size": 294715,
+      "sha256": "c84ea4a22cb7818c85911b5166dc10df49110ae6eea483ae1dcbe7a602f73bb2"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_02.png",
+      "size": 321086,
+      "sha256": "06089312d90c37ec843b9bf8312a0b987be1455e97b1f89567ef22cce2344bea"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_03.png",
+      "size": 323350,
+      "sha256": "81ed37f31cc76ccd6296affbfe772b636df8724ea0bbe00dce6210e3f68bb3b4"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_04.png",
+      "size": 324009,
+      "sha256": "a05a7cb5fbc55e3afd544a98c60aa91c42434b1c2c3536a2f963764649d410a5"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_05.png",
+      "size": 320803,
+      "sha256": "b988faae54f1a2b35126f24c252320b1393b0a4fb44f45a66e32e3defc5bc501"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_06.png",
+      "size": 318880,
+      "sha256": "9a58879a9492fdb5f4b47cb6a76e1117075f9265566ea770a127aa7b719f7ae3"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_07.png",
+      "size": 343369,
+      "sha256": "7120aef0cd70feb62894ddf686f4781dfdba2315420a76739d8b1f4f6e10c511"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_08.png",
+      "size": 323944,
+      "sha256": "7e082cc92d8c890e69926761933d713ea22372c797d3a26f6c02a16fadd57b6b"
+    },
+    {
+      "path": "figures/S2_all_36_focal_pairs_09.png",
+      "size": 311274,
+      "sha256": "67d674093d1c592aef29f026492994234a1975f16de28a467e120b5557a5cc45"
+    },
+    {
+      "path": "figures/ST_all_parameters.pdf",
+      "size": 250775,
+      "sha256": "288de47e39cd467aff83a1361cfa31604cc85ac1592094669ec7e0d39a1c41f1"
+    },
+    {
+      "path": "figures/ST_all_parameters_01.png",
+      "size": 183718,
+      "sha256": "0d3f36d50f131098784c58aaa3bec3af84a737b724adcf66ed90bbc157105eaa"
+    },
+    {
+      "path": "figures/ST_all_parameters_02.png",
+      "size": 191865,
+      "sha256": "d64089b6fae1d3a8863ef6f5bdf64a90c48e0d30fd0d4bd7836b055ff15bbdbc"
+    },
+    {
+      "path": "figures/ST_all_parameters_03.png",
+      "size": 205248,
+      "sha256": "d19528c737f5b6d11b0ae6119088cd2b0d015d8469ebb2b9c02b3355f7538c58"
+    },
+    {
+      "path": "figures/ST_all_parameters_04.png",
+      "size": 120336,
+      "sha256": "8f20a11d7817900d3d59cc7d9dd120155020136037ed0e0cb19d928b5e222a12"
+    },
+    {
+      "path": "figures/convergence_overview.pdf",
+      "size": 29457,
+      "sha256": "14fb460bd1abe5a0abe700e4738ade969320c5779226a3a5e3a5295303d9fab1"
+    },
+    {
+      "path": "figures/convergence_overview.png",
+      "size": 281950,
+      "sha256": "390339db0ba73f969afe5d5f4cde09aea79d4df894e0af6c0b11de57b98e38c7"
+    },
+    {
+      "path": "figures/focal_S2_top_pairs.pdf",
+      "size": 127390,
+      "sha256": "a707816a3d92230fca5627c8f95b9a0acc1b052f88e6c8942d635027a057fc7d"
+    },
+    {
+      "path": "figures/focal_S2_top_pairs.png",
+      "size": 493819,
+      "sha256": "c199e9cd96e052ae14e23b109b73f854f757731277aee39285e6b6f59f1229b3"
+    },
+    {
+      "path": "figures/previously_unstable_ST.pdf",
+      "size": 34499,
+      "sha256": "a2d83bd4b32911df8f55d5b11b756d023341171620abeed70f265cf7d903897e"
+    },
+    {
+      "path": "figures/previously_unstable_ST_01.png",
+      "size": 225663,
+      "sha256": "94a3ceb14a5a1693b305c17a02d2e3455ac098b803c6c7de5e79a3e65a28d94a"
+    },
+    {
+      "path": "five_repeat_source.tsv.gz",
+      "size": 2802047,
+      "sha256": "439a22ab2d4134a14310e8b61f08fc0548ab8f778467a083034a708817cc99da"
+    },
+    {
+      "path": "historical_ST_and_focal_S2_pass_rates.tsv",
+      "size": 1325,
+      "sha256": "f85ed581cca30bd85b2e835ef8f81063e57be2cb1dcbdd9a71e4178208b6ffa9"
+    },
+    {
+      "path": "interpretation_zh.md",
+      "size": 7968,
+      "sha256": "33cd57d4036f1a564843afa7210cbb7cae175383777ccbe8526f57eed63fc70c"
+    },
+    {
+      "path": "parameter_and_pair_summary.tsv",
+      "size": 39705,
+      "sha256": "884e661b3c13ae306c10857d52fa8fa92ce52bb4b193621ea060cd12c69a5480"
+    },
+    {
+      "path": "pdf_render_validation.json",
+      "size": 24964,
+      "sha256": "eb50d1b1924f24ab2d484f810b090410748fc921a0af02e54ae7d59df391c11d"
+    },
+    {
+      "path": "previously_not_passed_tracking.tsv",
+      "size": 19489,
+      "sha256": "17fe64de9c187f1aad56b06be4dc2182a47965d2b12d3f48f43fabf6b2b6a5ef"
+    },
+    {
+      "path": "ranking_stability.tsv",
+      "size": 62275,
+      "sha256": "ee2eb497e7394fcbfe563202cbef50b8beae466515717f84609d5587331975e5"
+    },
+    {
+      "path": "requirements.txt",
+      "size": 204,
+      "sha256": "dd1846d4f700c5dbf7381e87cb8d42db64e485e282a170a4ccc11e57058aafe9"
+    },
+    {
+      "path": "validation/new_comparison_contact_sheet.png",
+      "size": 850899,
+      "sha256": "8b65e3c42487d86718bb0226ef05d62bf553f07f157bbd706976f4c26025efa2"
+    },
+    {
+      "path": "validation/original_exports_contact_sheet.png",
+      "size": 785506,
+      "sha256": "90c1ece0876df766e7e5454b415bb94a7ea01b0c2a7258df172a2d75304ab7c3"
+    },
+    {
+      "path": "validation_assets.json",
+      "size": 24098,
+      "sha256": "28678015ff8b5d197164519746b8d95b42b603614e1ada7674b2edbc243b6f7f"
+    },
+    {
+      "path": "validation_collector_safety.json",
+      "size": 450,
+      "sha256": "040846db1d0d3cea817fa2640bd4f50992c862676c3cd02af8fd5f9510cbec2a"
+    },
+    {
+      "path": "validation_data.json",
+      "size": 1600,
+      "sha256": "aa4ed52d2dae3d1d00e1a098b8218bd2020eefa38869172b5e1fb949cf46a467"
+    },
+    {
+      "path": "validation_final.json",
+      "size": 1162,
+      "sha256": "2352854529c53aadafe5512a33f1487f3f43f36c9ddb68e7a3f5219d4585e32b"
+    },
+    {
+      "path": "visual_review.md",
+      "size": 2403,
+      "sha256": "2a76e955c6af04cf353e43a55cab4ba51bed17e34172a5ad1b203ccbc54b00f4"
+    }
+  ],
+  "input_manifest": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/collection_20261029T194045Z/remote_manifest.json",
+  "input_manifest_sha256": "f41c3c7883a186435c35af9248001245dc95c7891777f6b3fdf372f807781d6b",
+  "script_sha256": "c453ad1d0f39e2719b13125e48476f6811dccd4fc354d689b55480f5d67e2a57",
+  "model_calls": 0,
+  "neighborhood_files_read": 0
+}

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "rsync",
+    "-a",
+    "-z",
+    "--no-perms",
+    "--no-owner",
+    "--no-group",
+    "--files-from=/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/collection_20261029T194045Z/files_from.txt",
+    "-e",
+    "ssh -o BatchMode=yes -o ConnectTimeout=20",
+    "4482173@red.moffitt.org:/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/",
+    "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/.incoming_20261029T194045Z/"
+  ],
+  "returncode": 0,
+  "completed_utc": "2026-10-29T19:40:53.043103Z"
+}

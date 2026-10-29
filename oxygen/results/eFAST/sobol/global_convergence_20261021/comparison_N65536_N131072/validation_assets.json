@@ -1,0 +1,565 @@
+{
+  "verified_utc": "2026-10-29T19:53:12.710143+00:00",
+  "n_assets": 57,
+  "files": [
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/annotation_legend.pdf",
+      "size": 13040,
+      "sha256": "f1d7e5b5875044b96ae41862a0aabe759c280b8f29355a1c836618f36ea2e490",
+      "pages": 1,
+      "text_characters": 273,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/annotation_legend.png",
+      "size": 41261,
+      "sha256": "b2b3b0391a50f885686e9702413278f559c3ec26966eb640140577b70d4ecbe6",
+      "pixels": [
+        1111,
+        267
+      ],
+      "thumbnail_stddev": 24.871329612839673,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/global_s1_st_focal_s2.pdf",
+      "size": 57453,
+      "sha256": "d40e01594c7f9ec4b035af10940893af2381322c22bcd6f9548c68d2f96a9c5e",
+      "pages": 1,
+      "text_characters": 2600,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/global_s1_st_focal_s2.png",
+      "size": 292605,
+      "sha256": "e7dfacc03f48b2434f35a595a2dac20403678fdc911d7ce2e657d31ac50fb49b",
+      "pixels": [
+        2388,
+        2797
+      ],
+      "thumbnail_stddev": 38.83224933224464,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/s1_parameter_by_oxygen.pdf",
+      "size": 31382,
+      "sha256": "1dfe1f959cbac2c932925c8f63aff085eea471a3505f80decc2195d8250281a9",
+      "pages": 1,
+      "text_characters": 799,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/s1_parameter_by_oxygen.png",
+      "size": 110482,
+      "sha256": "7f3d1e32dcc5adf2ded02e1d7f5a79a449019501e7fd078358b64f02d498e205",
+      "pixels": [
+        2193,
+        986
+      ],
+      "thumbnail_stddev": 42.15536815946755,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/s2_focal_pairs_by_oxygen.pdf",
+      "size": 37171,
+      "sha256": "825714ee5bdba1b557af67c991440fd1102e38bf99a19c1ec91169081452e23f",
+      "pages": 1,
+      "text_characters": 1964,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/s2_focal_pairs_by_oxygen.png",
+      "size": 213681,
+      "sha256": "e1a8108ef2e783fe14010ccefbc9e54b0711a8d18bfc8e398d056d0b8d8c0d54",
+      "pixels": [
+        2279,
+        1805
+      ],
+      "thumbnail_stddev": 35.96161748302762,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/s2_pair_by_oxygen.pdf",
+      "size": 47408,
+      "sha256": "c90f578d273928662d764867103894e5250230c9c27fa9f65db9ac088dff15ca",
+      "pages": 1,
+      "text_characters": 4244,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/s2_pair_by_oxygen.png",
+      "size": 388876,
+      "sha256": "d604008f5d897efdddaadb53b6b439150852ada4bce6f2c233e7b1c0a1e71f0f",
+      "pixels": [
+        2285,
+        3443
+      ],
+      "thumbnail_stddev": 32.75685353863868,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/st_parameter_by_oxygen.pdf",
+      "size": 32875,
+      "sha256": "d2b4b02f5b46ad0842234ede202741ee3876c623c2c61c441e40499ac7695144",
+      "pages": 1,
+      "text_characters": 788,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/figures/st_parameter_by_oxygen.png",
+      "size": 110940,
+      "sha256": "aefae28c1ea349f095a500985856d7850591fe6197be29bd950507974d84af94",
+      "pixels": [
+        2193,
+        986
+      ],
+      "thumbnail_stddev": 49.46033362656779,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/resolution_comparison/diagnostic_pass_fraction.pdf",
+      "size": 17300,
+      "sha256": "95f576f47f5a0f93455012f490eebe775e0d61a4395ba61463b69123bd01f196",
+      "pages": 1,
+      "text_characters": 203,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/resolution_comparison/diagnostic_pass_fraction.png",
+      "size": 59840,
+      "sha256": "8a18e71d1363f3eb73c5573a96d0e3f56a82e2f9fa32ec1c5511d0f45442d215",
+      "pixels": [
+        1696,
+        576
+      ],
+      "thumbnail_stddev": 14.42612725669131,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/resolution_comparison/s2_curves.pdf",
+      "size": 683082,
+      "sha256": "5930dcad346f8a92cb10dd86b48106e740a06ba38e14bf1810ac836fce2e4e2a",
+      "pages": 1,
+      "text_characters": 8209,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/resolution_comparison/s2_curves.png",
+      "size": 4324343,
+      "sha256": "e7d8b144b22d878b9821dc8152ad8020c6be0e714b7029e8adf22b8744664a62",
+      "pixels": [
+        1976,
+        11608
+      ],
+      "thumbnail_stddev": 9.161946325525655,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/resolution_comparison/st_curves.pdf",
+      "size": 241727,
+      "sha256": "fba74f25fddd65aa2d29350366127b9b3059592146ffaa133a8135c1bb9f2dae",
+      "pages": 1,
+      "text_characters": 2860,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N65536/resolution_comparison/st_curves.png",
+      "size": 1081646,
+      "sha256": "628463103b3e44677c49e784f9a85dc20a76b51a08f9892fef795659a52881b6",
+      "pixels": [
+        1976,
+        4524
+      ],
+      "thumbnail_stddev": 9.863105404038228,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/annotation_legend.pdf",
+      "size": 13040,
+      "sha256": "7f45cbd51f844ef35632a9c46f0feb62079008d3bd9240e2db35ea8e271f5aea",
+      "pages": 1,
+      "text_characters": 273,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/annotation_legend.png",
+      "size": 41261,
+      "sha256": "b2b3b0391a50f885686e9702413278f559c3ec26966eb640140577b70d4ecbe6",
+      "pixels": [
+        1111,
+        267
+      ],
+      "thumbnail_stddev": 24.871329612839673,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/global_s1_st_focal_s2.pdf",
+      "size": 56672,
+      "sha256": "40c94d01fa280f871ab9d04608a4875e2fcb67491b4702176c1ddb33db5e8900",
+      "pages": 1,
+      "text_characters": 2601,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/global_s1_st_focal_s2.png",
+      "size": 288084,
+      "sha256": "3f372547acdf916c64fb3516c6ef232387e7f42f9890cffd26557df1e85d607b",
+      "pixels": [
+        2388,
+        2797
+      ],
+      "thumbnail_stddev": 38.98977801242513,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/s1_parameter_by_oxygen.pdf",
+      "size": 30511,
+      "sha256": "8cbb084547e5d3865fd28502d29394386bffc0fc2175d4c93bd4fce3bed7911a",
+      "pages": 1,
+      "text_characters": 800,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/s1_parameter_by_oxygen.png",
+      "size": 109535,
+      "sha256": "039c92fe5bf432303b7f10ff357e789785e1eb0a7822dd598b4d264140aa4827",
+      "pixels": [
+        2193,
+        986
+      ],
+      "thumbnail_stddev": 42.336708500490055,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/s2_focal_pairs_by_oxygen.pdf",
+      "size": 36488,
+      "sha256": "13a01122972e9e2c6794402d80e83c32c1e68dd59028244ad2f4e3975ee71c76",
+      "pages": 1,
+      "text_characters": 1965,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/s2_focal_pairs_by_oxygen.png",
+      "size": 208612,
+      "sha256": "758cbd0aa24724b3a6e4f9cb096e8d680ef551b5d5867653fa75852a08b9e9ab",
+      "pixels": [
+        2279,
+        1805
+      ],
+      "thumbnail_stddev": 36.13489457847177,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/s2_pair_by_oxygen.pdf",
+      "size": 45944,
+      "sha256": "7d4626c0819b6dee76d44a143147819635cbf4bcce9970160f21126b08897119",
+      "pages": 1,
+      "text_characters": 4245,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/s2_pair_by_oxygen.png",
+      "size": 377129,
+      "sha256": "2a491990e6a1422ae464a1e32cf5e829ea0819c2f7d4e474d9b91ebde8b7f00f",
+      "pixels": [
+        2285,
+        3443
+      ],
+      "thumbnail_stddev": 32.77715234340215,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/st_parameter_by_oxygen.pdf",
+      "size": 32802,
+      "sha256": "57402dc1f5e3ddf880accc34116566c7408953dbd4ef125ecbd2a1a08161a9ba",
+      "pages": 1,
+      "text_characters": 789,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/figures/st_parameter_by_oxygen.png",
+      "size": 109851,
+      "sha256": "f166c9a945241254336f01dc023d993be50ddb6a3648232e7105efb05e405713",
+      "pixels": [
+        2193,
+        986
+      ],
+      "thumbnail_stddev": 49.49396907836371,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/resolution_comparison/diagnostic_pass_fraction.pdf",
+      "size": 17783,
+      "sha256": "0bde8f7487737eb9003040ac01ac3ea125f6d32930145fdf98f81d550666d8ed",
+      "pages": 1,
+      "text_characters": 211,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/resolution_comparison/diagnostic_pass_fraction.png",
+      "size": 58784,
+      "sha256": "2ffb4e94e2f0f4e4eb1c7fe8912308f25a01e09ec1b865a84344a1c6a258a306",
+      "pixels": [
+        1696,
+        576
+      ],
+      "thumbnail_stddev": 14.638936883236527,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/resolution_comparison/s2_curves.pdf",
+      "size": 743941,
+      "sha256": "61a93de18d6f8c52641b5b493e40369e9a4a873953bf4f850bd9ebf958033677",
+      "pages": 1,
+      "text_characters": 8199,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/resolution_comparison/s2_curves.png",
+      "size": 4408853,
+      "sha256": "542f57425f53a56eaf2f6853b5260bc4a79dfc34d5a7b3b5967224a6df37dba8",
+      "pixels": [
+        1976,
+        11608
+      ],
+      "thumbnail_stddev": 9.044120428789334,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/resolution_comparison/st_curves.pdf",
+      "size": 259851,
+      "sha256": "f99a62f0ce33f5a65840aa3af2c76c038e7e50ac610ba45f42bdec55a55eb2ed",
+      "pages": 1,
+      "text_characters": 2867,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/N131072/resolution_comparison/st_curves.png",
+      "size": 1059155,
+      "sha256": "099fec0c6744e0317b666465cd817fb4f8327b8395eec56b57d2d5dec3819940",
+      "pixels": [
+        1976,
+        4524
+      ],
+      "thumbnail_stddev": 9.864680359217726,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs.pdf",
+      "size": 691593,
+      "sha256": "9afbbd0d94ad9ca0103f30e91e71837fd8f9cf6d408da1d3018854d02c5c035c",
+      "pages": 9,
+      "text_characters": 9631,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_01.png",
+      "size": 294715,
+      "sha256": "c84ea4a22cb7818c85911b5166dc10df49110ae6eea483ae1dcbe7a602f73bb2",
+      "pixels": [
+        1744,
+        1661
+      ],
+      "thumbnail_stddev": 16.95713446742046,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_02.png",
+      "size": 321086,
+      "sha256": "06089312d90c37ec843b9bf8312a0b987be1455e97b1f89567ef22cce2344bea",
+      "pixels": [
+        1757,
+        1661
+      ],
+      "thumbnail_stddev": 18.258833408477432,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_03.png",
+      "size": 323350,
+      "sha256": "81ed37f31cc76ccd6296affbfe772b636df8724ea0bbe00dce6210e3f68bb3b4",
+      "pixels": [
+        1757,
+        1661
+      ],
+      "thumbnail_stddev": 18.413758527231032,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_04.png",
+      "size": 324009,
+      "sha256": "a05a7cb5fbc55e3afd544a98c60aa91c42434b1c2c3536a2f963764649d410a5",
+      "pixels": [
+        1757,
+        1661
+      ],
+      "thumbnail_stddev": 18.825803984834977,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_05.png",
+      "size": 320803,
+      "sha256": "b988faae54f1a2b35126f24c252320b1393b0a4fb44f45a66e32e3defc5bc501",
+      "pixels": [
+        1757,
+        1661
+      ],
+      "thumbnail_stddev": 18.288085243103232,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_06.png",
+      "size": 318880,
+      "sha256": "9a58879a9492fdb5f4b47cb6a76e1117075f9265566ea770a127aa7b719f7ae3",
+      "pixels": [
+        1767,
+        1661
+      ],
+      "thumbnail_stddev": 18.433984624245703,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_07.png",
+      "size": 343369,
+      "sha256": "7120aef0cd70feb62894ddf686f4781dfdba2315420a76739d8b1f4f6e10c511",
+      "pixels": [
+        1767,
+        1661
+      ],
+      "thumbnail_stddev": 20.065685030646307,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_08.png",
+      "size": 323944,
+      "sha256": "7e082cc92d8c890e69926761933d713ea22372c797d3a26f6c02a16fadd57b6b",
+      "pixels": [
+        1767,
+        1661
+      ],
+      "thumbnail_stddev": 19.394820651159606,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/S2_all_36_focal_pairs_09.png",
+      "size": 311274,
+      "sha256": "67d674093d1c592aef29f026492994234a1975f16de28a467e120b5557a5cc45",
+      "pixels": [
+        1767,
+        1661
+      ],
+      "thumbnail_stddev": 19.126181323897494,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/ST_all_parameters.pdf",
+      "size": 250775,
+      "sha256": "288de47e39cd467aff83a1361cfa31604cc85ac1592094669ec7e0d39a1c41f1",
+      "pages": 4,
+      "text_characters": 3394,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/ST_all_parameters_01.png",
+      "size": 183718,
+      "sha256": "0d3f36d50f131098784c58aaa3bec3af84a737b724adcf66ed90bbc157105eaa",
+      "pixels": [
+        1734,
+        1661
+      ],
+      "thumbnail_stddev": 13.198984650220089,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/ST_all_parameters_02.png",
+      "size": 191865,
+      "sha256": "d64089b6fae1d3a8863ef6f5bdf64a90c48e0d30fd0d4bd7836b055ff15bbdbc",
+      "pixels": [
+        1744,
+        1661
+      ],
+      "thumbnail_stddev": 13.453067803665416,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/ST_all_parameters_03.png",
+      "size": 205248,
+      "sha256": "d19528c737f5b6d11b0ae6119088cd2b0d015d8469ebb2b9c02b3355f7538c58",
+      "pixels": [
+        1744,
+        1661
+      ],
+      "thumbnail_stddev": 13.559295410137407,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/ST_all_parameters_04.png",
+      "size": 120336,
+      "sha256": "8f20a11d7817900d3d59cc7d9dd120155020136037ed0e0cb19d928b5e222a12",
+      "pixels": [
+        1734,
+        1661
+      ],
+      "thumbnail_stddev": 11.21802138555836,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/convergence_overview.pdf",
+      "size": 29457,
+      "sha256": "14fb460bd1abe5a0abe700e4738ade969320c5779226a3a5e3a5295303d9fab1",
+      "pages": 1,
+      "text_characters": 1499,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/convergence_overview.png",
+      "size": 281950,
+      "sha256": "390339db0ba73f969afe5d5f4cde09aea79d4df894e0af6c0b11de57b98e38c7",
+      "pixels": [
+        2292,
+        1266
+      ],
+      "thumbnail_stddev": 14.744797817475506,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/focal_S2_top_pairs.pdf",
+      "size": 127390,
+      "sha256": "a707816a3d92230fca5627c8f95b9a0acc1b052f88e6c8942d635027a057fc7d",
+      "pages": 1,
+      "text_characters": 1474,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/focal_S2_top_pairs.png",
+      "size": 493819,
+      "sha256": "c199e9cd96e052ae14e23b109b73f854f757731277aee39285e6b6f59f1229b3",
+      "pixels": [
+        1869,
+        2515
+      ],
+      "thumbnail_stddev": 15.513171504745197,
+      "check": "decoded_crc_and_nonblank_pixels"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/previously_unstable_ST.pdf",
+      "size": 34499,
+      "sha256": "a2d83bd4b32911df8f55d5b11b756d023341171620abeed70f265cf7d903897e",
+      "pages": 1,
+      "text_characters": 646,
+      "check": "parsed_pages_content_and_text"
+    },
+    {
+      "path": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/comparison_N65536_N131072/figures/previously_unstable_ST_01.png",
+      "size": 225663,
+      "sha256": "94a3ceb14a5a1693b305c17a02d2e3455ac098b803c6c7de5e79a3e65a28d94a",
+      "pixels": [
+        1425,
+        1609
+      ],
+      "thumbnail_stddev": 16.05355173368166,
+      "check": "decoded_crc_and_nonblank_pixels"
+    }
+  ],
+  "scope": "All collected PDF/PNG and all new comparison PDF/PNG; structural checks, not a claim of visual inspection of every original page."
+}

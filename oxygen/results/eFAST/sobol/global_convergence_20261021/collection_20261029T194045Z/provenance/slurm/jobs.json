@@ -1,0 +1,243 @@
+[
+  {
+    "stage": "prepare",
+    "role": "prepare",
+    "job_id": "21262946",
+    "N": 0,
+    "array_count": 0,
+    "memory": "4G",
+    "dependencies": [],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=4G",
+      "--job-name=gconv_prepare",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=prepare,GLOBAL_CONVERGENCE_N=65536",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/prepare_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/prepare_%A_%a.err",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.787365Z"
+  },
+  {
+    "stage": "smoke",
+    "role": "smoke",
+    "job_id": "21262947",
+    "N": 65536,
+    "array_count": 0,
+    "memory": "4G",
+    "dependencies": [
+      "21262946"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=4G",
+      "--job-name=gconv_smoke",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=smoke,GLOBAL_CONVERGENCE_N=65536",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/smoke_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/smoke_%A_%a.err",
+      "--dependency=afterok:21262946",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.822925Z"
+  },
+  {
+    "stage": "model_65536",
+    "role": "model",
+    "job_id": "21262948",
+    "N": 65536,
+    "array_count": 1200,
+    "memory": "4G",
+    "dependencies": [
+      "21262947"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=4G",
+      "--job-name=gconv_model_65536",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=model,GLOBAL_CONVERGENCE_N=65536",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/model_65536_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/model_65536_%A_%a.err",
+      "--array=1-1200",
+      "--dependency=afterok:21262947",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.853393Z"
+  },
+  {
+    "stage": "analyze_65536",
+    "role": "analyze",
+    "job_id": "21262949",
+    "N": 65536,
+    "array_count": 130,
+    "memory": "16G",
+    "dependencies": [
+      "21262948"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=16G",
+      "--job-name=gconv_analyze_65536",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=analyze,GLOBAL_CONVERGENCE_N=65536",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/analyze_65536_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/analyze_65536_%A_%a.err",
+      "--array=1-130",
+      "--dependency=afterok:21262948",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.883924Z"
+  },
+  {
+    "stage": "report_65536",
+    "role": "report",
+    "job_id": "21262950",
+    "N": 65536,
+    "array_count": 0,
+    "memory": "16G",
+    "dependencies": [
+      "21262949"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=16G",
+      "--job-name=gconv_report_65536",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=report,GLOBAL_CONVERGENCE_N=65536",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/report_65536_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/report_65536_%A_%a.err",
+      "--dependency=afterok:21262949",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.914962Z"
+  },
+  {
+    "stage": "model_131072",
+    "role": "model",
+    "job_id": "21262951",
+    "N": 131072,
+    "array_count": 2400,
+    "memory": "4G",
+    "dependencies": [
+      "21262950"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=4G",
+      "--job-name=gconv_model_131072",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=model,GLOBAL_CONVERGENCE_N=131072",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/model_131072_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/model_131072_%A_%a.err",
+      "--array=1-2400",
+      "--dependency=afterok:21262950",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.947057Z"
+  },
+  {
+    "stage": "analyze_131072",
+    "role": "analyze",
+    "job_id": "21262952",
+    "N": 131072,
+    "array_count": 130,
+    "memory": "16G",
+    "dependencies": [
+      "21262951"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=16G",
+      "--job-name=gconv_analyze_131072",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=analyze,GLOBAL_CONVERGENCE_N=131072",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/analyze_131072_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/analyze_131072_%A_%a.err",
+      "--array=1-130",
+      "--dependency=afterok:21262951",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:21.977203Z"
+  },
+  {
+    "stage": "report_131072",
+    "role": "report",
+    "job_id": "21262953",
+    "N": 131072,
+    "array_count": 0,
+    "memory": "16G",
+    "dependencies": [
+      "21262952"
+    ],
+    "sbatch_args": [
+      "sbatch",
+      "--parsable",
+      "--hold",
+      "--qos=xxlarge",
+      "--time=12:00:00",
+      "--ntasks=1",
+      "--cpus-per-task=1",
+      "--mem=16G",
+      "--job-name=gconv_report_131072",
+      "--comment=gconv:aa412a39999a527d",
+      "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021",
+      "--export=ALL,GLOBAL_CONVERGENCE_ROOT=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021,GLOBAL_CONVERGENCE_ROLE=report,GLOBAL_CONVERGENCE_N=131072",
+      "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/report_131072_%A_%a.out",
+      "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/logs/report_131072_%A_%a.err",
+      "--dependency=afterok:21262952",
+      "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/global_convergence_20261021/slurm/code_snapshot/run_global_convergence.sbatch"
+    ],
+    "submitted_utc": "2026-10-21T15:48:22.011120Z"
+  }
+]

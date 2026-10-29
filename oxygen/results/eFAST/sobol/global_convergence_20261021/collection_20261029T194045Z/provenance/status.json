@@ -1,0 +1,11 @@
+{
+  "status": "complete",
+  "completed_N": 131072,
+  "resolutions": [
+    65536,
+    131072
+  ],
+  "scope": "global",
+  "model_evaluations_repeated": 0,
+  "completed_utc": "2026-10-23T23:57:05.032850Z"
+}

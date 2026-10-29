@@ -1,0 +1,23 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 13:50:33) [Clang 22.1.3 ]",
+  "executable": "/Users/4482173/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+  "packages": {
+    "numpy": "2.3.5",
+    "pandas": "2.2.3",
+    "matplotlib": "3.9.4",
+    "Pillow": "12.3.0",
+    "pypdf": "6.10.0",
+    "contourpy": "1.4.0",
+    "cycler": "0.12.1",
+    "fonttools": "4.68.0",
+    "kiwisolver": "1.5.1",
+    "pyparsing": "3.3.3",
+    "packaging": "26.3",
+    "python-dateutil": "2.9.0.post0"
+  },
+  "comparison_script": "/Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/compare_global_convergence_exports.py",
+  "comparison_script_sha256": "c453ad1d0f39e2719b13125e48476f6811dccd4fc354d689b55480f5d67e2a57",
+  "collector_script_sha256": "c8ebf08dfc312635487132a680c7655d71f0760d1f6368ed6a0457cb60293c76",
+  "completed_utc": "2026-10-29T19:56:28.883245+00:00",
+  "model_calls": 0
+}

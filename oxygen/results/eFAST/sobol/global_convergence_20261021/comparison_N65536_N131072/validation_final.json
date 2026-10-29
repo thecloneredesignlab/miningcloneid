@@ -1,0 +1,31 @@
+{
+  "verified_utc": "2026-10-29T19:56:28.863439+00:00",
+  "original_export_hashes_verified": 80,
+  "summary_row_counts": {
+    "N65536": 47838,
+    "N131072": 47838
+  },
+  "derivative_table_rows": {
+    "diagnostic_summary.tsv": 16,
+    "diagnostic_summary_by_O2_band.tsv": 48,
+    "parameter_and_pair_summary.tsv": 200,
+    "curves_source.tsv.gz": 40200,
+    "all_index_comparison.tsv.gz": 47838,
+    "ST_and_36_S2_comparison.tsv.gz": 20100,
+    "five_repeat_source.tsv.gz": 201000,
+    "previously_not_passed_tracking.tsv": 55,
+    "historical_ST_and_focal_S2_pass_rates.tsv": 24,
+    "ranking_stability.tsv": 804
+  },
+  "current_pdf_render_hashes_verified": 23,
+  "rendered_pages": 34,
+  "source_code_syntax_checks": 2,
+  "tracked_git_status": "## soft_couping_eFAST...origin/soft_couping_eFAST\n M data/DrugResponseData_PDX/.DS_Store\n M data/DrugResponseData_PloidyJumps/.DS_Store\n",
+  "existing_dirty_files_preserved": [
+    "data/DrugResponseData_PDX/.DS_Store",
+    "data/DrugResponseData_PloidyJumps/.DS_Store"
+  ],
+  "model_calls": 0,
+  "neighborhood_files_selected": 0,
+  "reviewed_scope": "global N65536/N131072 exports and local comparison only"
+}

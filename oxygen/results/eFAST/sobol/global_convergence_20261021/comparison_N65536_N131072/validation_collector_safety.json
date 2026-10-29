@@ -1,0 +1,23 @@
+{
+  "verified_utc": "2026-10-29T19:49:46.373936Z",
+  "checks": [
+    {
+      "case": "new_directory",
+      "passed": true
+    },
+    {
+      "case": "identical_existing",
+      "passed": true
+    },
+    {
+      "case": "partial_existing",
+      "passed": true
+    },
+    {
+      "case": "different_existing",
+      "passed": true
+    }
+  ],
+  "script_sha256": "c8ebf08dfc312635487132a680c7655d71f0760d1f6368ed6a0457cb60293c76",
+  "model_calls": 0
+}

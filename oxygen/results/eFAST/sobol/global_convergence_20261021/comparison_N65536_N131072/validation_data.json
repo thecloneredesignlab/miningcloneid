@@ -1,0 +1,49 @@
+{
+  "verified_utc": "2026-10-29T19:52:56.407901+00:00",
+  "export_hashes_verified": 80,
+  "external_bounds_sha256_verified": true,
+  "model_calls": 0,
+  "neighborhood_files_read": 0,
+  "resolutions": {
+    "65536": {
+      "rows": 47838,
+      "repeats": 5,
+      "oxygen_points": 201,
+      "parameters": 14,
+      "all_pairs": 91,
+      "focal_pairs": 36,
+      "n_passed": 47783,
+      "n_not_passed": 55,
+      "n_undefined": 0,
+      "npz_and_tsv_match_independent_diagnostics": true
+    },
+    "131072": {
+      "rows": 47838,
+      "repeats": 5,
+      "oxygen_points": 201,
+      "parameters": 14,
+      "all_pairs": 91,
+      "focal_pairs": 36,
+      "n_passed": 47838,
+      "n_not_passed": 0,
+      "n_undefined": 0,
+      "npz_and_tsv_match_independent_diagnostics": true
+    }
+  },
+  "tolerance_for_export_float_roundtrip": 1e-12,
+  "N65536_reused_indices_bitwise_equal": true,
+  "reused_indices_shape": [
+    5,
+    201,
+    2,
+    119
+  ],
+  "input_sha256": {
+    "N65536/indices_repeats.npz": "65076a9418f0d000056d085c2f21089ace72851b27816ca361d51f1482cdc7df",
+    "N65536/indices_summary.npz": "2677db08550eba8355a716de08fac0756ca24a06fa75b788436f74ddd54850ff",
+    "N65536/indices_summary.tsv.gz": "01537ad40281a066a3c79b1c5bba554f1031690041b52164b735f20a9c96c827",
+    "N131072/indices_repeats.npz": "dca8a8f8cb0d603287d4e008d609987a2ac9d9a99031ada14434c32fdab85dee",
+    "N131072/indices_summary.npz": "b9300492a03eba3b41d6b73c82afcb5e7cffac0795fb9ce75a8984710d7a78dc",
+    "N131072/indices_summary.tsv.gz": "ba882537b333ead2091245423a41db37046bb16d2e78ba0ff88dfed3703bb0d4"
+  }
+}

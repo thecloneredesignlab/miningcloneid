@@ -1,0 +1,10 @@
+{
+  "verified_utc": "2026-11-12T16:25:40.914349+00:00",
+  "host": "red.moffitt.org",
+  "root": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+  "file_count": 348,
+  "mismatches": [],
+  "status": "passed",
+  "coverage": "Content files in final_artifact_manifest.json except this receipt; the manifest itself was also verified separately.",
+  "verified_content_set_sha256": "7cb2b2b3afd022b9f047262f94b98de99834afa449d6258efa2cde19dfa0e767"
+}

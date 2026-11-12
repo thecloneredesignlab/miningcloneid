@@ -1,0 +1,7 @@
+item	old	updated
+final_Sobol_N	unclear / approximately 4000	131072; 5 scrambles; 201 oxygen points
+pair_count	92	91 unique unordered pairs; 36 focal pairs
+convergence	approximately 92 percent	47838/47838 Sobol entries passed; operational, not confidence level
+completion_date	just finished Oct 29	HPC report Oct 23; collection and independent validation Oct 29
+method_assignment	check whether N or M / source of S2	Sobol S1/ST/S2; eFAST S1/ST, M4 and increasing N
+neighborhood	complementary near-fit analysis	archived; not resumed; old q10/q90 and diagnostics remain available

@@ -1,0 +1,626 @@
+{
+  "files": [
+    {
+      "path": "sobol/ST_minus_S1.tsv.gz",
+      "size": 179697,
+      "sha256": "cbb7b76f9844f3643f606ad7c8d9dbca8176f07a8db22b85ffc7ac775076c3e3"
+    },
+    {
+      "path": "sobol/all_parameter_and_pair_rankings.tsv",
+      "size": 109527,
+      "sha256": "40f87d6ff6faa627518975314e8aa7126413544d67797ab41410764228b9c271"
+    },
+    {
+      "path": "sobol/classification.tsv",
+      "size": 36838,
+      "sha256": "0cd04df4d6db5297495da6ab33187e2e48ecd9d59d3f840f3e430410fce97608"
+    },
+    {
+      "path": "sobol/completion.json",
+      "size": 277,
+      "sha256": "7b11a0d75fa089fb1f9222be110341538f01a6355cafa44be396c1654b9a3759"
+    },
+    {
+      "path": "sobol/figures/annotation_legend.pdf",
+      "size": 17143,
+      "sha256": "a3d253a7f896e55fa917721352c1eba9b8d6a1dec274bdb7efaf132ec3173d2a"
+    },
+    {
+      "path": "sobol/figures/annotation_legend.png",
+      "size": 70724,
+      "sha256": "4a95eded25f15a3cfeb94e4d0830ef72ce6a93c20ec3f773eb54a968c469fc2c"
+    },
+    {
+      "path": "sobol/figures/s1_parameter_by_oxygen.pdf",
+      "size": 29150,
+      "sha256": "9164b027845e183a6c750c2d9e92126409a1cf48d14364e8b604b671090f6595"
+    },
+    {
+      "path": "sobol/figures/s1_parameter_by_oxygen.png",
+      "size": 101462,
+      "sha256": "a6b409d1d75f8b39753443f2ecb8a10da75b72799091a2fb5f9dbe5204cd275e"
+    },
+    {
+      "path": "sobol/figures/s2_focal_parameter_by_oxygen.pdf",
+      "size": 34575,
+      "sha256": "3e64b742bdc2241c44a2fb528e5f5b82086d525b1b5942ca5408a4f063be58e2"
+    },
+    {
+      "path": "sobol/figures/s2_focal_parameter_by_oxygen.png",
+      "size": 199520,
+      "sha256": "e25f1b946964209768ad6bc593cf73f489727fb62f13fcaf8a77eabdd6fb9c81"
+    },
+    {
+      "path": "sobol/figures/s2_parameter_by_oxygen.pdf",
+      "size": 45170,
+      "sha256": "d439f60cf9fc7465f44f5349d061a341fc9f7594ba1d7de35522f55dd34837a6"
+    },
+    {
+      "path": "sobol/figures/s2_parameter_by_oxygen.png",
+      "size": 376751,
+      "sha256": "0b54f95132f783cbddf7ec14464c1ab495c224af3f7b82712c41a1b248b185ce"
+    },
+    {
+      "path": "sobol/figures/sensitivity_summary.pdf",
+      "size": 57735,
+      "sha256": "b0815ebfe4ead83ea731ecc84bb1c1683847aa4e0827d2360fb25e2786094912"
+    },
+    {
+      "path": "sobol/figures/sensitivity_summary.png",
+      "size": 331267,
+      "sha256": "3da46cc9bce60e68318a66307c68df40c88dc8a414044993e40fba651cbe2ca4"
+    },
+    {
+      "path": "sobol/figures/st_parameter_by_oxygen.pdf",
+      "size": 31200,
+      "sha256": "0166b355780c9189d67bcf9cfab530db2927f95dfaf59029cf2a5bd2c97d7cc4"
+    },
+    {
+      "path": "sobol/figures/st_parameter_by_oxygen.png",
+      "size": 101000,
+      "sha256": "5c5f64586a3f57d885be239099a97f81c6aaab9eb7db165ae1c0f80c8dc17c09"
+    },
+    {
+      "path": "sobol/figures/strongest_91_pair_curves.pdf",
+      "size": 74860,
+      "sha256": "615817c1666da36b016423fc95803cb63ca68f1ff5b7602919e2c466298aaf0a"
+    },
+    {
+      "path": "sobol/figures/strongest_91_pair_curves.png",
+      "size": 506924,
+      "sha256": "0f0df4f243d6a116490a8636bdb8c6255902f50ec7b934e3340a879e49afac0e"
+    },
+    {
+      "path": "sobol/focal_36_pair_rankings.tsv",
+      "size": 33592,
+      "sha256": "9154ed177114a7260dee346ffaf6e598af5471228f5c14ddc606675c372332ea"
+    },
+    {
+      "path": "sobol/interpretation_zh.md",
+      "size": 5015,
+      "sha256": "bdb8a69c501836ccb6f1cdd8d973660da1a064e939ef2a55d71cfcfdcb0dc9f0"
+    },
+    {
+      "path": "sobol/noemi_hypothesis_checks.tsv",
+      "size": 2337,
+      "sha256": "0f911a05745c5ad759050f4c47144d606638780bd84becaa9faa654259cb7886"
+    },
+    {
+      "path": "sobol/oxygen_band_indices.tsv.gz",
+      "size": 25962,
+      "sha256": "2fef3759c3822587cb5ab9020d7a3bb0cbb7979fb36908bc0c9c50c33bc4cafc"
+    },
+    {
+      "path": "sobol/process_descriptive_summary.tsv",
+      "size": 12767,
+      "sha256": "b0f872d30ded68586b8d1200efb3c547a5b1b246de653f539e239898e9f6686a"
+    },
+    {
+      "path": "sobol/ranking_stability_N65536_N131072.tsv",
+      "size": 93475,
+      "sha256": "bb519162d0980d90e66fe4cde0d8981ca50fca5de50635fbc5f387ff6576f494"
+    },
+    {
+      "path": "sobol/row_order.tsv",
+      "size": 49162,
+      "sha256": "20ca41c66f4e3c56248ab1c638f8574497fc09bb888581a2c720fb14fc8c600b"
+    },
+    {
+      "path": "sobol/strongest_pair_curve_selection.tsv",
+      "size": 1240,
+      "sha256": "903f5c5b7c3ff9535100f2d177460b169f5b719c992100900bd33e238737921a"
+    },
+    {
+      "path": "comparison/comparison_color_limits.tsv",
+      "size": 662,
+      "sha256": "fc66d51ca85469529c8a5624bb79aac0302944a12df4cba75453404f433ba756"
+    },
+    {
+      "path": "comparison/efast_diagnostics.tsv",
+      "size": 10401,
+      "sha256": "819bb1ec2208ebbd02e3d363b76c78ac3d9687481cfb480d7257ff4faa950e4b"
+    },
+    {
+      "path": "comparison/figures/method_comparison_s1.pdf",
+      "size": 41222,
+      "sha256": "853930504624c9fe7a94b2ca7099e49ee3d84d8df2de2d5768c5a758615fe60f"
+    },
+    {
+      "path": "comparison/figures/method_comparison_s1.png",
+      "size": 184063,
+      "sha256": "c5874c12fd8a94cd71965b95c9c8a24d23c60d782e1bd1cb850369367731e6e1"
+    },
+    {
+      "path": "comparison/figures/method_comparison_st.pdf",
+      "size": 44121,
+      "sha256": "2eb0ef0866e96e63ea3acf9b53df5d9b1b3c44ecf097d1dc9f60446d58275af3"
+    },
+    {
+      "path": "comparison/figures/method_comparison_st.png",
+      "size": 185108,
+      "sha256": "98c78d9229aa6f0e250d282350753d8875d15747ade3becc65b234825807b263"
+    },
+    {
+      "path": "comparison/figures/method_resolution_summary.pdf",
+      "size": 20790,
+      "sha256": "d4bbfc4c94de99c02bf1dc6526b4de961eef7d8203c16f22e0136f1038075719"
+    },
+    {
+      "path": "comparison/figures/method_resolution_summary.png",
+      "size": 195505,
+      "sha256": "a33c353542c63588091549d1b9b1ed1b030e81ea948e12c38c78bdded2740f88"
+    },
+    {
+      "path": "comparison/figures/parameter_comparison_curves.pdf",
+      "size": 307763,
+      "sha256": "d2812bc7be078b45f58eb0b7097d1787e03b12facfd033a6decf6cce009e476d"
+    },
+    {
+      "path": "comparison/hypothesis_method_comparison.tsv",
+      "size": 9331,
+      "sha256": "cebb85a43ab6bcc7eb39de41c11ed5b43c594aa70da3a798cf6a02d5ca03ed4a"
+    },
+    {
+      "path": "comparison/interpretation_zh.md",
+      "size": 2809,
+      "sha256": "26aed47b5a1ad5a9ed13b547c4d0bba4ebad8d0f3c90c0534d294584c829a7fe"
+    },
+    {
+      "path": "comparison/method_difference_summary.tsv",
+      "size": 2564,
+      "sha256": "f52c96ef1dd9abf4c5f346941602bba2bab9756177541cb0dc10c6040ad7a6b7"
+    },
+    {
+      "path": "comparison/method_pointwise_comparison.tsv.gz",
+      "size": 4699827,
+      "sha256": "54391ad69ae40151d8490612551fcd65d29bf1ed0129aa033842d338090e97ab"
+    },
+    {
+      "path": "comparison/method_rank_comparison.tsv.gz",
+      "size": 13369,
+      "sha256": "ff8790c3ddbdc261c8f5fb3272f8dfdfc67258e755d921aacb3226b93c256614"
+    },
+    {
+      "path": "efast/N2049/ST_minus_S1.tsv.gz",
+      "size": 180524,
+      "sha256": "a152c9813a415a56d85d20e36da43cb808c1acffd921b022a33599709a0c62bf"
+    },
+    {
+      "path": "efast/N2049/all_parameter_and_pair_rankings.tsv",
+      "size": 23375,
+      "sha256": "5bcad2eb8b6e9495e47757f66b9706bfb44f0de7e3637ed671251d0ec50417dc"
+    },
+    {
+      "path": "efast/N2049/classification.tsv",
+      "size": 8768,
+      "sha256": "99e86a4a81d36591d4d651febd7418ea8fa22fad57c3cd303f6d14101d59c818"
+    },
+    {
+      "path": "efast/N2049/completion.json",
+      "size": 311,
+      "sha256": "e4480f83c415dc093ceccad5f0c118a4eca1cec43ecf1fe1fad723e92890b378"
+    },
+    {
+      "path": "efast/N2049/figures/annotation_legend.pdf",
+      "size": 17143,
+      "sha256": "225a51b8e102a1db58006f067546de3838bf70b2f0fbad0b76fbab194dfa8fa7"
+    },
+    {
+      "path": "efast/N2049/figures/annotation_legend.png",
+      "size": 70724,
+      "sha256": "4a95eded25f15a3cfeb94e4d0830ef72ce6a93c20ec3f773eb54a968c469fc2c"
+    },
+    {
+      "path": "efast/N2049/figures/s1_parameter_by_oxygen.pdf",
+      "size": 31135,
+      "sha256": "b8108b1cece7d9f363e9a29698d8e52a68dfee57a975647e5d0ab9e2e5d269a8"
+    },
+    {
+      "path": "efast/N2049/figures/s1_parameter_by_oxygen.png",
+      "size": 100932,
+      "sha256": "6d62a970f2d348ef0ff1b4a1b4c503f27db615aa4d60a4f8400d9cbeee5e5c22"
+    },
+    {
+      "path": "efast/N2049/figures/sensitivity_summary.pdf",
+      "size": 46234,
+      "sha256": "dc3e9ca09a4361a69cdfbaa5d879dd92f1262445ba16e9e1a8f71e4e32706850"
+    },
+    {
+      "path": "efast/N2049/figures/sensitivity_summary.png",
+      "size": 194939,
+      "sha256": "e0f797708c5d767d4a16b639623591ee6f09df829863f1e7385d0e9d441a06b2"
+    },
+    {
+      "path": "efast/N2049/figures/st_parameter_by_oxygen.pdf",
+      "size": 32738,
+      "sha256": "cb91526b090b13582fb2d7a8bc93c11dbce5c9b9313e1bd0705e50086c329f53"
+    },
+    {
+      "path": "efast/N2049/figures/st_parameter_by_oxygen.png",
+      "size": 104283,
+      "sha256": "1a2d1c6142f380b4f7edda1d4eb425d8ab9d3839231afb78eff9241f21b4c909"
+    },
+    {
+      "path": "efast/N2049/focal_36_pair_rankings.tsv",
+      "size": 96,
+      "sha256": "fcfd595f577876306d589091229786777693ca51443412c28eda14570656882d"
+    },
+    {
+      "path": "efast/N2049/indices_repeats.npz",
+      "size": 846819,
+      "sha256": "53836e90abcbe5dbd65aa26cf7b3e7f2e91a18742f05cbca75c65ab73bbaf29c"
+    },
+    {
+      "path": "efast/N2049/indices_summary.npz",
+      "size": 171412,
+      "sha256": "0ecd65bd1fc0c4c208d09885ea7fa3dda363247e9acb011ecf1647633906452e"
+    },
+    {
+      "path": "efast/N2049/indices_summary.tsv.gz",
+      "size": 484770,
+      "sha256": "8d5339e0527010f9e2e9495f4291f01cb60a8282c9d6b77fd845df63cbfee4c3"
+    },
+    {
+      "path": "efast/N2049/noemi_hypothesis_checks.tsv",
+      "size": 2309,
+      "sha256": "e1333a7d104397a3fb590567e0c78aa3cbac2133edda9ddb55baf467fc5b054e"
+    },
+    {
+      "path": "efast/N2049/not_passed.tsv.gz",
+      "size": 484765,
+      "sha256": "f47f4ac83c6bf1d2a482cf48768239f602cb3ba7884f660eb07f438e2a97ea91"
+    },
+    {
+      "path": "efast/N2049/oxygen_band_indices.tsv.gz",
+      "size": 6272,
+      "sha256": "2f63d7eff9ff3c6d39c329eca13efbaa0b42ae2babcbb6a45713d7ea2e45f81b"
+    },
+    {
+      "path": "efast/N2049/process_descriptive_summary.tsv",
+      "size": 12587,
+      "sha256": "ed4971c1e18a6bd583d4f44a66d2be2804bf87a7d1a13aa3900f84a29187e84e"
+    },
+    {
+      "path": "efast/N2049/row_order.tsv",
+      "size": 8929,
+      "sha256": "23caee221fabc1b0ed5c346dd9f79c586e708d20db8a82778a17f9fba328fa07"
+    },
+    {
+      "path": "efast/N4097/ST_minus_S1.tsv.gz",
+      "size": 179725,
+      "sha256": "19dcf3672545d64b52dfcf740130aa94eedd768efb32e5c521f2c12844b0b1fb"
+    },
+    {
+      "path": "efast/N4097/all_parameter_and_pair_rankings.tsv",
+      "size": 23349,
+      "sha256": "6987d1e186c0906b8f2d29adba2b76f1bd57195525a257cbc15a9f672bebb432"
+    },
+    {
+      "path": "efast/N4097/classification.tsv",
+      "size": 8687,
+      "sha256": "a15b9d40153cb9be5acac9b5cce8d0b69d9d09742693314d71a5f92ccc7f0a1a"
+    },
+    {
+      "path": "efast/N4097/completion.json",
+      "size": 311,
+      "sha256": "a993fc3ff1592273f0b45bc6c022b88e63ef80110e4cdb792790d59b4cc7fcbf"
+    },
+    {
+      "path": "efast/N4097/figures/annotation_legend.pdf",
+      "size": 17143,
+      "sha256": "58cd72242f5f785c3cd2a6671ea2eb169e7179bde08107d1232b2d97395d6d6e"
+    },
+    {
+      "path": "efast/N4097/figures/annotation_legend.png",
+      "size": 70724,
+      "sha256": "4a95eded25f15a3cfeb94e4d0830ef72ce6a93c20ec3f773eb54a968c469fc2c"
+    },
+    {
+      "path": "efast/N4097/figures/s1_parameter_by_oxygen.pdf",
+      "size": 31383,
+      "sha256": "e54554df13c729eea2be3b767da0ee79f96eb269d24ea1e4aa89a77bf738d15e"
+    },
+    {
+      "path": "efast/N4097/figures/s1_parameter_by_oxygen.png",
+      "size": 100087,
+      "sha256": "35a3635c0c0a36bcb20fb8fe6596581d9d1854db447865ef5517b75970ce0d32"
+    },
+    {
+      "path": "efast/N4097/figures/sensitivity_summary.pdf",
+      "size": 46157,
+      "sha256": "ab9feff0b02f7eafc9eeb200a49ffb32d4e0f8ff5591892063096ca50b9d575b"
+    },
+    {
+      "path": "efast/N4097/figures/sensitivity_summary.png",
+      "size": 192586,
+      "sha256": "ac3a544d911614b5e2530d7fabffb63e80dc605f037b95f72a06c79fd1854bc4"
+    },
+    {
+      "path": "efast/N4097/figures/st_parameter_by_oxygen.pdf",
+      "size": 32534,
+      "sha256": "0e56f5f327462d66418802c8a3c4acdc6066614d40c2eecdb41cda57dc7e978a"
+    },
+    {
+      "path": "efast/N4097/figures/st_parameter_by_oxygen.png",
+      "size": 103533,
+      "sha256": "ed5a9c5cd7a00bc4ae942a7b7bf06cc4947eed84a35fc83d01652f091acacc57"
+    },
+    {
+      "path": "efast/N4097/focal_36_pair_rankings.tsv",
+      "size": 96,
+      "sha256": "fcfd595f577876306d589091229786777693ca51443412c28eda14570656882d"
+    },
+    {
+      "path": "efast/N4097/indices_repeats.npz",
+      "size": 844310,
+      "sha256": "a1da76d7c8d1154d5f49a5e2e6ab63116be577a1025656d8c39a3d1e5d61449f"
+    },
+    {
+      "path": "efast/N4097/indices_summary.npz",
+      "size": 256194,
+      "sha256": "4ca517c48bcf18df241e53196e1355e78ccaa745812dcfdca2a6982d4e12db7d"
+    },
+    {
+      "path": "efast/N4097/indices_summary.tsv.gz",
+      "size": 598410,
+      "sha256": "31888d41399824c6d4c2a1dca66652d1aacd71359ad967577303751d8caa6de5"
+    },
+    {
+      "path": "efast/N4097/noemi_hypothesis_checks.tsv",
+      "size": 2307,
+      "sha256": "729442fe0995ac8ceb7aae580081cf73b1a80725ffaef118856e4d54a760618d"
+    },
+    {
+      "path": "efast/N4097/not_passed.tsv.gz",
+      "size": 204698,
+      "sha256": "be2b9d9b90197355e1a3b185bbedda414acaa6e4f94b962a7bacc3c889ac1614"
+    },
+    {
+      "path": "efast/N4097/oxygen_band_indices.tsv.gz",
+      "size": 6255,
+      "sha256": "f47052a4c924fda45f0228112773ce42dceb6b06c276b3140c907cf57407b736"
+    },
+    {
+      "path": "efast/N4097/process_descriptive_summary.tsv",
+      "size": 12589,
+      "sha256": "6a4954f8157a9bccc41be4f1b188c0d89d7f9bb82859bac9c93c0c9b25a38471"
+    },
+    {
+      "path": "efast/N4097/row_order.tsv",
+      "size": 8848,
+      "sha256": "256452fed6eb3c1c553f4ea7d53c2ce933af217ea6b0cd7b0cc2c2699b35fff3"
+    },
+    {
+      "path": "efast/N8193/ST_minus_S1.tsv.gz",
+      "size": 179776,
+      "sha256": "a2fe3cda1c8a0cae0072ef3ec27c7b4f81bcd72fc0779471ad01c70a125956a9"
+    },
+    {
+      "path": "efast/N8193/all_parameter_and_pair_rankings.tsv",
+      "size": 23340,
+      "sha256": "83caabb0122565e690d938ba85102027ac2ef5a46bc626c41a4c865379e724d6"
+    },
+    {
+      "path": "efast/N8193/classification.tsv",
+      "size": 8715,
+      "sha256": "869c139e44ee5d79cd3ebbd3cb9cdd4972a59ce266804114ca96c631e9e37c0a"
+    },
+    {
+      "path": "efast/N8193/completion.json",
+      "size": 311,
+      "sha256": "c3301a2547ee6f34363140e5404d3900ee559087259d49ae3f62078073ddd238"
+    },
+    {
+      "path": "efast/N8193/figures/annotation_legend.pdf",
+      "size": 17143,
+      "sha256": "0b1cdd317f3c4cf7ca815943d7f7b148ddb3dba16aa2f5949772fbc4838f31ac"
+    },
+    {
+      "path": "efast/N8193/figures/annotation_legend.png",
+      "size": 70724,
+      "sha256": "4a95eded25f15a3cfeb94e4d0830ef72ce6a93c20ec3f773eb54a968c469fc2c"
+    },
+    {
+      "path": "efast/N8193/figures/s1_parameter_by_oxygen.pdf",
+      "size": 30938,
+      "sha256": "dea17bd2a74bf511218bb4d4233b1f23c28b6a8d45519af2e0c7fdc45821f9ec"
+    },
+    {
+      "path": "efast/N8193/figures/s1_parameter_by_oxygen.png",
+      "size": 99012,
+      "sha256": "9c61cd73de92f79c914d45718b4a8da2fcbdd50ea2e0c0be12062e6906e1a4ba"
+    },
+    {
+      "path": "efast/N8193/figures/sensitivity_summary.pdf",
+      "size": 45831,
+      "sha256": "8d7b8a7b4ed873bd05ffbded16b77934d6e4264c44e3c506a51f5a11d1a5fb80"
+    },
+    {
+      "path": "efast/N8193/figures/sensitivity_summary.png",
+      "size": 191808,
+      "sha256": "e7d96b402267b42f12e37be3d661a856e0f14ab849863e25873cb93e021d529c"
+    },
+    {
+      "path": "efast/N8193/figures/st_parameter_by_oxygen.pdf",
+      "size": 33005,
+      "sha256": "307c1f4293a48792a59176cb0356202a644a24fc6ca7b83485f4732fe6cf2ac0"
+    },
+    {
+      "path": "efast/N8193/figures/st_parameter_by_oxygen.png",
+      "size": 102824,
+      "sha256": "38625fbcc122f0dec6a9a6e71af500d91445de38055e65d2a1fab9383c659db6"
+    },
+    {
+      "path": "efast/N8193/focal_36_pair_rankings.tsv",
+      "size": 96,
+      "sha256": "fcfd595f577876306d589091229786777693ca51443412c28eda14570656882d"
+    },
+    {
+      "path": "efast/N8193/indices_repeats.npz",
+      "size": 844025,
+      "sha256": "9d64b42a347107025fca713e620abe672398b872eacd3d890acfd0edaab474fc"
+    },
+    {
+      "path": "efast/N8193/indices_summary.npz",
+      "size": 256076,
+      "sha256": "4ce2cff7c5ee998cd3f4b2b17885da268f9626260b6ca9c2bcc841a3bb0fc315"
+    },
+    {
+      "path": "efast/N8193/indices_summary.tsv.gz",
+      "size": 598396,
+      "sha256": "4d4346881432a23136cbe0ac83c2bc44c6fce3c4bb9dd2c635096cf4a0010268"
+    },
+    {
+      "path": "efast/N8193/noemi_hypothesis_checks.tsv",
+      "size": 2307,
+      "sha256": "51b226403ba215bdc8876f0cd90784cb3dc2da4cd51d36dc98ced73c3468c493"
+    },
+    {
+      "path": "efast/N8193/not_passed.tsv.gz",
+      "size": 206685,
+      "sha256": "26a415d43d3defea6cde51a60beaadeb5da04f877cbf1b1e207a2c9d0ae13a76"
+    },
+    {
+      "path": "efast/N8193/oxygen_band_indices.tsv.gz",
+      "size": 6267,
+      "sha256": "8287bc4906dfcdcf71de49dd8fe4d7acdea80021189c99608b7ee64383a240e6"
+    },
+    {
+      "path": "efast/N8193/process_descriptive_summary.tsv",
+      "size": 12586,
+      "sha256": "ffbbf16ab9259774cd3bec50d5133d48e930dff2294465f2a60ed6f10ae67c15"
+    },
+    {
+      "path": "efast/N8193/row_order.tsv",
+      "size": 8876,
+      "sha256": "fcb4ca55b2334cb619e35f21270d3cf29f688c811737ee5952e8940ff12d3392"
+    },
+    {
+      "path": "efast/N16385/ST_minus_S1.tsv.gz",
+      "size": 179314,
+      "sha256": "f4c6fc75fbecf57071ed2a3f2ef967cdd7667c42382bed69101c013845c3f62d"
+    },
+    {
+      "path": "efast/N16385/all_parameter_and_pair_rankings.tsv",
+      "size": 23581,
+      "sha256": "ef57585f4985705592bc650e970eada1f56057c5aacec55e424252afc42c1a1a"
+    },
+    {
+      "path": "efast/N16385/classification.tsv",
+      "size": 8676,
+      "sha256": "5ff922efa425e11a5947d0b088a2fccdb1d65a9f712cebae5519aa701dfd7bc6"
+    },
+    {
+      "path": "efast/N16385/completion.json",
+      "size": 312,
+      "sha256": "f143bf6a580f264cd2fdcb0a945f7e8a4d2993e2a2561e42b75efcbfdcec718a"
+    },
+    {
+      "path": "efast/N16385/figures/annotation_legend.pdf",
+      "size": 17143,
+      "sha256": "8e8c9ca237666254c092d665a533a15ce106e5b5a13b6423ac7994f900f2706f"
+    },
+    {
+      "path": "efast/N16385/figures/annotation_legend.png",
+      "size": 70724,
+      "sha256": "4a95eded25f15a3cfeb94e4d0830ef72ce6a93c20ec3f773eb54a968c469fc2c"
+    },
+    {
+      "path": "efast/N16385/figures/s1_parameter_by_oxygen.pdf",
+      "size": 30378,
+      "sha256": "aa358750ab6ddca26b541db5bf385907942cfd1d9d27967471ac212f1d36b5b8"
+    },
+    {
+      "path": "efast/N16385/figures/s1_parameter_by_oxygen.png",
+      "size": 99801,
+      "sha256": "0cf00dbf493f4c54b2dca445d4b6e014d7239b1137e66c95f72171620c1a67c7"
+    },
+    {
+      "path": "efast/N16385/figures/sensitivity_summary.pdf",
+      "size": 44777,
+      "sha256": "2d833f1400aed01dba9435bb8b329263247e9346736e040da12e1158b60a57b5"
+    },
+    {
+      "path": "efast/N16385/figures/sensitivity_summary.png",
+      "size": 191365,
+      "sha256": "7695f4942fcd7efb9d7cacbb3d146eac672e605ced68eb22efafeb37924b6e9c"
+    },
+    {
+      "path": "efast/N16385/figures/st_parameter_by_oxygen.pdf",
+      "size": 32226,
+      "sha256": "02586e92ee542cb412bb57a3be23bdeaa32ae3dcc65a2d3e034f644ba29d5804"
+    },
+    {
+      "path": "efast/N16385/figures/st_parameter_by_oxygen.png",
+      "size": 103000,
+      "sha256": "cec86836e5d41af2a49db7214ce7c698011b9e37b526e2a758af3c70f86f382d"
+    },
+    {
+      "path": "efast/N16385/focal_36_pair_rankings.tsv",
+      "size": 96,
+      "sha256": "fcfd595f577876306d589091229786777693ca51443412c28eda14570656882d"
+    },
+    {
+      "path": "efast/N16385/indices_repeats.npz",
+      "size": 842902,
+      "sha256": "7926cc92edf5131b9c4054533f8e63c62753718fb68e37e63596f8b818f9f1c7"
+    },
+    {
+      "path": "efast/N16385/indices_summary.npz",
+      "size": 256122,
+      "sha256": "e09381440bf8cdb1681523f1b8f7936f2b37e1d5735e1d08df5ac09931f67c36"
+    },
+    {
+      "path": "efast/N16385/indices_summary.tsv.gz",
+      "size": 598416,
+      "sha256": "33035ba15e3270e55222c4984cd81b74576ff5401268cdb6e1f58eacc02bb5d7"
+    },
+    {
+      "path": "efast/N16385/noemi_hypothesis_checks.tsv",
+      "size": 2320,
+      "sha256": "b48f4b5cf68d3ef6bba0d3d55d73f258ce27338cbe6a11d7ef69efb91657912f"
+    },
+    {
+      "path": "efast/N16385/not_passed.tsv.gz",
+      "size": 197293,
+      "sha256": "824511ade8d46e6d03d7d3dd494972ca4500fff64aec416322d37c93d4bd55b7"
+    },
+    {
+      "path": "efast/N16385/oxygen_band_indices.tsv.gz",
+      "size": 6260,
+      "sha256": "11fae074bc4784cb044cd20985daa848e9afa44ef149871745db1682efd9cea4"
+    },
+    {
+      "path": "efast/N16385/process_descriptive_summary.tsv",
+      "size": 12657,
+      "sha256": "66d670a9c35a6eb573d0d13b291e2111fbaf3e4e85424f4c1c6158458d006265"
+    },
+    {
+      "path": "efast/N16385/row_order.tsv",
+      "size": 8837,
+      "sha256": "7c8e2cbd5aef22eddbe263bab8cf803c10a2680aa2bb609706d3a004dcdc65be"
+    }
+  ],
+  "created_utc": "2026-11-12T15:58:56.292125Z",
+  "raw_model_blocks_excluded": true
+}

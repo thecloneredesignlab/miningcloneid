@@ -1,0 +1,27 @@
+{
+  "python": "3.12.14",
+  "executable": "/Users/4482173/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+  "packages": {
+    "numpy": "2.3.5",
+    "scipy": "1.16.3",
+    "matplotlib": "3.9.4",
+    "pandas": "2.2.3",
+    "SALib": "1.5.2",
+    "Pillow": "13.0.0",
+    "pypdf": "6.10.0",
+    "contourpy": "1.3.3",
+    "cycler": "0.12.1",
+    "fonttools": "4.60.1",
+    "kiwisolver": "1.4.9",
+    "pyparsing": "3.2.5",
+    "multiprocess": "0.70.17",
+    "dill": "0.3.9"
+  },
+  "production_SIF": {
+    "path": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+    "sha256": "0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad",
+    "bytes": 4968341504,
+    "mtime_ns": 1790179231988363000
+  },
+  "recorded_utc": "2026-11-12T16:11:02.331338+00:00"
+}

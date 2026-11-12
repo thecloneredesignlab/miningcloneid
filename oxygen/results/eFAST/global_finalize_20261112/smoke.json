@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/efast/N2049/blocks/R01/lam_max/from000000/outputs.npz",
+  "sha256": "d3452a840a88bd465033658a7258c5e31142221d61c5b0ef0885f55582e6e2b2",
+  "n_points": 205824,
+  "full_oxygen_grid": true,
+  "production_reuses_completed_block": true,
+  "elapsed_seconds": 2102.768457889557,
+  "completed_utc": "2026-11-12T15:39:37.983301Z"
+}

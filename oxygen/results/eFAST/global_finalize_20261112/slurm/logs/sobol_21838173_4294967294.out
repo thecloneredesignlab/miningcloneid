@@ -1,0 +1,7 @@
+eFAST role=sobol_report N=0 task=1 host=hpctpa3pc0058 start=2026-11-12T10:03:23-05:00
+Traceback (most recent call last):
+  File "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/code_snapshot/workflow.py", line 318, in <module>
+    if __name__=='__main__':main()
+  File "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/code_snapshot/workflow.py", line 310, in main
+    from report import sobol_report,final_report
+ImportError: cannot import name 'sobol_report' from 'report' (/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/sobol/full_N4096/slurm/code_snapshot/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/sobol/report.py)

@@ -1,0 +1,519 @@
+{
+  "status": "all_computational_stages_complete",
+  "verified_utc": "2026-11-12T16:13:26.341151Z",
+  "production_model_points": 432286680,
+  "model_blocks": 2380,
+  "estimator_shards": 280,
+  "models": [
+    {
+      "N": 2049,
+      "blocks": 210,
+      "model_points": 28829430,
+      "n_high_precision_recovered": 5,
+      "completion_identities_verified": true
+    },
+    {
+      "N": 4097,
+      "blocks": 350,
+      "model_points": 57644790,
+      "n_high_precision_recovered": 26,
+      "completion_identities_verified": true
+    },
+    {
+      "N": 8193,
+      "blocks": 630,
+      "model_points": 115275510,
+      "n_high_precision_recovered": 39,
+      "completion_identities_verified": true
+    },
+    {
+      "N": 16385,
+      "blocks": 1190,
+      "model_points": 230536950,
+      "n_high_precision_recovered": 50,
+      "completion_identities_verified": true
+    }
+  ],
+  "statistics": [
+    {
+      "N": 2049,
+      "shards": 70,
+      "all_shard_content_hashes_verified": true,
+      "raw_output_content_hashes_verified_by_estimator": true
+    },
+    {
+      "N": 4097,
+      "shards": 70,
+      "all_shard_content_hashes_verified": true,
+      "raw_output_content_hashes_verified_by_estimator": true
+    },
+    {
+      "N": 8193,
+      "shards": 70,
+      "all_shard_content_hashes_verified": true,
+      "raw_output_content_hashes_verified_by_estimator": true
+    },
+    {
+      "N": 16385,
+      "shards": 70,
+      "all_shard_content_hashes_verified": true,
+      "raw_output_content_hashes_verified_by_estimator": true
+    }
+  ],
+  "stages": [
+    {
+      "stage": "prepare",
+      "job_id": "21838171",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "smoke",
+      "job_id": "21838172",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "sobol",
+      "job_id": "21838173",
+      "state_counts": {
+        "FAILED": 1
+      },
+      "retired_by_reporting_recovery": true
+    },
+    {
+      "stage": "model_2049",
+      "job_id": "21838174",
+      "state_counts": {
+        "COMPLETED": 210
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "analyze_2049",
+      "job_id": "21838175",
+      "state_counts": {
+        "COMPLETED": 70
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_2049",
+      "job_id": "21838176",
+      "state_counts": {
+        "CANCELLED by 107865": 1
+      },
+      "retired_by_reporting_recovery": true
+    },
+    {
+      "stage": "model_4097",
+      "job_id": "21838177",
+      "state_counts": {
+        "COMPLETED": 350
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "analyze_4097",
+      "job_id": "21838178",
+      "state_counts": {
+        "COMPLETED": 70
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_4097",
+      "job_id": "21838179",
+      "state_counts": {
+        "CANCELLED by 107865": 1
+      },
+      "retired_by_reporting_recovery": true
+    },
+    {
+      "stage": "model_8193",
+      "job_id": "21838180",
+      "state_counts": {
+        "COMPLETED": 630
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "analyze_8193",
+      "job_id": "21838181",
+      "state_counts": {
+        "COMPLETED": 70
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_8193",
+      "job_id": "21838182",
+      "state_counts": {
+        "CANCELLED by 107865": 1
+      },
+      "retired_by_reporting_recovery": true
+    },
+    {
+      "stage": "model_16385",
+      "job_id": "21838183",
+      "state_counts": {
+        "COMPLETED": 1190
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "analyze_16385",
+      "job_id": "21838184",
+      "state_counts": {
+        "COMPLETED": 70
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_16385",
+      "job_id": "21838185",
+      "state_counts": {
+        "CANCELLED by 107865": 1
+      },
+      "retired_by_reporting_recovery": true
+    },
+    {
+      "stage": "final",
+      "job_id": "21838186",
+      "state_counts": {
+        "CANCELLED by 107865": 1
+      },
+      "retired_by_reporting_recovery": true
+    },
+    {
+      "stage": "sobol_recovered",
+      "job_id": "21838306",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_2049_recovered",
+      "job_id": "21838307",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_4097_recovered",
+      "job_id": "21838308",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_8193_recovered",
+      "job_id": "21838309",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "report_16385_recovered",
+      "job_id": "21838310",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    },
+    {
+      "stage": "final_recovered",
+      "job_id": "21838311",
+      "state_counts": {
+        "COMPLETED": 1
+      },
+      "retired_by_reporting_recovery": false
+    }
+  ],
+  "monitors": [
+    {
+      "job_id": "21838187",
+      "target": "21838171",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838188",
+      "target": "21838172",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838189",
+      "target": "21838173",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838190",
+      "target": "21838174",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838191",
+      "target": "21838175",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838192",
+      "target": "21838176",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838193",
+      "target": "21838177",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838194",
+      "target": "21838178",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838195",
+      "target": "21838179",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838196",
+      "target": "21838180",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838197",
+      "target": "21838181",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838198",
+      "target": "21838182",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838199",
+      "target": "21838183",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838200",
+      "target": "21838184",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838201",
+      "target": "21838185",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838202",
+      "target": "21838186",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838312",
+      "target": "21838306",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838313",
+      "target": "21838307",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838315",
+      "target": "21838308",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838316",
+      "target": "21838309",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838317",
+      "target": "21838310",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    },
+    {
+      "job_id": "21838318",
+      "target": "21838311",
+      "state": "COMPLETED",
+      "exit_code": "0:0"
+    }
+  ],
+  "raw_block_hash_recheck": "source receipt identities checked now; full content hashes checked during estimator jobs",
+  "neighborhood_jobs_submitted": 0,
+  "certified_production_blocks_not_repeated": true,
+  "additional_model_alignment_validation_points": 603,
+  "monitor_state_counts": {
+    "COMPLETED": 22
+  },
+  "monitor_extension_events": 0,
+  "time_extension_terminal_events": [
+    {
+      "kind": "target_finished",
+      "monitor": "21838189",
+      "target": "21838173",
+      "utc": "2026-11-12T15:17:32.389034Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838187",
+      "target": "21838171",
+      "utc": "2026-11-12T15:17:32.389086Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838195",
+      "target": "21838179",
+      "utc": "2026-11-12T15:22:36.755789Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838192",
+      "target": "21838176",
+      "utc": "2026-11-12T15:22:36.757220Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838201",
+      "target": "21838185",
+      "utc": "2026-11-12T15:22:36.780999Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838198",
+      "target": "21838182",
+      "utc": "2026-11-12T15:22:36.785097Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838202",
+      "target": "21838186",
+      "utc": "2026-11-12T15:22:36.807468Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838188",
+      "target": "21838172",
+      "utc": "2026-11-12T15:52:39.405147Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838191",
+      "target": "21838175",
+      "utc": "2026-11-12T16:02:39.043796Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838190",
+      "target": "21838174",
+      "utc": "2026-11-12T16:02:40.032634Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838200",
+      "target": "21838184",
+      "utc": "2026-11-12T16:07:39.244783Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838194",
+      "target": "21838178",
+      "utc": "2026-11-12T16:07:39.386670Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838193",
+      "target": "21838177",
+      "utc": "2026-11-12T16:07:44.376910Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838199",
+      "target": "21838183",
+      "utc": "2026-11-12T16:07:54.408903Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838197",
+      "target": "21838181",
+      "utc": "2026-11-12T16:12:39.688400Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838196",
+      "target": "21838180",
+      "utc": "2026-11-12T16:12:44.579129Z"
+    }
+  ],
+  "time_extension_reporting_terminal_events": [
+    {
+      "kind": "target_finished",
+      "monitor": "21838312",
+      "target": "21838306",
+      "utc": "2026-11-12T15:25:49.255831Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838313",
+      "target": "21838307",
+      "utc": "2026-11-12T16:05:51.575666Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838315",
+      "target": "21838308",
+      "utc": "2026-11-12T16:05:53.665860Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838317",
+      "target": "21838310",
+      "utc": "2026-11-12T16:10:53.807262Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838318",
+      "target": "21838311",
+      "utc": "2026-11-12T16:10:53.897700Z"
+    },
+    {
+      "kind": "target_finished",
+      "monitor": "21838316",
+      "target": "21838309",
+      "utc": "2026-11-12T16:10:53.951962Z"
+    }
+  ]
+}

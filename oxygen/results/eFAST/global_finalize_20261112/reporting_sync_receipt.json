@@ -1,0 +1,85 @@
+{
+  "status": "complete",
+  "revision": "f4b4828c1139ce83a40739522212939f1a747ec2",
+  "files": [
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/README.md",
+      "sha256": "f6ce3819d27bc97620d00aaa1a0f9c9f74a1df5bc8e912f7c3ad25ad9da9d392"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/collect.py",
+      "sha256": "fea531a8990d58ec7d6a7d5f486165a2baf565560787186ebb9851ae466eb54a"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/common.py",
+      "sha256": "de7c9b369306b8651211c9579842a46a00b18ae1f4bf838cc892a0670dd77507"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/evaluate_efast.R",
+      "sha256": "a5210cffb37f73bb261fd6d31b37a9450343af35d61109c82525304163bed02b"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/plot_helpers.py",
+      "sha256": "db988c7bf7e4f1e1fb10aa26b6b8ece65a6443fb7bdab8693a5ab431bc663bab"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/recover_reporting.py",
+      "sha256": "86360accb6184e89d9f30c1bda671096fc02039195caf21be1f1c3a4ca40420e"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/report.py",
+      "sha256": "f342fd0252dc09d93d8ab50d48dba53542794ee21bf67033bbe7232bd2cf7d37"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/reporting_entry.py",
+      "sha256": "2babcb2fa3b2548def44865aacc64897785a6baf0c4461091530fb9f58894661"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/retry_global_startup.sh",
+      "sha256": "266544c8e90eb6b2917c99520f3ec12c3fd22bb92b445e1c9f8ff8440e319dd0"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/run.sbatch",
+      "sha256": "28fab29d8c4e241eee130d07796bb92342d77df3d10d61cf00015592608bec56"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/run_reporting_overlay.sbatch",
+      "sha256": "0056aa025a84fe874dc11a42ab192a1e58d4315817b66f38b0af6fd088a879ac"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/run_time_extension.sbatch",
+      "sha256": "474f013543014b0c6ff964181511463c39990eef69a1ead3b53da1c60893dd5a"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/s_add_job_hours_proxy.sh",
+      "sha256": "ce83d689013e96d461c428a6f2de77fe8cef4cb374f2cf663335fcb10cbbef3c"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/submit.py",
+      "sha256": "9961deb24516576cef5ba7319716cac5d670e16335ad5a022b1d304e3dff8296"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/test_workflow.py",
+      "sha256": "8738abff9765b61b70c6bb6769f92a62b20959c65ef7c741b7d74e6e3bdda1a8"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/time_extension.py",
+      "sha256": "fec5c129233c6223b200c3ab01dc63ce934888529f1a7e78db8a57123b2c1f4c"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/verify_exports.py",
+      "sha256": "925e9794577f6c804ffea71f4d182df7038aa3e485b3f6862ab9eb6a4b8a814c"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/workflow.py",
+      "sha256": "f508e565c0114210284057c8eaf39e30d3d2fac1e80df3623c9dbd56221be9a5"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_finalize_20261112/validation/reporting_recovery_preflight.json",
+      "sha256": "45d17d667122f194d3d9ef08dd600ea906b2a4560f4aace9b13869e97835bcd0"
+    }
+  ],
+  "frozen_original_snapshot_unchanged": true,
+  "neighborhood_files_written": 0,
+  "completed_utc": "2026-11-12T15:08:59.617531Z"
+}

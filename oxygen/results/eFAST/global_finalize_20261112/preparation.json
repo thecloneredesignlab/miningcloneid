@@ -1,0 +1,30 @@
+{
+  "status": "complete",
+  "plan_sha256": "b209bf02f8619feaa7b628e6724810286634ccb30543b7795c8b0cf4a7b8bef5",
+  "design_sha256": {
+    "inputs/designs/N2049_R01.npz": "a0de9a5e5be96f2761b326867bb51bad3c1011d6b74d75f763362105b799ac83",
+    "inputs/designs/N2049_R02.npz": "0b2a6798cb3d5ea26e1fd59f717576ca34c6c33e8bf9ad3ab75a2fcdad3ccd88",
+    "inputs/designs/N2049_R03.npz": "b55358f8b2ce14fac3b19e983b5e2412d2590a973d895658e85a8133fc766e03",
+    "inputs/designs/N2049_R04.npz": "6df3d3807cf2ec14f37b4ee4c047a7c71d69d9010e0f452abe45f93e416a48b9",
+    "inputs/designs/N2049_R05.npz": "a5189f4dc69a600a2ae86c2811d00dc3e0b9a9b72d80edd675bd1cb053f6cd5d",
+    "inputs/designs/N4097_R01.npz": "0ca610a80848d8a86c5b4455666b5d1da1db9bc1c10fcbb13ffbb327676a0b59",
+    "inputs/designs/N4097_R02.npz": "eba44553782e485d8836004242d40fee2a44fc10aa52ebcb2b8aa958b9aca1cc",
+    "inputs/designs/N4097_R03.npz": "7cd95f8068214c870d8a560738e07a41362f9439cd8359f1f1605ab7546432e8",
+    "inputs/designs/N4097_R04.npz": "a78712c0594095c16f40ef2a402b4091666edb0a5a02300a8eefcd5a5de0a6a7",
+    "inputs/designs/N4097_R05.npz": "e5ec9a19137a7544c515a34c5299ff04e63560922bf225b8cd4d44cad9ee29f2",
+    "inputs/designs/N8193_R01.npz": "ad5b0ff89227aad136edf893367ef64a9764b4e6633dd3853a25684a564cba1f",
+    "inputs/designs/N8193_R02.npz": "d56488facbae1e174fe3aeaf41fc30ab4cdfac55b9ca3ed19956b8b239caab64",
+    "inputs/designs/N8193_R03.npz": "0c6c6e8b570ae25bfad32f2caffa37272b42257fdedf168df4512b563afe6192",
+    "inputs/designs/N8193_R04.npz": "f6f7a02b6574619ea35561afc39c43904ae7f55afd1fe43e374c594562782b1b",
+    "inputs/designs/N8193_R05.npz": "cda19d41b736b5ecfc5ade9198eb4b36408e4b1fbb926df1eb32fe06a19d42aa",
+    "inputs/designs/N16385_R01.npz": "774e1e4698583ff963e526a20bb71537cac9f13b6fea24405ca4bda67f1dd21d",
+    "inputs/designs/N16385_R02.npz": "45b4c9d24cf24e87f69cdbc3030d6177e0944932c5c9b4dc3db47ce1e1b59f7f",
+    "inputs/designs/N16385_R03.npz": "15410ed0219903cb4ec333c40147c81c2f1e66033382ecce640eb6c706d33d2b",
+    "inputs/designs/N16385_R04.npz": "11ea6432b4a7307af0354d34f371beb5e5f983e85c87e5eff4ca4e21796d72b5",
+    "inputs/designs/N16385_R05.npz": "83af5efcfbe995fc700424452409977bd734970564b7cfcf6d4f557287e552aa"
+  },
+  "model_alignment_validation_points": 603,
+  "model_alignment_elapsed_seconds": 7.029407739639282,
+  "neighborhood_files_read": 0,
+  "completed_utc": "2026-11-12T15:03:16.836999Z"
+}

@@ -1,0 +1,236 @@
+eFAST role=smoke N=2049 task=1 host=hpctpa3pc0030 start=2026-11-12T10:03:23-05:00
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 8 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 16 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 24 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 32 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 40 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 48 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 56 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 64 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 72 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 80 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 88 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 96 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 104 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 112 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 120 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 128 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 136 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 144 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 152 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 160 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 168 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 176 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 184 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 192 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 200 /201
+Evaluated 128/1024 parameter vectors
+Evaluated 256/1024 parameter vectors
+Evaluated 384/1024 parameter vectors
+Evaluated 512/1024 parameter vectors
+Evaluated 640/1024 parameter vectors
+Evaluated 768/1024 parameter vectors
+Evaluated 896/1024 parameter vectors
+Evaluated 1024/1024 parameter vectors
+N 2049 R 1 lam_max 0 oxygen 201 /201
+eFAST payload completed 2026-11-12T10:39:38-05:00

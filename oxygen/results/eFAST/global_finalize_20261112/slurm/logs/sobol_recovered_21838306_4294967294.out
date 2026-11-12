@@ -1,0 +1,7 @@
+eFAST role=sobol_report N=0 task=1 host=hpctpa3pc0001 start=2026-11-12T10:11:05-05:00
+.....s...
+----------------------------------------------------------------------
+Ran 9 tests in 2.118s
+
+OK (skipped=1)
+eFAST payload completed 2026-11-12T10:11:21-05:00

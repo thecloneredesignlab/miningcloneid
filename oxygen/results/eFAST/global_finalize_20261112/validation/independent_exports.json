@@ -1,0 +1,64 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-11-12T16:19:07.093635Z",
+  "source_files_verified": 237,
+  "sobol_entries_verified": 47838,
+  "sobol_all_operational_diagnostics_passed": true,
+  "efast": {
+    "2049": {
+      "rows": 11256,
+      "repeats": 5,
+      "oxygen_points": 201,
+      "parameters": 14,
+      "status_counts": {
+        "no_adjacent_new_design": 11256
+      },
+      "independent_mean_range_delta_verified": true
+    },
+    "4097": {
+      "rows": 11256,
+      "repeats": 5,
+      "oxygen_points": 201,
+      "parameters": 14,
+      "status_counts": {
+        "passed": 7311,
+        "not_passed": 3945
+      },
+      "independent_mean_range_delta_verified": true
+    },
+    "8193": {
+      "rows": 11256,
+      "repeats": 5,
+      "oxygen_points": 201,
+      "parameters": 14,
+      "status_counts": {
+        "passed": 7268,
+        "not_passed": 3988
+      },
+      "independent_mean_range_delta_verified": true
+    },
+    "16385": {
+      "rows": 11256,
+      "repeats": 5,
+      "oxygen_points": 201,
+      "parameters": 14,
+      "status_counts": {
+        "passed": 7448,
+        "not_passed": 3808
+      },
+      "independent_mean_range_delta_verified": true
+    }
+  },
+  "method_comparison_rows_verified": 45024,
+  "all_pairs": 91,
+  "focal_pairs": 36,
+  "matched_color_limits_verified": true,
+  "global_reference_identity_verified": true,
+  "structural_null_rows": 200,
+  "band_integrals_independently_verified": true,
+  "diagnostic_rows_disjoint_bands": 88,
+  "model_calls": 0,
+  "estimator_calls": 0,
+  "neighborhood_files_read": 0,
+  "PDF_visual_validation": "recorded separately"
+}

@@ -1,0 +1,11 @@
+{
+  "status": "complete",
+  "scope": "global",
+  "N": 131072,
+  "n_repeats": 5,
+  "n_oxygen": 201,
+  "n_indices": 47838,
+  "summary_sha256": "ba882537b333ead2091245423a41db37046bb16d2e78ba0ff88dfed3703bb0d4",
+  "convergence_policy": "diagnostic_only",
+  "completed_utc": "2026-10-23T23:57:05.027089Z"
+}

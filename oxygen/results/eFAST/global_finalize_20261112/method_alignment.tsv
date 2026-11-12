@@ -1,0 +1,11 @@
+item	Sobol	eFAST	status
+parameter_order	lam_max;p_mis_base;p_misseg;k_o_mis;buffer_smax;buffer_beta;buffer_n_exp;p_wgd;alpha_o2;gamma_growth;mu_hp;gamma_mu;O2_crit;n_O	lam_max;p_mis_base;p_misseg;k_o_mis;buffer_smax;buffer_beta;buffer_n_exp;p_wgd;alpha_o2;gamma_growth;mu_hp;gamma_mu;O2_crit;n_O	matched
+bounds_distributions	8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97	8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97	matched
+oxygen	201 points; 0:0.025:5 percent	201 points; 0:0.025:5 percent	matched
+outputs	dominant_mean_ploidy;dominant_growth_rate	dominant_mean_ploidy;dominant_growth_rate	matched
+model_operator	19e1bc10ce9750a64f8aa13f3933e115c219e08f45d801899e436746a6810ed1	same frozen source; wrapper body identity and cached-output parity checked	matched
+runtime	0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad	0b60f6cdab8a91f6bbeea1ab6cf02dd79660a295f24bc6e8ad6c5fed04d982ad	matched
+repetitions	5 independent scrambles	5 independent phase repeats	different randomization; same repeat count
+estimator	SALib.sample.sobol; analyze.sobol; calc_second_order=True	SALib.sample.fast_sampler; analyze.fast.compute_orders; M4; public-interface parity verified	intentional method difference
+N	131072	2049;4097;8193;16385	different design definitions; not matched by numeric N
+legacy_N513	not applicable	old best/config identities incomplete	historical reference only

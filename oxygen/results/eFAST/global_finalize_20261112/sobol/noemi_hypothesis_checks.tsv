@@ -1,0 +1,13 @@
+method	N	output	index	condition	contrast	supporting_repeats	n_repeats	interpretation
+Sobol	131072	dominant_mean_ploidy	S1	low_O2_death_largest_descriptive_group_mean	-0.019164661173478596	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_mean_ploidy	S1	missegregation_high_above_low	-0.016172620495591514	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_mean_ploidy	S1	buffering_high_above_low	0.008795566067924903	5	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_mean_ploidy	ST	low_O2_death_largest_descriptive_group_mean	-0.0027677907385866285	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_mean_ploidy	ST	missegregation_high_above_low	-0.02749428149632276	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_mean_ploidy	ST	buffering_high_above_low	0.09455366088316361	5	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_growth_rate	S1	low_O2_death_largest_descriptive_group_mean	-0.014671639375862439	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_growth_rate	S1	missegregation_high_above_low	-0.028781551787833825	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_growth_rate	S1	buffering_high_above_low	-0.0012022660565464106	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_growth_rate	ST	low_O2_death_largest_descriptive_group_mean	-0.09348193441069814	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_growth_rate	ST	missegregation_high_above_low	-0.06574633970605033	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+Sobol	131072	dominant_growth_rate	ST	buffering_high_above_low	-0.004445923160305596	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence

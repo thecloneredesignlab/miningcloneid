@@ -1,0 +1,13 @@
+method	N	output	index	condition	contrast	supporting_repeats	n_repeats	interpretation
+eFAST	2049	dominant_mean_ploidy	S1	low_O2_death_largest_descriptive_group_mean	-0.011520533747927785	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_mean_ploidy	S1	missegregation_high_above_low	-0.018271865500534185	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_mean_ploidy	S1	buffering_high_above_low	0.01128187594697702	5	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_mean_ploidy	ST	low_O2_death_largest_descriptive_group_mean	0.013648177021239105	3	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_mean_ploidy	ST	missegregation_high_above_low	0.016239815254157363	2	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_mean_ploidy	ST	buffering_high_above_low	0.13695628193352116	5	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_growth_rate	S1	low_O2_death_largest_descriptive_group_mean	-0.007534250752863805	1	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_growth_rate	S1	missegregation_high_above_low	-0.0254740563070133	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_growth_rate	S1	buffering_high_above_low	-0.0008465469873220775	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_growth_rate	ST	low_O2_death_largest_descriptive_group_mean	-0.07407073874395881	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_growth_rate	ST	missegregation_high_above_low	-0.06873826447346564	0	5	descriptive within-model check; repeats are numerical replicates, not biological confidence
+eFAST	2049	dominant_growth_rate	ST	buffering_high_above_low	-0.0004108293208777876	3	5	descriptive within-model check; repeats are numerical replicates, not biological confidence

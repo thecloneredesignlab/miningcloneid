@@ -1,0 +1,15 @@
+parameter	figure4_display_group	primary_group_for_descriptive_summary	shared_pathways
+lam_max	Division and genome change	growth	growth
+p_mis_base	Division and genome change	missegregation	missegregation
+p_misseg	Stress-linked missegregation	missegregation	missegregation
+k_o_mis	Stress-linked missegregation	missegregation	missegregation
+buffer_smax	Post-missegregation survival	buffering	buffering
+buffer_beta	Post-missegregation survival	buffering	buffering
+buffer_n_exp	Post-missegregation survival	buffering	buffering
+p_wgd	Division and genome change	genome_doubling	WGD
+alpha_o2	Ploidy-linked growth and death	growth	growth
+gamma_growth	Ploidy-linked growth and death	growth	growth
+mu_hp	Ploidy-linked growth and death	death	death;missegregation
+gamma_mu	Ploidy-linked growth and death	death	death;missegregation
+O2_crit	Oxygen response	shared_oxygen_stress	oxygen_stress;growth;death;missegregation
+n_O	Oxygen response	shared_oxygen_stress	oxygen_stress;growth;death;missegregation

@@ -1,0 +1,7 @@
+# Global sensitivity analysis: short interpretation
+
+The completed Sobol analysis (N=131072, five scrambles, 201 fixed-oxygen levels) supports a qualified shift in ploidy sensitivity: death/stress-associated parameters are more influential at low oxygen, while baseline missegregation and buffering become relatively more influential at higher oxygen. Death is not uniquely dominant, and the stress-linked missegregation parameter must be distinguished from baseline missegregation. Net growth shows a different buffering pattern.
+
+Interactions are substantial. Across all 91 pairs, lam_max with p_misseg has the largest peak second-order effect for both outputs. Low-oxygen ploidy interactions include p_misseg with mu_hp; high-oxygen growth particularly involves lam_max with p_mis_base. Conditional response surfaces illustrate selected pairs but do not establish universal interaction direction.
+
+The matched eFAST comparison (N=2049, 4097, 8193 and 16385; M=4; five phases; 201 oxygen levels) gives similar average first-order indices, but ploidy total effects remain unstable. At N=16385, only 78/2814 ploidy ST entries pass the chosen operational diagnostics. Structural zero-effect checks also expose nonzero FAST estimates for inactive inputs. Thus quantitative ST agreement between methods is not established; primary interpretation should use Sobol, with eFAST retained as a diagnostic comparison. All entries and diagnostics are preserved, and neighborhoods remain archived.

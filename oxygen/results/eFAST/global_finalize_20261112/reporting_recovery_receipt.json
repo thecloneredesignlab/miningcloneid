@@ -1,0 +1,260 @@
+{
+  "status": "submitted",
+  "revision": "336a2f02a5f57f71fa45b8d2bd7b07882812a62b",
+  "base_revision": "553c8cdd4ac8ac95648819e920989be48df4017b",
+  "overlay": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a",
+  "overlay_manifest_sha256": "71a69da17a1b0570363941d8e549259ab17adca26c84981ac36bb47e8c2a9933",
+  "reason": "report module namespace collision",
+  "original_failed_sobol_report": "21838173",
+  "cancelled_pending_reporting_jobs": [
+    "21838176",
+    "21838179",
+    "21838182",
+    "21838185",
+    "21838186"
+  ],
+  "preserved_model_jobs": [
+    "21838174",
+    "21838177",
+    "21838180",
+    "21838183"
+  ],
+  "preserved_analysis_jobs": [
+    "21838175",
+    "21838178",
+    "21838181",
+    "21838184"
+  ],
+  "model_jobs_resubmitted": 0,
+  "jobs": [
+    {
+      "stage": "sobol_recovered",
+      "role": "sobol_report",
+      "N": 0,
+      "job_id": "21838306",
+      "dependencies": [],
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=gef_fix_sobol_recovered",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "--export=ALL",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/sobol_recovered_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/sobol_recovered_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "sobol_report",
+        "0",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a"
+      ],
+      "submitted_utc": "2026-11-12T15:10:47.581156Z"
+    },
+    {
+      "stage": "report_2049_recovered",
+      "role": "report",
+      "N": 2049,
+      "job_id": "21838307",
+      "dependencies": [
+        "21838175"
+      ],
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=gef_fix_report_2049_recovered",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "--dependency=afterok:21838175",
+        "--export=ALL",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_2049_recovered_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_2049_recovered_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "report",
+        "2049",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a"
+      ],
+      "submitted_utc": "2026-11-12T15:10:47.630094Z"
+    },
+    {
+      "stage": "report_4097_recovered",
+      "role": "report",
+      "N": 4097,
+      "job_id": "21838308",
+      "dependencies": [
+        "21838178",
+        "21838307"
+      ],
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=gef_fix_report_4097_recovered",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "--dependency=afterok:21838178:21838307",
+        "--export=ALL",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_4097_recovered_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_4097_recovered_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "report",
+        "4097",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a"
+      ],
+      "submitted_utc": "2026-11-12T15:10:47.676506Z"
+    },
+    {
+      "stage": "report_8193_recovered",
+      "role": "report",
+      "N": 8193,
+      "job_id": "21838309",
+      "dependencies": [
+        "21838181",
+        "21838308"
+      ],
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=gef_fix_report_8193_recovered",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "--dependency=afterok:21838181:21838308",
+        "--export=ALL",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_8193_recovered_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_8193_recovered_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "report",
+        "8193",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a"
+      ],
+      "submitted_utc": "2026-11-12T15:10:47.725114Z"
+    },
+    {
+      "stage": "report_16385_recovered",
+      "role": "report",
+      "N": 16385,
+      "job_id": "21838310",
+      "dependencies": [
+        "21838184",
+        "21838309"
+      ],
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=gef_fix_report_16385_recovered",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "--dependency=afterok:21838184:21838309",
+        "--export=ALL",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_16385_recovered_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/report_16385_recovered_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "report",
+        "16385",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a"
+      ],
+      "submitted_utc": "2026-11-12T15:10:47.771420Z"
+    },
+    {
+      "stage": "final_recovered",
+      "role": "final_report",
+      "N": 0,
+      "job_id": "21838311",
+      "dependencies": [
+        "21838306",
+        "21838307",
+        "21838308",
+        "21838309",
+        "21838310"
+      ],
+      "sbatch_args": [
+        "sbatch",
+        "--parsable",
+        "--hold",
+        "--qos=xxlarge",
+        "--time=12:00:00",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=16G",
+        "--job-name=gef_fix_final_recovered",
+        "--chdir=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "--dependency=afterok:21838306:21838307:21838308:21838309:21838310",
+        "--export=ALL",
+        "--output=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/final_recovered_%A_%a.out",
+        "--error=/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/logs/final_recovered_%A_%a.err",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+        "final_report",
+        "0",
+        "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/slurm/reporting_overlay_336a2f02a"
+      ],
+      "submitted_utc": "2026-11-12T15:10:47.816275Z"
+    }
+  ],
+  "monitors": [
+    {
+      "target_job_id": "21838306",
+      "monitor_job_id": "21838312",
+      "predecessor": "",
+      "submitted_utc": "2026-11-12T15:10:47.960292Z"
+    },
+    {
+      "target_job_id": "21838307",
+      "monitor_job_id": "21838313",
+      "predecessor": "",
+      "submitted_utc": "2026-11-12T15:10:48.011026Z"
+    },
+    {
+      "target_job_id": "21838308",
+      "monitor_job_id": "21838315",
+      "predecessor": "",
+      "submitted_utc": "2026-11-12T15:10:48.059260Z"
+    },
+    {
+      "target_job_id": "21838309",
+      "monitor_job_id": "21838316",
+      "predecessor": "",
+      "submitted_utc": "2026-11-12T15:10:48.107096Z"
+    },
+    {
+      "target_job_id": "21838310",
+      "monitor_job_id": "21838317",
+      "predecessor": "",
+      "submitted_utc": "2026-11-12T15:10:48.153567Z"
+    },
+    {
+      "target_job_id": "21838311",
+      "monitor_job_id": "21838318",
+      "predecessor": "",
+      "submitted_utc": "2026-11-12T15:10:48.203940Z"
+    }
+  ],
+  "submitted_utc": "2026-11-12T15:10:48.349689Z"
+}

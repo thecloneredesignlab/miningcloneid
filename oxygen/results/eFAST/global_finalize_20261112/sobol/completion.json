@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "N": 131072,
+  "source_summary_sha256": "ba882537b333ead2091245423a41db37046bb16d2e78ba0ff88dfed3703bb0d4",
+  "model_calls": 0,
+  "sobol_estimator_calls": 0,
+  "all_pairs": 91,
+  "focal_pairs": 36,
+  "completed_utc": "2026-11-12T15:11:21.239923Z"
+}

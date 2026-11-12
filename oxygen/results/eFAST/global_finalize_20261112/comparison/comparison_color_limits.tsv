@@ -1,0 +1,9 @@
+index	output	method	vmax	row_order_source
+S1	dominant_mean_ploidy	Sobol N131072	0.10292935878118195	Sobol N131072 ploidy
+S1	dominant_growth_rate	Sobol N131072	0.45750140652416266	Sobol N131072 ploidy
+S1	dominant_mean_ploidy	eFAST N16385	0.10292935878118195	Sobol N131072 ploidy
+S1	dominant_growth_rate	eFAST N16385	0.45750140652416266	Sobol N131072 ploidy
+ST	dominant_mean_ploidy	Sobol N131072	0.64588701443796	Sobol N131072 ploidy
+ST	dominant_growth_rate	Sobol N131072	0.7380956264271952	Sobol N131072 ploidy
+ST	dominant_mean_ploidy	eFAST N16385	0.64588701443796	Sobol N131072 ploidy
+ST	dominant_growth_rate	eFAST N16385	0.7380956264271952	Sobol N131072 ploidy

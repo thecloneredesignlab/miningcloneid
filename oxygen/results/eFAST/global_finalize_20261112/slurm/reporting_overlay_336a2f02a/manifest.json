@@ -1,0 +1,24 @@
+{
+  "revision": "336a2f02a5f57f71fa45b8d2bd7b07882812a62b",
+  "base_plan_sha256": "b209bf02f8619feaa7b628e6724810286634ccb30543b7795c8b0cf4a7b8bef5",
+  "scope": "reporting_only",
+  "reason": "qualified frozen-report import avoids canonical report.py name collision",
+  "files": {
+    "common.py": "de7c9b369306b8651211c9579842a46a00b18ae1f4bf838cc892a0670dd77507",
+    "workflow.py": "f508e565c0114210284057c8eaf39e30d3d2fac1e80df3623c9dbd56221be9a5",
+    "report.py": "f342fd0252dc09d93d8ab50d48dba53542794ee21bf67033bbe7232bd2cf7d37",
+    "submit.py": "9961deb24516576cef5ba7319716cac5d670e16335ad5a022b1d304e3dff8296",
+    "test_workflow.py": "8738abff9765b61b70c6bb6769f92a62b20959c65ef7c741b7d74e6e3bdda1a8",
+    "collect.py": "fea531a8990d58ec7d6a7d5f486165a2baf565560787186ebb9851ae466eb54a",
+    "evaluate_efast.R": "a5210cffb37f73bb261fd6d31b37a9450343af35d61109c82525304163bed02b",
+    "run.sbatch": "28fab29d8c4e241eee130d07796bb92342d77df3d10d61cf00015592608bec56",
+    "plot_helpers.py": "db988c7bf7e4f1e1fb10aa26b6b8ece65a6443fb7bdab8693a5ab431bc663bab",
+    "time_extension.py": "fec5c129233c6223b200c3ab01dc63ce934888529f1a7e78db8a57123b2c1f4c",
+    "run_time_extension.sbatch": "474f013543014b0c6ff964181511463c39990eef69a1ead3b53da1c60893dd5a",
+    "s_add_job_hours_proxy.sh": "ce83d689013e96d461c428a6f2de77fe8cef4cb374f2cf663335fcb10cbbef3c",
+    "retry_global_startup.sh": "266544c8e90eb6b2917c99520f3ec12c3fd22bb92b445e1c9f8ff8440e319dd0",
+    "reporting_entry.py": "2babcb2fa3b2548def44865aacc64897785a6baf0c4461091530fb9f58894661",
+    "run_reporting_overlay.sbatch": "0056aa025a84fe874dc11a42ab192a1e58d4315817b66f38b0af6fd088a879ac",
+    "recover_reporting.py": "dfb9c8d3ef8c631149d9239a4a1d37723ce8dcaaf7953cdc6244c3614163ce0e"
+  }
+}

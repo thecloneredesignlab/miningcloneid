@@ -1,0 +1,1181 @@
+{
+  "verified_utc": "2026-11-12T16:19:12.508129Z",
+  "pdf_files": 64,
+  "rendered_pages": 66,
+  "all_pdf_structures_and_nonblank_renders_passed": true,
+  "visual_review": "separate manual review",
+  "files": [
+    {
+      "path": "comparison/figures/method_comparison_s1.pdf",
+      "sha256": "853930504624c9fe7a94b2ca7099e49ee3d84d8df2de2d5768c5a758615fe60f",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/comparison/figures/method_comparison_s1_page01.png",
+          "render_sha256": "97671e45464e775910088001852dc1bf7c288cf71e08d0319cee982e3453f30a",
+          "image_size": [
+            1400,
+            1088
+          ],
+          "grayscale_stddev": 49.8064515110986
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "comparison/figures/method_comparison_st.pdf",
+      "sha256": "2eb0ef0866e96e63ea3acf9b53df5d9b1b3c44ecf097d1dc9f60446d58275af3",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/comparison/figures/method_comparison_st_page01.png",
+          "render_sha256": "efc37526598f9f002deb2430d5b73173a0dc46db8e198062de7524b0e01fc0f9",
+          "image_size": [
+            1400,
+            1088
+          ],
+          "grayscale_stddev": 54.24216684872921
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "comparison/figures/method_resolution_summary.pdf",
+      "sha256": "d4bbfc4c94de99c02bf1dc6526b4de961eef7d8203c16f22e0136f1038075719",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/comparison/figures/method_resolution_summary_page01.png",
+          "render_sha256": "20b18e7efe72bbd5a444d9094cc403924e0e46b88fdb71583ab84c6a37dfa006",
+          "image_size": [
+            1400,
+            964
+          ],
+          "grayscale_stddev": 35.83543789384344
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "comparison/figures/parameter_comparison_curves.pdf",
+      "sha256": "d2812bc7be078b45f58eb0b7097d1787e03b12facfd033a6decf6cce009e476d",
+      "n_pages": 2,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/comparison/figures/parameter_comparison_curves_page01.png",
+          "render_sha256": "1b7d1094052d9d93eb944de9ef4c3143166496f8f9206e9b2e7962e8106edf14",
+          "image_size": [
+            1106,
+            1400
+          ],
+          "grayscale_stddev": 46.38960865958237
+        },
+        {
+          "page": 2,
+          "render_path": "validation/pdf_renders/comparison/figures/parameter_comparison_curves_page02.png",
+          "render_sha256": "ca55d3833c6995a7841b3a82fc3b4688891d336219d622ae02518bba8b321f36",
+          "image_size": [
+            1106,
+            1400
+          ],
+          "grayscale_stddev": 45.10256276282229
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "comparison/figures/structural_null_O2_zero.pdf",
+      "sha256": "6fa51a2a89aa9665dce9cf19b2b0edd01862793f59a8e1cc89fae2e37458498f",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/comparison/figures/structural_null_O2_zero_page01.png",
+          "render_sha256": "4dfeccbde00427c93b1716ac5e80e73144f910e44e87c4e2d6601782ddf34db3",
+          "image_size": [
+            1400,
+            930
+          ],
+          "grayscale_stddev": 40.07373682700213
+        }
+      ],
+      "render_reused": false
+    },
+    {
+      "path": "efast/N16385/figures/annotation_legend.pdf",
+      "sha256": "8e8c9ca237666254c092d665a533a15ce106e5b5a13b6423ac7994f900f2706f",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N16385/figures/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N16385/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "aa358750ab6ddca26b541db5bf385907942cfd1d9d27967471ac212f1d36b5b8",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N16385/figures/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "08c922b83a84cbe01f753cb6656d9b75640c5ae1f837be30ea50b8dcc1ef0a7c",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 50.87347618549743
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N16385/figures/sensitivity_summary.pdf",
+      "sha256": "2d833f1400aed01dba9435bb8b329263247e9346736e040da12e1158b60a57b5",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N16385/figures/sensitivity_summary_page01.png",
+          "render_sha256": "70eac68f606749942a5d52c138a272b05d324a04ed438be22b5aaad9cf31a488",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 53.30290931411796
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N16385/figures/st_parameter_by_oxygen.pdf",
+      "sha256": "02586e92ee542cb412bb57a3be23bdeaa32ae3dcc65a2d3e034f644ba29d5804",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N16385/figures/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "2d18cc219ba7203b73bc8cdb86d4d76329e09c3afff44208eed2b4e8afbd476c",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.112424163071445
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N2049/figures/annotation_legend.pdf",
+      "sha256": "225a51b8e102a1db58006f067546de3838bf70b2f0fbad0b76fbab194dfa8fa7",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N2049/figures/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N2049/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "b8108b1cece7d9f363e9a29698d8e52a68dfee57a975647e5d0ab9e2e5d269a8",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N2049/figures/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "3deede70f9619b191d828a624a92250c65a5779ae7c6b41aa56f75b1f3ad437a",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 49.139447077762576
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N2049/figures/sensitivity_summary.pdf",
+      "sha256": "dc3e9ca09a4361a69cdfbaa5d879dd92f1262445ba16e9e1a8f71e4e32706850",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N2049/figures/sensitivity_summary_page01.png",
+          "render_sha256": "9aa97e9c4befd25b487529b3e809de35e8c37429ef35739ede9218829c1e10d5",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 52.73402151184405
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N2049/figures/st_parameter_by_oxygen.pdf",
+      "sha256": "cb91526b090b13582fb2d7a8bc93c11dbce5c9b9313e1bd0705e50086c329f53",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N2049/figures/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "c47fc3ee6b05dab63004439886cd77daaab6003c48a4488b69d8c610f140c92d",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.56892320011984
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N4097/figures/annotation_legend.pdf",
+      "sha256": "58cd72242f5f785c3cd2a6671ea2eb169e7179bde08107d1232b2d97395d6d6e",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N4097/figures/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N4097/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "e54554df13c729eea2be3b767da0ee79f96eb269d24ea1e4aa89a77bf738d15e",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N4097/figures/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "5b4b19d4c0a22a72586fd58726489e44afdf57390815510d8bad6b1278263ba4",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 50.52981838901156
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N4097/figures/sensitivity_summary.pdf",
+      "sha256": "ab9feff0b02f7eafc9eeb200a49ffb32d4e0f8ff5591892063096ca50b9d575b",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N4097/figures/sensitivity_summary_page01.png",
+          "render_sha256": "1489023dab20e7882ed995e0d2a32f7536ac2440d5b6f361d1606857dcba3527",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 53.042933712175945
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N4097/figures/st_parameter_by_oxygen.pdf",
+      "sha256": "0e56f5f327462d66418802c8a3c4acdc6066614d40c2eecdb41cda57dc7e978a",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N4097/figures/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "81bcddc80c0eab54be59d58382fb95e18d181f69408644edbb784b1b9d56ce5f",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 54.993348314603175
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N8193/figures/annotation_legend.pdf",
+      "sha256": "0b1cdd317f3c4cf7ca815943d7f7b148ddb3dba16aa2f5949772fbc4838f31ac",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N8193/figures/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N8193/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "dea17bd2a74bf511218bb4d4233b1f23c28b6a8d45519af2e0c7fdc45821f9ec",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N8193/figures/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "3ab18db36ff06bedfed8aa5f182649766cf1c720931e7761d6cfefd87163561f",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 49.48998622203711
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N8193/figures/sensitivity_summary.pdf",
+      "sha256": "8d7b8a7b4ed873bd05ffbded16b77934d6e4264c44e3c506a51f5a11d1a5fb80",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N8193/figures/sensitivity_summary_page01.png",
+          "render_sha256": "45a3ca789e122e363ce6cb2876b31415df0a6a0b9e75d92b6f4a1dae62043136",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 53.11492033310627
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "efast/N8193/figures/st_parameter_by_oxygen.pdf",
+      "sha256": "307c1f4293a48792a59176cb0356202a644a24fc6ca7b83485f4732fe6cf2ac0",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/efast/N8193/figures/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "c50ef046eeb702e74270f5fa91b69ba605a61ebe0ee17bd4edf33d255cab7bb6",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.91474493783054
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "inputs/figure4b_spearman_direction.pdf",
+      "sha256": "fce336b92c0be255ded0c1d719c47eec4af314246199c907b8d29b2d7cec2327",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/inputs/figure4b_spearman_direction_page01.png",
+          "render_sha256": "0622d5935663777fb1c90e5ea98bb4c9636d51446c0a1ea120cf9478305f8633",
+          "image_size": [
+            1400,
+            759
+          ],
+          "grayscale_stddev": 35.20538608557919
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/comparison/method_comparison_s1.pdf",
+      "sha256": "853930504624c9fe7a94b2ca7099e49ee3d84d8df2de2d5768c5a758615fe60f",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/comparison/method_comparison_s1_page01.png",
+          "render_sha256": "97671e45464e775910088001852dc1bf7c288cf71e08d0319cee982e3453f30a",
+          "image_size": [
+            1400,
+            1088
+          ],
+          "grayscale_stddev": 49.8064515110986
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/comparison/method_comparison_st.pdf",
+      "sha256": "2eb0ef0866e96e63ea3acf9b53df5d9b1b3c44ecf097d1dc9f60446d58275af3",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/comparison/method_comparison_st_page01.png",
+          "render_sha256": "efc37526598f9f002deb2430d5b73173a0dc46db8e198062de7524b0e01fc0f9",
+          "image_size": [
+            1400,
+            1088
+          ],
+          "grayscale_stddev": 54.24216684872921
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/comparison/method_resolution_summary.pdf",
+      "sha256": "d4bbfc4c94de99c02bf1dc6526b4de961eef7d8203c16f22e0136f1038075719",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/comparison/method_resolution_summary_page01.png",
+          "render_sha256": "20b18e7efe72bbd5a444d9094cc403924e0e46b88fdb71583ab84c6a37dfa006",
+          "image_size": [
+            1400,
+            964
+          ],
+          "grayscale_stddev": 35.83543789384344
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/comparison/parameter_comparison_curves.pdf",
+      "sha256": "57ab7ddefafe942c80a5ddcbb9205a5a2a90653da23a691760008abd0b8a5046",
+      "n_pages": 2,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/comparison/parameter_comparison_curves_page01.png",
+          "render_sha256": "d17b56fc20c5dea6c15c917317c48988f7065d3170e040077d4c94e6b63de830",
+          "image_size": [
+            994,
+            1400
+          ],
+          "grayscale_stddev": 43.25565019611365
+        },
+        {
+          "page": 2,
+          "render_path": "validation/pdf_renders/publication/comparison/parameter_comparison_curves_page02.png",
+          "render_sha256": "646f83b559a6d45ab8a503cc9386cbaf00b6b5f9913fc997dcd0e9479d6b6b01",
+          "image_size": [
+            994,
+            1400
+          ],
+          "grayscale_stddev": 42.306906501862656
+        }
+      ],
+      "render_reused": false
+    },
+    {
+      "path": "publication/comparison/structural_null_O2_zero.pdf",
+      "sha256": "6fa51a2a89aa9665dce9cf19b2b0edd01862793f59a8e1cc89fae2e37458498f",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/comparison/structural_null_O2_zero_page01.png",
+          "render_sha256": "4dfeccbde00427c93b1716ac5e80e73144f910e44e87c4e2d6601782ddf34db3",
+          "image_size": [
+            1400,
+            930
+          ],
+          "grayscale_stddev": 40.07373682700213
+        }
+      ],
+      "render_reused": false
+    },
+    {
+      "path": "publication/efast/N16385/annotation_legend.pdf",
+      "sha256": "8e8c9ca237666254c092d665a533a15ce106e5b5a13b6423ac7994f900f2706f",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N16385/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N16385/s1_parameter_by_oxygen.pdf",
+      "sha256": "aa358750ab6ddca26b541db5bf385907942cfd1d9d27967471ac212f1d36b5b8",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N16385/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "08c922b83a84cbe01f753cb6656d9b75640c5ae1f837be30ea50b8dcc1ef0a7c",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 50.87347618549743
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N16385/sensitivity_summary.pdf",
+      "sha256": "2d833f1400aed01dba9435bb8b329263247e9346736e040da12e1158b60a57b5",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N16385/sensitivity_summary_page01.png",
+          "render_sha256": "70eac68f606749942a5d52c138a272b05d324a04ed438be22b5aaad9cf31a488",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 53.30290931411796
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N16385/st_parameter_by_oxygen.pdf",
+      "sha256": "02586e92ee542cb412bb57a3be23bdeaa32ae3dcc65a2d3e034f644ba29d5804",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N16385/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "2d18cc219ba7203b73bc8cdb86d4d76329e09c3afff44208eed2b4e8afbd476c",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.112424163071445
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N2049/annotation_legend.pdf",
+      "sha256": "225a51b8e102a1db58006f067546de3838bf70b2f0fbad0b76fbab194dfa8fa7",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N2049/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N2049/s1_parameter_by_oxygen.pdf",
+      "sha256": "b8108b1cece7d9f363e9a29698d8e52a68dfee57a975647e5d0ab9e2e5d269a8",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N2049/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "3deede70f9619b191d828a624a92250c65a5779ae7c6b41aa56f75b1f3ad437a",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 49.139447077762576
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N2049/sensitivity_summary.pdf",
+      "sha256": "dc3e9ca09a4361a69cdfbaa5d879dd92f1262445ba16e9e1a8f71e4e32706850",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N2049/sensitivity_summary_page01.png",
+          "render_sha256": "9aa97e9c4befd25b487529b3e809de35e8c37429ef35739ede9218829c1e10d5",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 52.73402151184405
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N2049/st_parameter_by_oxygen.pdf",
+      "sha256": "cb91526b090b13582fb2d7a8bc93c11dbce5c9b9313e1bd0705e50086c329f53",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N2049/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "c47fc3ee6b05dab63004439886cd77daaab6003c48a4488b69d8c610f140c92d",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.56892320011984
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N4097/annotation_legend.pdf",
+      "sha256": "58cd72242f5f785c3cd2a6671ea2eb169e7179bde08107d1232b2d97395d6d6e",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N4097/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N4097/s1_parameter_by_oxygen.pdf",
+      "sha256": "e54554df13c729eea2be3b767da0ee79f96eb269d24ea1e4aa89a77bf738d15e",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N4097/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "5b4b19d4c0a22a72586fd58726489e44afdf57390815510d8bad6b1278263ba4",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 50.52981838901156
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N4097/sensitivity_summary.pdf",
+      "sha256": "ab9feff0b02f7eafc9eeb200a49ffb32d4e0f8ff5591892063096ca50b9d575b",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N4097/sensitivity_summary_page01.png",
+          "render_sha256": "1489023dab20e7882ed995e0d2a32f7536ac2440d5b6f361d1606857dcba3527",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 53.042933712175945
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N4097/st_parameter_by_oxygen.pdf",
+      "sha256": "0e56f5f327462d66418802c8a3c4acdc6066614d40c2eecdb41cda57dc7e978a",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N4097/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "81bcddc80c0eab54be59d58382fb95e18d181f69408644edbb784b1b9d56ce5f",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 54.993348314603175
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N8193/annotation_legend.pdf",
+      "sha256": "0b1cdd317f3c4cf7ca815943d7f7b148ddb3dba16aa2f5949772fbc4838f31ac",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N8193/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N8193/s1_parameter_by_oxygen.pdf",
+      "sha256": "dea17bd2a74bf511218bb4d4233b1f23c28b6a8d45519af2e0c7fdc45821f9ec",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N8193/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "3ab18db36ff06bedfed8aa5f182649766cf1c720931e7761d6cfefd87163561f",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 49.48998622203711
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N8193/sensitivity_summary.pdf",
+      "sha256": "8d7b8a7b4ed873bd05ffbded16b77934d6e4264c44e3c506a51f5a11d1a5fb80",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N8193/sensitivity_summary_page01.png",
+          "render_sha256": "45a3ca789e122e363ce6cb2876b31415df0a6a0b9e75d92b6f4a1dae62043136",
+          "image_size": [
+            1400,
+            1339
+          ],
+          "grayscale_stddev": 53.11492033310627
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/efast/N8193/st_parameter_by_oxygen.pdf",
+      "sha256": "307c1f4293a48792a59176cb0356202a644a24fc6ca7b83485f4732fe6cf2ac0",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/efast/N8193/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "c50ef046eeb702e74270f5fa91b69ba605a61ebe0ee17bd4edf33d255cab7bb6",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.91474493783054
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/figure4b_spearman_direction.pdf",
+      "sha256": "fce336b92c0be255ded0c1d719c47eec4af314246199c907b8d29b2d7cec2327",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/figure4b_spearman_direction_page01.png",
+          "render_sha256": "0622d5935663777fb1c90e5ea98bb4c9636d51446c0a1ea120cf9478305f8633",
+          "image_size": [
+            1400,
+            759
+          ],
+          "grayscale_stddev": 35.20538608557919
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/annotation_legend.pdf",
+      "sha256": "a3d253a7f896e55fa917721352c1eba9b8d6a1dec274bdb7efaf132ec3173d2a",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/s1_parameter_by_oxygen.pdf",
+      "sha256": "9164b027845e183a6c750c2d9e92126409a1cf48d14364e8b604b671090f6595",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "b8a63b538df1e8d62730c269513ce34783c41cbbe6a58ea23aac389750ae9d95",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 50.46133542489119
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/s2_focal_parameter_by_oxygen.pdf",
+      "sha256": "3e64b742bdc2241c44a2fb528e5f5b82086d525b1b5942ca5408a4f063be58e2",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/s2_focal_parameter_by_oxygen_page01.png",
+          "render_sha256": "a1b83b735e859cdee76ed847f1e8b122b3943efef404e5f3a54b4bf9e6b07208",
+          "image_size": [
+            1400,
+            947
+          ],
+          "grayscale_stddev": 45.13153768363026
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/s2_parameter_by_oxygen.pdf",
+      "sha256": "d439f60cf9fc7465f44f5349d061a341fc9f7594ba1d7de35522f55dd34837a6",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/s2_parameter_by_oxygen_page01.png",
+          "render_sha256": "9472b0b5e145ed99f9905981126ca8cd057f7e03f809d3939276ae45e0de430a",
+          "image_size": [
+            926,
+            1400
+          ],
+          "grayscale_stddev": 42.98228970453355
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/sensitivity_summary.pdf",
+      "sha256": "b0815ebfe4ead83ea731ecc84bb1c1683847aa4e0827d2360fb25e2786094912",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/sensitivity_summary_page01.png",
+          "render_sha256": "3531e80f8500fcc18d3a4da4272d391dda185c5ddd7d419cf2f460ffcba470a0",
+          "image_size": [
+            1062,
+            1400
+          ],
+          "grayscale_stddev": 49.42188116702894
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/st_parameter_by_oxygen.pdf",
+      "sha256": "0166b355780c9189d67bcf9cfab530db2927f95dfaf59029cf2a5bd2c97d7cc4",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "ab0d70d077063da5fb2f5d983786f40fcfd44a3623953299bceacc33426e63ff",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.905600522996366
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "publication/sobol/strongest_91_pair_curves.pdf",
+      "sha256": "794247d7c6aa18c9e5ac96bbe4ddbe255f0a41905ca76d425b527d7cd9e0be68",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/publication/sobol/strongest_91_pair_curves_page01.png",
+          "render_sha256": "68a1b81f32646092c20c3134ec00ec4a5ed7df9f7b111c3f059c5b2f00df657b",
+          "image_size": [
+            1007,
+            1400
+          ],
+          "grayscale_stddev": 37.64003280324194
+        }
+      ],
+      "render_reused": false
+    },
+    {
+      "path": "response_surfaces/buffer_smax__buffer_beta.pdf",
+      "sha256": "9ec33cc4134534d3db452c738408296a0979537fcbd7325f11cc3e9b7b8f5f05",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/response_surfaces/buffer_smax__buffer_beta_page01.png",
+          "render_sha256": "5505abf4eafe59bf5c7a99be189ee14930ea4521e50885e2c117ae4fe02773d6",
+          "image_size": [
+            1400,
+            1214
+          ],
+          "grayscale_stddev": 84.75709431944318
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "response_surfaces/lam_max__O2_crit.pdf",
+      "sha256": "c83e4823b3030f4e21817d5ea06636271fd6f2af320016a63c3a4f4615910d5c",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/response_surfaces/lam_max__O2_crit_page01.png",
+          "render_sha256": "3cd9d2e985c25eb68616a8782fe787305f6f6e39ebce276f00a2bc3c4a636633",
+          "image_size": [
+            1400,
+            1214
+          ],
+          "grayscale_stddev": 90.63523858820085
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "response_surfaces/lam_max__mu_hp.pdf",
+      "sha256": "d603c3f5f6755d17d4d96c4e4fb7c17514021c131cbec69cdbee53b67f896c38",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/response_surfaces/lam_max__mu_hp_page01.png",
+          "render_sha256": "9b270357b66fec5513c5bce0b33629c020788ee2a9c65496efea43203af5c87a",
+          "image_size": [
+            1400,
+            1214
+          ],
+          "grayscale_stddev": 86.06879692937927
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "response_surfaces/lam_max__p_mis_base.pdf",
+      "sha256": "c5a8b812be88e9b7a687dccc5319ef7bd9ecc8ec26eb5c67b627389b93b23203",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/response_surfaces/lam_max__p_mis_base_page01.png",
+          "render_sha256": "4d574c3cf8c70fd1edd50cc5496dc8842e1dbae2482672937382beead4dff153",
+          "image_size": [
+            1400,
+            1214
+          ],
+          "grayscale_stddev": 87.81531930641601
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "response_surfaces/lam_max__p_misseg.pdf",
+      "sha256": "9797c06db2e3dc04a4759ea3eb6b31d26898fabd272e9a7c72c6541cc7bb727a",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/response_surfaces/lam_max__p_misseg_page01.png",
+          "render_sha256": "de77e32530f55a79e5419375f22d94fce6f0d2645d0760a0cd181343a98b3ea2",
+          "image_size": [
+            1400,
+            1214
+          ],
+          "grayscale_stddev": 88.66392402286324
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "response_surfaces/p_mis_base__buffer_smax.pdf",
+      "sha256": "45a928390fc08a736bea404729c27fb785866efd5c26a35b7b221c24084d60f1",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/response_surfaces/p_mis_base__buffer_smax_page01.png",
+          "render_sha256": "acee327ec33c83e4ee1c815ede5331e7506ef0a6b5702bc5d76a0e647b061cce",
+          "image_size": [
+            1400,
+            1214
+          ],
+          "grayscale_stddev": 84.12669905332497
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/annotation_legend.pdf",
+      "sha256": "a3d253a7f896e55fa917721352c1eba9b8d6a1dec274bdb7efaf132ec3173d2a",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/annotation_legend_page01.png",
+          "render_sha256": "35006bc71b3446662304b0bf088d76117be640c6ad05e181a3ed088237e6d269",
+          "image_size": [
+            1400,
+            392
+          ],
+          "grayscale_stddev": 53.81492831445402
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/s1_parameter_by_oxygen.pdf",
+      "sha256": "9164b027845e183a6c750c2d9e92126409a1cf48d14364e8b604b671090f6595",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/s1_parameter_by_oxygen_page01.png",
+          "render_sha256": "b8a63b538df1e8d62730c269513ce34783c41cbbe6a58ea23aac389750ae9d95",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 50.46133542489119
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/s2_focal_parameter_by_oxygen.pdf",
+      "sha256": "3e64b742bdc2241c44a2fb528e5f5b82086d525b1b5942ca5408a4f063be58e2",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/s2_focal_parameter_by_oxygen_page01.png",
+          "render_sha256": "a1b83b735e859cdee76ed847f1e8b122b3943efef404e5f3a54b4bf9e6b07208",
+          "image_size": [
+            1400,
+            947
+          ],
+          "grayscale_stddev": 45.13153768363026
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/s2_parameter_by_oxygen.pdf",
+      "sha256": "d439f60cf9fc7465f44f5349d061a341fc9f7594ba1d7de35522f55dd34837a6",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/s2_parameter_by_oxygen_page01.png",
+          "render_sha256": "9472b0b5e145ed99f9905981126ca8cd057f7e03f809d3939276ae45e0de430a",
+          "image_size": [
+            926,
+            1400
+          ],
+          "grayscale_stddev": 42.98228970453355
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/sensitivity_summary.pdf",
+      "sha256": "b0815ebfe4ead83ea731ecc84bb1c1683847aa4e0827d2360fb25e2786094912",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/sensitivity_summary_page01.png",
+          "render_sha256": "3531e80f8500fcc18d3a4da4272d391dda185c5ddd7d419cf2f460ffcba470a0",
+          "image_size": [
+            1062,
+            1400
+          ],
+          "grayscale_stddev": 49.42188116702894
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/st_parameter_by_oxygen.pdf",
+      "sha256": "0166b355780c9189d67bcf9cfab530db2927f95dfaf59029cf2a5bd2c97d7cc4",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/st_parameter_by_oxygen_page01.png",
+          "render_sha256": "ab0d70d077063da5fb2f5d983786f40fcfd44a3623953299bceacc33426e63ff",
+          "image_size": [
+            1400,
+            513
+          ],
+          "grayscale_stddev": 55.905600522996366
+        }
+      ],
+      "render_reused": true
+    },
+    {
+      "path": "sobol/figures/strongest_91_pair_curves.pdf",
+      "sha256": "615817c1666da36b016423fc95803cb63ca68f1ff5b7602919e2c466298aaf0a",
+      "n_pages": 1,
+      "pages": [
+        {
+          "page": 1,
+          "render_path": "validation/pdf_renders/sobol/figures/strongest_91_pair_curves_page01.png",
+          "render_sha256": "7aa8baa622a772bd4154e69b03c569a59ddc0f1c3b6d176d651167f402a62f0f",
+          "image_size": [
+            1133,
+            1400
+          ],
+          "grayscale_stddev": 38.412456094507014
+        }
+      ],
+      "render_reused": true
+    }
+  ]
+}

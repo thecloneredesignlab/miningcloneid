@@ -1,0 +1,13 @@
+output	rank_by_peak	parameter_i	parameter_j	selection
+dominant_mean_ploidy	1	lam_max	p_misseg	six largest peaks among all 91 pairs; not just focal pairs
+dominant_mean_ploidy	2	p_misseg	mu_hp	six largest peaks among all 91 pairs; not just focal pairs
+dominant_mean_ploidy	3	lam_max	mu_hp	six largest peaks among all 91 pairs; not just focal pairs
+dominant_mean_ploidy	4	p_mis_base	mu_hp	six largest peaks among all 91 pairs; not just focal pairs
+dominant_mean_ploidy	5	lam_max	p_mis_base	six largest peaks among all 91 pairs; not just focal pairs
+dominant_mean_ploidy	6	buffer_smax	buffer_n_exp	six largest peaks among all 91 pairs; not just focal pairs
+dominant_growth_rate	1	lam_max	p_misseg	six largest peaks among all 91 pairs; not just focal pairs
+dominant_growth_rate	2	lam_max	p_mis_base	six largest peaks among all 91 pairs; not just focal pairs
+dominant_growth_rate	3	lam_max	O2_crit	six largest peaks among all 91 pairs; not just focal pairs
+dominant_growth_rate	4	lam_max	mu_hp	six largest peaks among all 91 pairs; not just focal pairs
+dominant_growth_rate	5	lam_max	n_O	six largest peaks among all 91 pairs; not just focal pairs
+dominant_growth_rate	6	p_misseg	O2_crit	six largest peaks among all 91 pairs; not just focal pairs

@@ -1,0 +1,449 @@
+{
+  "status": "Sobol_only_complete",
+  "files": [
+    {
+      "path": "hpc_sync_receipt.json",
+      "size": 3606,
+      "sha256": "25d3c521713b1c0cd7bb56132ee3f2cdcb1921cec7711909e032d182b49ec547"
+    },
+    {
+      "path": "inputs/figure4_parameter_group_palette_source.tsv",
+      "size": 358,
+      "sha256": "ec531c49fa0ee0967e19c7d974d1c6668a704602b3d4fc4ab50187a9faa489f9"
+    },
+    {
+      "path": "inputs/figure4_parameter_groups_source.tsv",
+      "size": 1802,
+      "sha256": "6de0e7b331fe635b82cb6782f56f12abec02f8c56ca4877e53b5724f2a725c67"
+    },
+    {
+      "path": "inputs/figure4b_o2_classification_source.tsv",
+      "size": 5082,
+      "sha256": "a6676dbc2d107b8304874f69c533c5b8e8c9b2816ee6956069c663e9e50d662d"
+    },
+    {
+      "path": "inputs/figure4b_spearman_direction.pdf",
+      "size": 23810,
+      "sha256": "fce336b92c0be255ded0c1d719c47eec4af314246199c907b8d29b2d7cec2327"
+    },
+    {
+      "path": "inputs/figure4b_spearman_direction.png",
+      "size": 150274,
+      "sha256": "bc096aeca93d18d4aed9de9ac44f25619b12408d94ddb969b531aaaf6ebd3cd8"
+    },
+    {
+      "path": "inputs/legacy_efast_indices.tsv",
+      "size": 8862588,
+      "sha256": "7bfd6dc648000859afb851b63850efc8b9cb05cc7f03f49759c90eae9aea0f70"
+    },
+    {
+      "path": "inputs/legacy_parameter_ranges.tsv",
+      "size": 1391,
+      "sha256": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97"
+    },
+    {
+      "path": "inputs/model_structure/model_equations.md",
+      "size": 3165,
+      "sha256": "59f950b5eb1d343938f8e149ed66e50e94500d4ca091a283f2940aa104e24522"
+    },
+    {
+      "path": "inputs/model_structure/parameter_equation_map.tsv",
+      "size": 5269,
+      "sha256": "22811b4cea65a07f93e530aea0a8d7f95e90f019d862c0917d2906ec6b18a1e0"
+    },
+    {
+      "path": "inputs/model_structure/parameter_pair_mechanism_map.tsv",
+      "size": 17444,
+      "sha256": "df7ecda8d9489ed8eb6395eecfc0deadd625890226e6c183116dc56419672ec6"
+    },
+    {
+      "path": "inputs/parameter_bounds.tsv",
+      "size": 1391,
+      "sha256": "8d2ea8ef048459f0570e56ef1fb2434900f93e40708c7f132c7e7788ef9f2b97"
+    },
+    {
+      "path": "inputs/reference_seed25/best_params.tsv",
+      "size": 628,
+      "sha256": "f4737eb06217d1eb8d8681b5650ee925ed9d970107911e61da380696212c671e"
+    },
+    {
+      "path": "inputs/reference_seed25/fit_config.rds",
+      "size": 11310,
+      "sha256": "c594a915bce543cb9c884430063cd2239360a20e45287a4dd3a8e4e69e4c764d"
+    },
+    {
+      "path": "inputs/reference_seed25/parameter_table.csv",
+      "size": 3202,
+      "sha256": "d3e30c00f25c79d81c02868aeee68f714588bb17e542410242a81ea5551195fe"
+    },
+    {
+      "path": "inputs/response_surface_inventory.tsv",
+      "size": 12308,
+      "sha256": "4c989b7fbf4f2122075dfc4b37787fab3004f512ea3c29b838673bd8d147d23a"
+    },
+    {
+      "path": "inputs/sobol_N131072/classification.tsv",
+      "size": 36838,
+      "sha256": "0cd04df4d6db5297495da6ab33187e2e48ecd9d59d3f840f3e430410fce97608"
+    },
+    {
+      "path": "inputs/sobol_N131072/completion.json",
+      "size": 303,
+      "sha256": "659ad46d150befc1c262dfb9f598b5d575f09a59210714253fa3f0d29dbfee2f"
+    },
+    {
+      "path": "inputs/sobol_N131072/indices_repeats.npz",
+      "size": 7306433,
+      "sha256": "dca8a8f8cb0d603287d4e008d609987a2ac9d9a99031ada14434c32fdab85dee"
+    },
+    {
+      "path": "inputs/sobol_N131072/indices_summary.tsv.gz",
+      "size": 2170944,
+      "sha256": "ba882537b333ead2091245423a41db37046bb16d2e78ba0ff88dfed3703bb0d4"
+    },
+    {
+      "path": "inputs/sobol_N131072/row_order.tsv",
+      "size": 49162,
+      "sha256": "20ca41c66f4e3c56248ab1c638f8574497fc09bb888581a2c720fb14fc8c600b"
+    },
+    {
+      "path": "inputs/source_reference_receipt.json",
+      "size": 1663,
+      "sha256": "4ff4f52d4361b600d29dfbe99a4b19041f22d316ee23729b65869553beb2fdc1"
+    },
+    {
+      "path": "inputs/source_sobol_evaluate.R",
+      "size": 6415,
+      "sha256": "b170b512daf75fac9f2295ed8cacf987184ecd2588e5ba2533b3cd2a2d821651"
+    },
+    {
+      "path": "inputs/source_sobol_submission_plan.json",
+      "size": 365201,
+      "sha256": "19e1bc10ce9750a64f8aa13f3933e115c219e08f45d801899e436746a6810ed1"
+    },
+    {
+      "path": "launch_receipt.json",
+      "size": 23880,
+      "sha256": "a2052afc2566c2680392ca3ffeaa1862682af9b2d53f555e5ef146db73677a98"
+    },
+    {
+      "path": "plan.json",
+      "size": 7446,
+      "sha256": "b209bf02f8619feaa7b628e6724810286634ccb30543b7795c8b0cf4a7b8bef5"
+    },
+    {
+      "path": "preparation.json",
+      "size": 2404,
+      "sha256": "9cc7a857ff925e9b731267fbaae4fdb94c3f417ac783d3ac2af234eeacd0b468"
+    },
+    {
+      "path": "reporting_recovery_receipt.json",
+      "size": 10573,
+      "sha256": "49dc2872ee70027d363c646520c0e4eca7d47bce846a051dd896f98027db86b5"
+    },
+    {
+      "path": "reporting_sync_receipt.json",
+      "size": 3927,
+      "sha256": "d560a4634c3e4ec186a799f186ec7b41926c572ce521c3366c23776a97977d49"
+    },
+    {
+      "path": "slurm/code_snapshot/collect.py",
+      "size": 4701,
+      "sha256": "c4a6f5428d3383dbe739da5e80341b2a8981452aa73cdd301ce7719f05d0879c"
+    },
+    {
+      "path": "slurm/code_snapshot/common.py",
+      "size": 3348,
+      "sha256": "de7c9b369306b8651211c9579842a46a00b18ae1f4bf838cc892a0670dd77507"
+    },
+    {
+      "path": "slurm/code_snapshot/evaluate_efast.R",
+      "size": 6436,
+      "sha256": "a5210cffb37f73bb261fd6d31b37a9450343af35d61109c82525304163bed02b"
+    },
+    {
+      "path": "slurm/code_snapshot/plot_helpers.py",
+      "size": 5809,
+      "sha256": "db988c7bf7e4f1e1fb10aa26b6b8ece65a6443fb7bdab8693a5ab431bc663bab"
+    },
+    {
+      "path": "slurm/code_snapshot/report.py",
+      "size": 33616,
+      "sha256": "f342fd0252dc09d93d8ab50d48dba53542794ee21bf67033bbe7232bd2cf7d37"
+    },
+    {
+      "path": "slurm/code_snapshot/retry_global_startup.sh",
+      "size": 1057,
+      "sha256": "266544c8e90eb6b2917c99520f3ec12c3fd22bb92b445e1c9f8ff8440e319dd0"
+    },
+    {
+      "path": "slurm/code_snapshot/run.sbatch",
+      "size": 1901,
+      "sha256": "28fab29d8c4e241eee130d07796bb92342d77df3d10d61cf00015592608bec56"
+    },
+    {
+      "path": "slurm/code_snapshot/run_time_extension.sbatch",
+      "size": 276,
+      "sha256": "474f013543014b0c6ff964181511463c39990eef69a1ead3b53da1c60893dd5a"
+    },
+    {
+      "path": "slurm/code_snapshot/s_add_job_hours_proxy.sh",
+      "size": 227,
+      "sha256": "ce83d689013e96d461c428a6f2de77fe8cef4cb374f2cf663335fcb10cbbef3c"
+    },
+    {
+      "path": "slurm/code_snapshot/submit.py",
+      "size": 10494,
+      "sha256": "9961deb24516576cef5ba7319716cac5d670e16335ad5a022b1d304e3dff8296"
+    },
+    {
+      "path": "slurm/code_snapshot/test_workflow.py",
+      "size": 5322,
+      "sha256": "9a3da3eafe011837592c230d6cc77fe707a18a48b05acdec09b2614989d5c152"
+    },
+    {
+      "path": "slurm/code_snapshot/time_extension.py",
+      "size": 10425,
+      "sha256": "fec5c129233c6223b200c3ab01dc63ce934888529f1a7e78db8a57123b2c1f4c"
+    },
+    {
+      "path": "slurm/code_snapshot/workflow.py",
+      "size": 18820,
+      "sha256": "8c4e20024fdd68626da6f23a2a6c5bef2043c2f4e0ed1807714dfac3e4515e00"
+    },
+    {
+      "path": "slurm/jobs.json",
+      "size": 19830,
+      "sha256": "d488c7033bee701eedb16562683d6a2bf1e4ecb3bc8f027387373624cf4ceb02"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/collect.py",
+      "size": 5265,
+      "sha256": "fea531a8990d58ec7d6a7d5f486165a2baf565560787186ebb9851ae466eb54a"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/common.py",
+      "size": 3348,
+      "sha256": "de7c9b369306b8651211c9579842a46a00b18ae1f4bf838cc892a0670dd77507"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/evaluate_efast.R",
+      "size": 6436,
+      "sha256": "a5210cffb37f73bb261fd6d31b37a9450343af35d61109c82525304163bed02b"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/manifest.json",
+      "size": 1761,
+      "sha256": "71a69da17a1b0570363941d8e549259ab17adca26c84981ac36bb47e8c2a9933"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/plot_helpers.py",
+      "size": 5809,
+      "sha256": "db988c7bf7e4f1e1fb10aa26b6b8ece65a6443fb7bdab8693a5ab431bc663bab"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/recover_reporting.py",
+      "size": 6671,
+      "sha256": "dfb9c8d3ef8c631149d9239a4a1d37723ce8dcaaf7953cdc6244c3614163ce0e"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/report.py",
+      "size": 33616,
+      "sha256": "f342fd0252dc09d93d8ab50d48dba53542794ee21bf67033bbe7232bd2cf7d37"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/reporting_entry.py",
+      "size": 316,
+      "sha256": "2babcb2fa3b2548def44865aacc64897785a6baf0c4461091530fb9f58894661"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/retry_global_startup.sh",
+      "size": 1057,
+      "sha256": "266544c8e90eb6b2917c99520f3ec12c3fd22bb92b445e1c9f8ff8440e319dd0"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/run.sbatch",
+      "size": 1901,
+      "sha256": "28fab29d8c4e241eee130d07796bb92342d77df3d10d61cf00015592608bec56"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/run_reporting_overlay.sbatch",
+      "size": 2349,
+      "sha256": "0056aa025a84fe874dc11a42ab192a1e58d4315817b66f38b0af6fd088a879ac"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/run_time_extension.sbatch",
+      "size": 276,
+      "sha256": "474f013543014b0c6ff964181511463c39990eef69a1ead3b53da1c60893dd5a"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/s_add_job_hours_proxy.sh",
+      "size": 227,
+      "sha256": "ce83d689013e96d461c428a6f2de77fe8cef4cb374f2cf663335fcb10cbbef3c"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/submit.py",
+      "size": 10494,
+      "sha256": "9961deb24516576cef5ba7319716cac5d670e16335ad5a022b1d304e3dff8296"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/test_workflow.py",
+      "size": 6001,
+      "sha256": "8738abff9765b61b70c6bb6769f92a62b20959c65ef7c741b7d74e6e3bdda1a8"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/time_extension.py",
+      "size": 10425,
+      "sha256": "fec5c129233c6223b200c3ab01dc63ce934888529f1a7e78db8a57123b2c1f4c"
+    },
+    {
+      "path": "slurm/reporting_overlay_336a2f02a/workflow.py",
+      "size": 19347,
+      "sha256": "f508e565c0114210284057c8eaf39e30d3d2fac1e80df3623c9dbd56221be9a5"
+    },
+    {
+      "path": "slurm/reporting_recovery_jobs.json",
+      "size": 8303,
+      "sha256": "0f4575dbbc1007669afd77fca66030164f29567e41766c1ff6747b3e14458c92"
+    },
+    {
+      "path": "sobol/ST_minus_S1.tsv.gz",
+      "size": 179697,
+      "sha256": "cbb7b76f9844f3643f606ad7c8d9dbca8176f07a8db22b85ffc7ac775076c3e3"
+    },
+    {
+      "path": "sobol/all_parameter_and_pair_rankings.tsv",
+      "size": 109527,
+      "sha256": "40f87d6ff6faa627518975314e8aa7126413544d67797ab41410764228b9c271"
+    },
+    {
+      "path": "sobol/classification.tsv",
+      "size": 36838,
+      "sha256": "0cd04df4d6db5297495da6ab33187e2e48ecd9d59d3f840f3e430410fce97608"
+    },
+    {
+      "path": "sobol/completion.json",
+      "size": 277,
+      "sha256": "7b11a0d75fa089fb1f9222be110341538f01a6355cafa44be396c1654b9a3759"
+    },
+    {
+      "path": "sobol/figures/annotation_legend.pdf",
+      "size": 17143,
+      "sha256": "a3d253a7f896e55fa917721352c1eba9b8d6a1dec274bdb7efaf132ec3173d2a"
+    },
+    {
+      "path": "sobol/figures/annotation_legend.png",
+      "size": 70724,
+      "sha256": "4a95eded25f15a3cfeb94e4d0830ef72ce6a93c20ec3f773eb54a968c469fc2c"
+    },
+    {
+      "path": "sobol/figures/s1_parameter_by_oxygen.pdf",
+      "size": 29150,
+      "sha256": "9164b027845e183a6c750c2d9e92126409a1cf48d14364e8b604b671090f6595"
+    },
+    {
+      "path": "sobol/figures/s1_parameter_by_oxygen.png",
+      "size": 101462,
+      "sha256": "a6b409d1d75f8b39753443f2ecb8a10da75b72799091a2fb5f9dbe5204cd275e"
+    },
+    {
+      "path": "sobol/figures/s2_focal_parameter_by_oxygen.pdf",
+      "size": 34575,
+      "sha256": "3e64b742bdc2241c44a2fb528e5f5b82086d525b1b5942ca5408a4f063be58e2"
+    },
+    {
+      "path": "sobol/figures/s2_focal_parameter_by_oxygen.png",
+      "size": 199520,
+      "sha256": "e25f1b946964209768ad6bc593cf73f489727fb62f13fcaf8a77eabdd6fb9c81"
+    },
+    {
+      "path": "sobol/figures/s2_parameter_by_oxygen.pdf",
+      "size": 45170,
+      "sha256": "d439f60cf9fc7465f44f5349d061a341fc9f7594ba1d7de35522f55dd34837a6"
+    },
+    {
+      "path": "sobol/figures/s2_parameter_by_oxygen.png",
+      "size": 376751,
+      "sha256": "0b54f95132f783cbddf7ec14464c1ab495c224af3f7b82712c41a1b248b185ce"
+    },
+    {
+      "path": "sobol/figures/sensitivity_summary.pdf",
+      "size": 57735,
+      "sha256": "b0815ebfe4ead83ea731ecc84bb1c1683847aa4e0827d2360fb25e2786094912"
+    },
+    {
+      "path": "sobol/figures/sensitivity_summary.png",
+      "size": 331267,
+      "sha256": "3da46cc9bce60e68318a66307c68df40c88dc8a414044993e40fba651cbe2ca4"
+    },
+    {
+      "path": "sobol/figures/st_parameter_by_oxygen.pdf",
+      "size": 31200,
+      "sha256": "0166b355780c9189d67bcf9cfab530db2927f95dfaf59029cf2a5bd2c97d7cc4"
+    },
+    {
+      "path": "sobol/figures/st_parameter_by_oxygen.png",
+      "size": 101000,
+      "sha256": "5c5f64586a3f57d885be239099a97f81c6aaab9eb7db165ae1c0f80c8dc17c09"
+    },
+    {
+      "path": "sobol/figures/strongest_91_pair_curves.pdf",
+      "size": 74860,
+      "sha256": "615817c1666da36b016423fc95803cb63ca68f1ff5b7602919e2c466298aaf0a"
+    },
+    {
+      "path": "sobol/figures/strongest_91_pair_curves.png",
+      "size": 506924,
+      "sha256": "0f0df4f243d6a116490a8636bdb8c6255902f50ec7b934e3340a879e49afac0e"
+    },
+    {
+      "path": "sobol/focal_36_pair_rankings.tsv",
+      "size": 33592,
+      "sha256": "9154ed177114a7260dee346ffaf6e598af5471228f5c14ddc606675c372332ea"
+    },
+    {
+      "path": "sobol/interpretation_zh.md",
+      "size": 5015,
+      "sha256": "bdb8a69c501836ccb6f1cdd8d973660da1a064e939ef2a55d71cfcfdcb0dc9f0"
+    },
+    {
+      "path": "sobol/noemi_hypothesis_checks.tsv",
+      "size": 2337,
+      "sha256": "0f911a05745c5ad759050f4c47144d606638780bd84becaa9faa654259cb7886"
+    },
+    {
+      "path": "sobol/oxygen_band_indices.tsv.gz",
+      "size": 25962,
+      "sha256": "2fef3759c3822587cb5ab9020d7a3bb0cbb7979fb36908bc0c9c50c33bc4cafc"
+    },
+    {
+      "path": "sobol/process_descriptive_summary.tsv",
+      "size": 12767,
+      "sha256": "b0f872d30ded68586b8d1200efb3c547a5b1b246de653f539e239898e9f6686a"
+    },
+    {
+      "path": "sobol/ranking_stability_N65536_N131072.tsv",
+      "size": 93475,
+      "sha256": "bb519162d0980d90e66fe4cde0d8981ca50fca5de50635fbc5f387ff6576f494"
+    },
+    {
+      "path": "sobol/row_order.tsv",
+      "size": 49162,
+      "sha256": "20ca41c66f4e3c56248ab1c638f8574497fc09bb888581a2c720fb14fc8c600b"
+    },
+    {
+      "path": "sobol/strongest_pair_curve_selection.tsv",
+      "size": 1240,
+      "sha256": "903f5c5b7c3ff9535100f2d177460b169f5b719c992100900bd33e238737921a"
+    },
+    {
+      "path": "validation/method_alignment.json",
+      "size": 553,
+      "sha256": "bdc665e5dd07cf3e7d36c9217249832dd00701904c912e9cdf2e71e78582a158"
+    }
+  ],
+  "global_eFAST": "running; not included",
+  "model_calls": 0,
+  "neighborhood_files_read": 0,
+  "created_utc": "2026-11-12T15:12:35.872249Z"
+}

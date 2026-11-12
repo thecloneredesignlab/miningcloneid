@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "method": "eFAST",
+  "N": 16385,
+  "M": 4,
+  "n_repeats": 5,
+  "n_oxygen": 201,
+  "n_indices": 11256,
+  "summary_sha256": "33035ba15e3270e55222c4984cd81b74576ff5401268cdb6e1f58eacc02bb5d7",
+  "convergence_policy": "diagnostic_only",
+  "completed_utc": "2026-11-12T15:58:28.311885Z"
+}

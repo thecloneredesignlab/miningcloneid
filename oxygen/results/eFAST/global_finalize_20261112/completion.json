@@ -1,0 +1,17 @@
+{
+  "status": "complete",
+  "scope": "global",
+  "sobol_N": 131072,
+  "efast_resolutions": [
+    2049,
+    4097,
+    8193,
+    16385
+  ],
+  "n_repeats": 5,
+  "n_oxygen": 201,
+  "N_hard_limit": null,
+  "convergence_policy": "diagnostic_only",
+  "neighborhood_jobs_submitted": 0,
+  "completed_utc": "2026-11-12T15:58:56.297511Z"
+}

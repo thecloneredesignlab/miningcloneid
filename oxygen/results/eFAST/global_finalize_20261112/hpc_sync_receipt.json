@@ -1,0 +1,86 @@
+{
+  "status": "complete",
+  "revision": "553c8cdd4ac8ac95648819e920989be48df4017b",
+  "remote_tracking_revision": "553c8cdd4ac8ac95648819e920989be48df4017b",
+  "checkout_HEAD_preserved": "9166a2ddeccbd1d0e04405c4e4fb3f5172a12b9e",
+  "strategy": "sync explicit Git objects; retain archived checkout",
+  "files": [
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/README.md",
+      "sha256": "fd5e4c1c2af61346af5a4af252446eeee70261dfe539a04297e41f19c8140765",
+      "bytes": 5035
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/collect.py",
+      "sha256": "c4a6f5428d3383dbe739da5e80341b2a8981452aa73cdd301ce7719f05d0879c",
+      "bytes": 4701
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/common.py",
+      "sha256": "de7c9b369306b8651211c9579842a46a00b18ae1f4bf838cc892a0670dd77507",
+      "bytes": 3348
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/evaluate_efast.R",
+      "sha256": "a5210cffb37f73bb261fd6d31b37a9450343af35d61109c82525304163bed02b",
+      "bytes": 6436
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/plot_helpers.py",
+      "sha256": "db988c7bf7e4f1e1fb10aa26b6b8ece65a6443fb7bdab8693a5ab431bc663bab",
+      "bytes": 5809
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/report.py",
+      "sha256": "f342fd0252dc09d93d8ab50d48dba53542794ee21bf67033bbe7232bd2cf7d37",
+      "bytes": 33616
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/retry_global_startup.sh",
+      "sha256": "266544c8e90eb6b2917c99520f3ec12c3fd22bb92b445e1c9f8ff8440e319dd0",
+      "bytes": 1057
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/run.sbatch",
+      "sha256": "28fab29d8c4e241eee130d07796bb92342d77df3d10d61cf00015592608bec56",
+      "bytes": 1901
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/run_time_extension.sbatch",
+      "sha256": "474f013543014b0c6ff964181511463c39990eef69a1ead3b53da1c60893dd5a",
+      "bytes": 276
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/s_add_job_hours_proxy.sh",
+      "sha256": "ce83d689013e96d461c428a6f2de77fe8cef4cb374f2cf663335fcb10cbbef3c",
+      "bytes": 227
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/submit.py",
+      "sha256": "9961deb24516576cef5ba7319716cac5d670e16335ad5a022b1d304e3dff8296",
+      "bytes": 10494
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/test_workflow.py",
+      "sha256": "9a3da3eafe011837592c230d6cc77fe707a18a48b05acdec09b2614989d5c152",
+      "bytes": 5322
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/time_extension.py",
+      "sha256": "fec5c129233c6223b200c3ab01dc63ce934888529f1a7e78db8a57123b2c1f4c",
+      "bytes": 10425
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/workflow.py",
+      "sha256": "8c4e20024fdd68626da6f23a2a6c5bef2043c2f4e0ed1807714dfac3e4515e00",
+      "bytes": 18820
+    },
+    {
+      "path": "oxygen/results/eFAST/global_finalize_20261112/validation/local_preflight.json",
+      "sha256": "a2cb97a6ef6526e6603f075da95341f17feb57c99367a61f93cf5fafa412d3ed",
+      "bytes": 1030
+    }
+  ],
+  "neighborhood_files_written": 0,
+  "completed_utc": "2026-11-12T15:02:28.606862Z"
+}

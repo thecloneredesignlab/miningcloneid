@@ -180,3 +180,7 @@ with a separate trapezoidal calculation. Final diagnostic band counts are
 disjoint; original HPC inclusive-window counts are retained only as provenance.
 The final narrative is scoped to this approved M4 batch and is reviewed against
 the source tables; it is not a scientific conclusion template for future runs.
+
+### Preparation dependency repair
+
+The first preparation attempt for the refinement stopped before any model calls: the test imported finish_report.py, which was omitted from the frozen file list. The missing file was added from the same committed source revision with a supplemental SHA256 receipt; no original frozen controller was replaced. Preparation job 21842774 was requeued and smoke job 21842775 had its afterok dependency reset. All model arrays and monitor target IDs were preserved. The original failure logs are archived under validation/preparation_initial_failure/. New batches now include the dependency in FILES, and a regression test plus full frozen-bundle SIF check protects this path.

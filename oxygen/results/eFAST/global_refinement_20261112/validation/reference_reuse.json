@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "previous_root": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112",
+  "reference_resolutions": [
+    2049,
+    4097,
+    8193,
+    16385
+  ],
+  "sobol_report_copied": true,
+  "sobol_model_calls": 0,
+  "sobol_estimator_calls": 0,
+  "old_efast_model_calls": 0,
+  "raw_blocks_copied": false,
+  "completed_utc": "2026-11-12T17:01:56.434945Z"
+}

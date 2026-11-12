@@ -11,7 +11,7 @@ import subprocess
 from common import (INITIAL_NS, M, ACTIVE, OUTPUTS, now, load, save, sha,
                     valid_n, model_count, resolutions, efast_directory, next_n)
 
-FILES = ('common.py', 'workflow.py', 'report.py', 'submit.py', 'test_workflow.py', 'collect.py',
+FILES = ('common.py', 'workflow.py', 'report.py', 'submit.py', 'test_workflow.py', 'collect.py', 'finish_report.py',
          'evaluate_efast.R', 'run.sbatch', 'plot_helpers.py', 'time_extension.py',
          'run_time_extension.sbatch', 's_add_job_hours_proxy.sh', 'retry_global_startup.sh')
 RELATIVE = 'oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/'

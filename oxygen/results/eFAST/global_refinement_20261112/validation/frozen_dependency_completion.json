@@ -1,0 +1,9 @@
+{
+  "status": "complete",
+  "source_revision": "ca9fa912b022b0993b8df7ae45af187b3eaba1b9",
+  "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_refinement_20261112/slurm/code_snapshot/finish_report.py",
+  "sha256": "5afe3f8d9beb5ff57da0f8a5214230b34a02cb90fcad8e4cdbaff388481842b1",
+  "original_frozen_files_replaced": 0,
+  "original_controller_hashes_verified": 13,
+  "model_or_estimator_changes": false
+}

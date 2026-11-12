@@ -8,10 +8,13 @@ import numpy as np
 
 from common import (ACTIVE, OUTPUTS, INITIAL_NS, CHUNK, decode, model_count, next_n, valid_n,
                     resolutions,previous_resolution,efast_directory)
-from submit import stages, sbatch_args
+from submit import stages, sbatch_args, FILES
 
 
 class DesignContracts(unittest.TestCase):
+    def test_frozen_bundle_includes_reporting_test_dependency(self):
+        self.assertIn('finish_report.py',FILES)
+
     def test_complete_nonoverlapping_trajectories(self):
         for n in INITIAL_NS+(32769,65537,131073):
             groups={}

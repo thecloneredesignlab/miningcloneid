@@ -1,0 +1,5 @@
+{
+  "error": "Command '['/usr/bin/python3', '/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_refinement_20261112/slurm/code_snapshot/test_workflow.py']' returned non-zero exit status 1.",
+  "utc": "2026-11-12T17:02:29.545710Z",
+  "job_id": "21842774"
+}

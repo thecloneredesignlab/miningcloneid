@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-11-12T17:05:52.231733+00:00",
+  "frozen_dependency_files": 14,
+  "local_full_source_tests": 14,
+  "local_full_source_passed": 14,
+  "frozen_bundle_tests": 14,
+  "frozen_bundle_passed": 13,
+  "original_SIF_frozen_bundle_passed": 13,
+  "skipped": 1,
+  "skip_reason": "R engine body is checked against canonical sources by compute-node preparation.",
+  "model_calls": 0,
+  "estimator_calls": 0,
+  "new_regression": "Frozen package includes finish_report.py dependency of the oxygen preference test.",
+  "source_sha256": {
+    "submit.py": "e3bdd0c44c006e2992ba303cb9ae09ba0d39bdae3c7f956f645cf810662490d2",
+    "test_workflow.py": "c44f15109e3983083e5656a20cffb9468bb53e17e88b5af22802024ddbee536e",
+    "finish_report.py": "5afe3f8d9beb5ff57da0f8a5214230b34a02cb90fcad8e4cdbaff388481842b1"
+  },
+  "local_test_output": "......../Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/common.py:24: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n  return datetime.datetime.utcnow().isoformat() + 'Z'\n......\n----------------------------------------------------------------------\nRan 14 tests in 0.706s\n\nOK\n",
+  "local_bundle_output": ".......s/private/tmp/efast_refinement_frozen_bundle_20261112/common.py:24: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n  return datetime.datetime.utcnow().isoformat() + 'Z'\n......\n----------------------------------------------------------------------\nRan 14 tests in 0.733s\n\nOK (skipped=1)\n",
+  "sif_bundle_output": "** WARNING: connection is not using a post-quantum key exchange algorithm.\n** This session may be vulnerable to \"store now, decrypt later\" attacks.\n** The server may need to be upgraded. See https://openssh.com/pq.html\n....../usr/local/lib64/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one_of'\n  prop = Group((name + Suppress(\"=\") + comma_separated(value)) | oneOf(_CONSTANTS))\n/usr/local/lib64/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'\n  parse = parser.parseString(pattern)\n/usr/local/lib64/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'\n  parser.resetCache()\n/usr/local/lib64/python3.9/site-packages/matplotlib/_mathtext.py:45: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'\n  ParserElement.enablePackrat()\nIn /usr/local/lib64/python3.9/site-packages/matplotlib/mpl-data/stylelib/classic.mplstyle: 'parseString' deprecated - use 'parse_string'\nIn /usr/local/lib64/python3.9/site-packages/matplotlib/mpl-data/stylelib/classic.mplstyle: 'resetCache' deprecated - use 'reset_cache'\n.s......\n----------------------------------------------------------------------\nRan 14 tests in 1.275s\n\nOK (skipped=1)\n"
+}

@@ -1,0 +1,20 @@
+{
+  "status": "preparation_requeued",
+  "preparation_job": "21842774",
+  "smoke_job": "21842775",
+  "same_job_ids": true,
+  "model_arrays_resubmitted": 0,
+  "model_points_previously_computed": 0,
+  "original_failure_preserved": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_refinement_20261112/validation/preparation_initial_failure",
+  "supplemental_dependency": {
+    "status": "complete",
+    "source_revision": "ca9fa912b022b0993b8df7ae45af187b3eaba1b9",
+    "path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_refinement_20261112/slurm/code_snapshot/finish_report.py",
+    "sha256": "5afe3f8d9beb5ff57da0f8a5214230b34a02cb90fcad8e4cdbaff388481842b1",
+    "original_frozen_files_replaced": 0,
+    "original_controller_hashes_verified": 13,
+    "model_or_estimator_changes": false
+  },
+  "monitor_target_unchanged": "21842774",
+  "completed_utc": "2026-11-12T17:03:59.856348Z"
+}

@@ -1,0 +1,63 @@
+{
+  "status": "complete",
+  "revision": "ca9fa912b022b0993b8df7ae45af187b3eaba1b9",
+  "checkout_HEAD_preserved": "9166a2ddeccbd1d0e04405c4e4fb3f5172a12b9e",
+  "git_object_content_verified": true,
+  "files": [
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/README.md",
+      "sha256": "92c9f2aac2e141dd0f47e6d26dd758238435e61a7e5babe0bef123d6b3095aae"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/common.py",
+      "sha256": "dcabd6b29925d4c89c99d43287aa959355cefa28ecba11bb30cc8d6f5f7e3939"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/finish_report.py",
+      "sha256": "5afe3f8d9beb5ff57da0f8a5214230b34a02cb90fcad8e4cdbaff388481842b1"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/report.py",
+      "sha256": "4309f9a4fe1f0c6c66374cd8d3da2049740c995dba0d6df70fd7c9c8b0ef0a9c"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/submit.py",
+      "sha256": "3f238082e3a24baa7f019e1228c152c4bb033470897d5a1f07d9558c504ce552"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/test_refinement_exports.py",
+      "sha256": "2d8fe234a322e29c5e42c04b169b991ee9e9e9ed1e077825ca6fbd9597b47d07"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/test_workflow.py",
+      "sha256": "48fa6323b0eb7e9be9bde9a864a695fd01044d5a274eaa8f4b2cf012b0b42e08"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/verify_exports.py",
+      "sha256": "6207a506de0750232a0dc97f38c29d06e63491ce017d4320d99fd21982a9e33a"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/workflow.py",
+      "sha256": "1616fc75d3864f302e98bd84a7d8ddb36651102c1670686be9069d61f17b6a7f"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/README.md",
+      "sha256": "4c13e6bd6a05b365283a70fa46b183bd6ff6f4b08c97d510ab7b19fd71042c22"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/local_preflight.json",
+      "sha256": "8ffbbfd624df9483fa207beadbc7b4d1bb3b6746f91482d47f8c170d194d941e"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/sif_preflight.json",
+      "sha256": "811b460381ce3e60fca38641a7193fb28e4e9686326387c85a207d7b3d3ede44"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/synthetic_reporting_integration.json",
+      "sha256": "be3e3c3cac98c320412d4fe3aa9a828ef1227443f801f68d85aafe40217f10ab"
+    }
+  ],
+  "previous_batch_files_verified": 349,
+  "neighborhood_modified": false,
+  "completed_utc": "2026-11-12T17:01:33.909217Z"
+}

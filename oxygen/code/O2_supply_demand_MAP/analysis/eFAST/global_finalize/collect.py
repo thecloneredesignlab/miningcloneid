@@ -36,6 +36,8 @@ def inventory(root):
     rows=[]
     for path in sorted(candidates):
         rel=path.relative_to(root)
+        if '__pycache__' in rel.parts or path.suffix=='.pyc':
+            continue
         if any(x in rel.parts for x in ['blocks','analysis','neighborhood10pct','designs']):
             raise ValueError('Raw/cache/neighborhood path in export selection')
         rows.append(dict(path=str(rel),size=path.stat().st_size,sha256=sha(path)))

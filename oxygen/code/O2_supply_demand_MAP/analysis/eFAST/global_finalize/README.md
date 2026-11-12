@@ -111,3 +111,31 @@ Use the newer read-only collector with `--remote-script` when collecting the
 recovery metadata. `verify_exports.py --root LOCAL_ROOT` independently validates
 all repeated-index summaries, diagnostics, row coverage, comparison values and
 matched color limits, and emits output-variance and method-alignment tables.
+
+## Local closeout (Python 3.12; no production environment changes)
+
+The local verification/plot environment is recorded in
+`oxygen/results/eFAST/global_finalize_20261112/validation/local_environment.json`.
+`requirements-local-python312.txt` describes only that local environment; the
+HPC computation continues to use the original SIF and its original library lock.
+
+After the final HPC report completes, run these scripts in order:
+
+1. `collect.py --root LOCAL_ROOT --remote-script HPC_REPO/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/collect.py`
+2. `verify_exports.py --root LOCAL_ROOT`
+3. `reuse_global_responses.py --source oxygen/results/eFAST/sobol/full_N4096 --root LOCAL_ROOT`
+4. `publication.py --root LOCAL_ROOT`
+5. `finish_report.py --root LOCAL_ROOT`
+6. `validate_pdfs.py --root LOCAL_ROOT --pdftoppm /path/to/pdftoppm`
+
+The final synthesis is in `interpretation_zh.md`; publication figures and English
+Methods/Results are in `publication/`. The original checksum-certified exports
+are not replaced. Publication redraws correct title/oxygen-label overlap in the
+strongest-pair and comparison curves, without new models or estimators.
+
+Independent checks also test the known zero effect of O2_crit/n_O at O2=0,
+verify the original global-reference input identities, and validate band means
+with a separate trapezoidal calculation. Final diagnostic band counts are
+disjoint; original HPC inclusive-window counts are retained only as provenance.
+The final narrative is scoped to this approved M4 batch and is reviewed against
+the source tables; it is not a scientific conclusion template for future runs.

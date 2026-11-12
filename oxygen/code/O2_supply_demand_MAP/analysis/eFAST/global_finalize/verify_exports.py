@@ -95,6 +95,78 @@ def validate(root):
             pair=[float(r['vmax']) for r in limits if r['output']==out and r['index']==idx]
             if len(pair)!=2 or pair[0]!=pair[1]:raise ValueError('Cross-method color scale mismatch')
     table(root/'comparison/output_variance_comparison.tsv',moment_rows)
+    diagnostic_rows=[]
+    bands=[('low',0.,1.),('middle',1.,3.),('high',3.,5.)]
+    masks=[('all',np.ones(201,dtype=bool)),('low_0_to_1_inclusive',oxygen<=1),
+           ('middle_above1_below3',(oxygen>1)&(oxygen<3)),('high_3_to_5_inclusive',oxygen>=3)]
+    configurations=[('Sobol',131072,sv[1],sv[0],metrics,root/'sobol')]+[
+        ('eFAST',n,repeats[n],None if i==0 else repeats[p['resolutions'][i-1]],METRICS,root/'efast'/('N%d'%n))
+        for i,n in enumerate(p['resolutions'])]
+    for method,n,v,previous,mm,directory in configurations:
+        # Independent trapezoidal integration, without calling the plot helper.
+        bands_source=read(directory/'oxygen_band_indices.tsv.gz')
+        expected={}
+        for name,lo,hi in bands:
+            selected=(oxygen>=lo)&(oxygen<=hi)
+            by_repeat=np.trapezoid(v[:,selected,:,:],x=oxygen[selected],axis=1)/(hi-lo)
+            expected[name]=by_repeat
+        if len(bands_source)!=3*2*len(mm):raise ValueError('Band summary coverage differs')
+        for row in bands_source:
+            j=mm.index((row['index'],row['parameter_i'],row['parameter_j']));k=OUTPUTS.index(row['output'])
+            b=expected[row['oxygen_band']][:,k,j]
+            for field,value in [('band_mean',b.mean()),('repeat_min',b.min()),('repeat_max',b.max())]:
+                if not np.isclose(float(row[field]),value,rtol=0,atol=1e-12,equal_nan=True):raise ValueError('Independent band integration differs')
+        spread=np.ptp(v,axis=0)
+        delta=np.abs(v.mean(axis=0)-previous.mean(axis=0)) if previous is not None else np.full_like(spread,np.nan)
+        for k,out in enumerate(OUTPUTS):
+            for idx in ['S1','ST']+(['S2'] if method=='Sobol' else []):
+                jj=[j for j,m in enumerate(mm) if m[0]==idx]
+                for name,mask in masks:
+                    s=spread[:,k,:][mask][:,jj];d=delta[:,k,:][mask][:,jj]
+                    finite=np.isfinite(v[:,:,k,:][:,:,jj]).all(axis=0)[mask]
+                    passed=finite&(s<=.05)&(d<=.02)
+                    diagnostic_rows.append(dict(method=method,N=n,output=out,index=idx,oxygen_band=name,n_total=int(s.size),
+                        n_passed=int(passed.sum()) if previous is not None else '',
+                        n_not_passed=int((finite&~passed).sum()) if previous is not None else '',n_undefined=int((~finite).sum()),
+                        pass_fraction=float(passed.mean()) if previous is not None else '',
+                        n_repeat_range_failed=int((s>.05).sum()),n_resolution_delta_failed=int((d>.02).sum()) if previous is not None else '',
+                        repeat_range_p95=float(np.quantile(s,.95)),repeat_range_max=float(np.max(s)),
+                        resolution_delta_max=float(np.max(d)) if previous is not None else '',
+                        diagnostic_status='assessed' if previous is not None else 'no_adjacent_new_design',
+                        bands_for_counts='disjoint; physical-O2 integration bands are separately inclusive'))
+    table(root/'comparison/diagnostic_summary_disjoint_bands.tsv',diagnostic_rows)
+    # At O2=0, h=C**n/(C**n+0**n)=1 for the allowed C>0,n>0.
+    # Both parameters enter this fixed-O2 model only through h. This is a
+    # structural null, independent of the empirical convergence thresholds.
+    null_rows=[]
+    for method,n,v,mm in [('Sobol',131072,sv[1],metrics)]+[
+            ('eFAST',n,v,METRICS) for n,v in repeats.items()]:
+        for k,out in enumerate(OUTPUTS):
+            for param in ['O2_crit','n_O']:
+                for idx in ['S1','ST']:
+                    j=mm.index((idx,param,''))
+                    for ri,value in enumerate(v[:,0,k,j],1):
+                        null_rows.append(dict(method=method,N=n,repeat=ri,O2_pct=0.,output=out,parameter=param,index=idx,
+                            estimate=float(value),expected_structural_value=0.,absolute_error=float(abs(value)),
+                            interpretation='structurally inactive input at O2=0; not a significance test'))
+    table(root/'comparison/structural_null_O2_zero.tsv',null_rows)
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig,axes=plt.subplots(2,2,figsize=(12,8))
+    for k,out in enumerate(OUTPUTS):
+        for col,param in enumerate(['O2_crit','n_O']):
+            ax=axes[k,col];ns=p['resolutions']
+            for ri in range(5):
+                j=METRICS.index(('ST',param,''))
+                ax.plot(ns,[repeats[n][ri,0,k,j] for n in ns],'.-',color='#762a83',alpha=.5,lw=.7)
+            ax.axhline(0,color='#222222',lw=.8,label='Structural null / Sobol ST=0')
+            ax.set_xscale('log',base=2);ax.set_xticks(ns,[str(n) for n in ns]);ax.minorticks_off()
+            ax.set_title(('Ploidy' if k==0 else 'Net live-cell growth')+'; '+param)
+            ax.set_xlabel('eFAST N');ax.set_ylabel('Estimated ST at O2=0');ax.legend(fontsize=8)
+    fig.suptitle('Structural zero-effect check; five independent eFAST phase curves')
+    fig.tight_layout(rect=[0,0,1,.95]);fig.savefig(root/'comparison/figures/structural_null_O2_zero.pdf',bbox_inches='tight')
+    fig.savefig(root/'comparison/figures/structural_null_O2_zero.png',dpi=140,bbox_inches='tight');plt.close(fig)
     # Explicit methods comparison receipt; old N513 remains an uncertified historical reference.
     alignment=[dict(item='parameter_order',Sobol=';'.join(ACTIVE),eFAST=';'.join(ACTIVE),status='matched'),
         dict(item='bounds_distributions',Sobol=sha(root/'inputs/parameter_bounds.tsv'),eFAST=sha(root/'inputs/legacy_parameter_ranges.tsv'),status='matched'),
@@ -109,9 +181,23 @@ def validate(root):
     if read(root/'inputs/parameter_bounds.tsv')!=read(root/'inputs/legacy_parameter_ranges.tsv'):
         raise ValueError('Input bounds/distributions differ')
     table(root/'method_alignment.tsv',alignment)
+    source_plan=root/'inputs/source_sobol_submission_plan.json'
+    if sha(source_plan)!=p['original_plan_sha256']:
+        raise ValueError('Copied original Sobol provenance differs')
+    original=load(source_plan);case=original['cases'][0]
+    for name,field in [('best_params.tsv','best_params_sha256'),('fit_config.rds','fit_config_sha256'),('parameter_table.csv','parameter_table_sha256')]:
+        if sha(root/'inputs/reference_seed25'/name)!=case[field]:raise ValueError('Global reference input differs')
+    if sha(root/'inputs/source_sobol_evaluate.R')!=original['engine_sha256']:
+        raise ValueError('Copied canonical evaluator differs')
+    process={r['parameter']:r['parameter_group'] for r in read(root/'inputs/figure4_parameter_groups_source.tsv')}
+    equation={r['parameter']:r for r in read(root/'inputs/model_structure/parameter_equation_map.tsv')}
+    table(root/'process_group_membership.tsv',[dict(parameter=param,figure4_display_group=process[param],
+        primary_group_for_descriptive_summary=equation[param]['primary_group'],shared_pathways=equation[param]['pathways']) for param in ACTIVE])
     result=dict(status='passed',verified_utc=now(),source_files_verified=len(files),sobol_entries_verified=47838,
                 sobol_all_operational_diagnostics_passed=True,efast=checks,method_comparison_rows_verified=len(keys),
-                all_pairs=91,focal_pairs=36,matched_color_limits_verified=True,model_calls=0,estimator_calls=0,
+                all_pairs=91,focal_pairs=36,matched_color_limits_verified=True,global_reference_identity_verified=True,
+                structural_null_rows=len(null_rows),band_integrals_independently_verified=True,
+                diagnostic_rows_disjoint_bands=len(diagnostic_rows),model_calls=0,estimator_calls=0,
                 neighborhood_files_read=0,PDF_visual_validation='recorded separately')
     save(root/'validation/independent_exports.json',result)
     print(json.dumps(result,indent=2))

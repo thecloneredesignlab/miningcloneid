@@ -75,7 +75,8 @@ def locked(path):
 
 
 def valid_n(n, m=M):
-    # This is the SALib design requirement, not a maximum N.
+    # SALib requires N > 4*M^2; this workflow additionally uses the approved
+    # odd-length sequence. Neither condition is an upper bound on N.
     if n <= 4 * m * m or n % 2 != 1:
         raise ValueError('Use an odd eFAST N > 4*M^2')
     return n

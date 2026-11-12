@@ -20,6 +20,9 @@ def recover(repo,root,revision):
     jobs={r['stage']:r['job_id'] for r in original['jobs']}
     if p['scope']!='global' or p['revision']!=original['revision']:
         raise ValueError('Original batch identity differs')
+    prep=load(root/'preparation.json')
+    if prep['status']!='complete' or prep['plan_sha256']!=sha(root/'plan.json'):
+        raise ValueError('Certified preparation is not complete')
     overlay=root/'slurm'/('reporting_overlay_'+revision[:9]);overlay.mkdir(exist_ok=True)
     files=list(FILES)+['reporting_entry.py','run_reporting_overlay.sbatch','recover_reporting.py']
     for name in files:
@@ -37,7 +40,9 @@ def recover(repo,root,revision):
     ledger=root/'slurm/reporting_recovery_jobs.json'
     records=load(ledger) if ledger.exists() else []
     new={r['stage']:r['job_id'] for r in records}
-    stages=[('sobol_recovered','sobol_report',0,[jobs['prepare']])]
+    # The preparation receipt is certified above. Its completed Slurm job may
+    # already be purged from controller memory and cannot be a new dependency.
+    stages=[('sobol_recovered','sobol_report',0,[])]
     previous=None
     for n in p['resolutions']:
         name='report_'+str(n)+'_recovered'
@@ -50,10 +55,10 @@ def recover(repo,root,revision):
         name='gef_fix_'+stage
         args=['sbatch','--parsable','--hold','--qos=xxlarge','--time=12:00:00','--ntasks=1','--cpus-per-task=1',
               '--mem=16G','--job-name='+name,'--chdir='+str(root),'--export=ALL',
-              '--dependency=afterok:'+':'.join(dependencies),
               '--output='+str(root/'slurm/logs'/(stage+'_%A_%a.out')),
               '--error='+str(root/'slurm/logs'/(stage+'_%A_%a.err')),
               str(overlay/'run_reporting_overlay.sbatch'),str(root),role,str(n),str(overlay)]
+        if dependencies:args.insert(10,'--dependency=afterok:'+':'.join(dependencies))
         found=set(output(['squeue','-h','-u','4482173','-n',name,'-o','%A']).splitlines())
         if len(found)>1:raise ValueError('Duplicate reporting recovery job')
         job=found.pop() if found else output(args).split(';')[0]

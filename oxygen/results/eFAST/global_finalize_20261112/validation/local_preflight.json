@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-11-12T14:59:07.064256+00:00",
+  "local_python": "3.12.14",
+  "packages": {
+    "numpy": "2.3.5",
+    "scipy": "1.16.3",
+    "matplotlib": "3.9.4",
+    "SALib": "1.5.2"
+  },
+  "unit_tests": 8,
+  "unit_test_output": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.666s\n\nOK\n",
+  "estimator_checks": {
+    "public_compute_orders_max_error": 0.0,
+    "additive_reference_max_error": 0.0014782711880111377,
+    "transformed_bound_transport_bitwise_equal": true,
+    "bootstrap_confidence_not_used": true
+  },
+  "actual_Sobol_report_preflight": true,
+  "synthetic_comparison_integration_rows": 56280,
+  "synthetic_hypothesis_comparison_rows": 48,
+  "synthetic_fixtures_in_private_tmp_only": true,
+  "source_model_calls_local": 0,
+  "neighborhood_files_read": 0,
+  "production_numerical_validation": "pending original SIF preparation job",
+  "visual_preflight": "actual Sobol summary PNG inspected; PDF rendering checked separately"
+}

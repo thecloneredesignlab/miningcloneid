@@ -21,6 +21,11 @@ def inventory(root):
                  'methods_results_en.md','meeting_update.tsv','export_manifest.json','slurm/jobs.json',
                  'time_extension/targets.json','time_extension/submission_jobs.tsv']:
         candidates.add(root/name)
+    for name in ['hpc_sync_receipt.json','reporting_recovery_receipt.json','slurm/reporting_recovery_jobs.json',
+                 'time_extension_reporting/targets.json','time_extension_reporting/submission_jobs.tsv']:
+        if (root/name).is_file():candidates.add(root/name)
+    for directory in (root/'slurm').glob('reporting_overlay_*'):
+        candidates.update(p for p in directory.iterdir() if p.is_file())
     for name in ['sobol','comparison','validation','slurm/code_snapshot']:
         candidates.update(p for p in (root/name).rglob('*') if p.is_file())
     candidates.update(p for p in (root/'inputs').rglob('*') if p.is_file() and 'designs' not in p.relative_to(root/'inputs').parts)
@@ -44,10 +49,11 @@ def main():
     a.add_argument('--inventory',action='store_true')
     a.add_argument('--remote',default='4482173@red.moffitt.org')
     a.add_argument('--remote-root',type=Path,default=Path('/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112'))
+    a.add_argument('--remote-script',type=Path,help='Explicit newer read-only collector; does not change frozen computation')
     args=a.parse_args()
     if args.inventory:
         print(json.dumps(inventory(args.root)));return
-    remote_script=args.remote_root/'slurm/code_snapshot/collect.py'
+    remote_script=args.remote_script or args.remote_root/'slurm/code_snapshot/collect.py'
     command='bash -lc '+shlex.quote('python3 '+shlex.quote(str(remote_script))+' --inventory --root '+shlex.quote(str(args.remote_root)))
     def remote_inventory():
         return json.loads(subprocess.check_output(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=20',args.remote,command],universal_newlines=True))

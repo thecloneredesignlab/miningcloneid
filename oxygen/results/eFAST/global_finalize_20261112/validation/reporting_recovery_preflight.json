@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-11-12T15:07:37.013357+00:00",
+  "unit_tests": 9,
+  "unit_test_output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.886s\n\nOK\n",
+  "original_failure_job": "21838173",
+  "issue": "canonical report.py shadows global finalization report.py",
+  "remedy": "explicit path import; reporting-only overlay",
+  "model_jobs_to_resubmit": 0,
+  "production_model_alignment_points": 603,
+  "production_alignment_output_max_error": 0,
+  "frozen_model_sources_preserved": true,
+  "neighborhood_scope": "archived"
+}

@@ -78,6 +78,18 @@ class DesignContracts(unittest.TestCase):
         self.assertEqual(monitor.HOURS,6)
         self.assertEqual(monitor.seconds('06:00:00'),21600)
 
+    def test_frozen_report_ignores_canonical_name_collision(self):
+        import sys
+        from workflow import reporting
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);snapshot=root/'slurm/code_snapshot';snapshot.mkdir(parents=True)
+            (snapshot/'report.py').write_text("SOURCE='correct_global_finalize'\n")
+            wrong=root/'canonical';wrong.mkdir()
+            (wrong/'report.py').write_text("raise RuntimeError('wrong canonical report imported')\n")
+            sys.path.insert(0,str(wrong))
+            try:self.assertEqual(reporting(root).SOURCE,'correct_global_finalize')
+            finally:sys.path.remove(str(wrong))
+
     def test_scientific_group_and_pair_dimensions(self):
         from report import scientific_tables
         from common import table,read

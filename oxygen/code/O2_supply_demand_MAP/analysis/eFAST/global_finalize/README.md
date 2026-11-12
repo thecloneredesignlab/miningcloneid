@@ -88,3 +88,26 @@ hashes, array dimensions, ordered samples, all 5 repeats, all 201 oxygen points,
 diagnostic denominators, and final tables. Collect only exported summaries,
 figures, reports and receipts; raw model blocks stay on RED. Render final PDFs
 locally and inspect figures before claiming final visual acceptance.
+
+## Reporting import recovery
+
+The first original-SIF preparation passed, including exact agreement at 603
+cached Sobol model points. The first standalone Sobol report exposed a Python
+module-name collision: the canonical helper directory also contains report.py.
+The controller now loads its frozen reporting file by explicit path; a
+regression test creates a conflicting canonical report module.
+
+`recover_reporting.py --revision FIX_COMMIT` preserves all four original model
+arrays, estimator arrays, the immutable plan and outputs. It submits only six
+replacement reporting jobs using a SHA256-verified overlay, cancels only the
+five superseded pending reports/final stage, and adds six scoped extension
+monitors. Original failure evidence and both scheduling ledgers are retained.
+The overlay cannot enter model/analyze modes. Its model/estimator/report bodies
+must match the originally frozen scientific sources; only the entry import is
+repaired. Nine local contract checks are repeated in the original SIF at each
+replacement reporting entry.
+
+Use the newer read-only collector with `--remote-script` when collecting the
+recovery metadata. `verify_exports.py --root LOCAL_ROOT` independently validates
+all repeated-index summaries, diagnostics, row coverage, comparison values and
+matched color limits, and emits output-variance and method-alignment tables.

@@ -46,6 +46,22 @@ def design_file(root, n, repeat):
     return Path(root) / 'inputs/designs' / ('N%d_R%02d.npz' % (n, repeat))
 
 
+def reporting(root):
+    # The certified Sobol helper directory also has report.py. Never resolve
+    # this entry point through its sys.path precedence.
+    import importlib.util
+    path=Path(root)/'slurm/code_snapshot/report.py'
+    spec=importlib.util.spec_from_file_location('global_finalize_frozen_report',path)
+    module=importlib.util.module_from_spec(spec)
+    previous=list(sys.path)
+    try:
+        sys.path.insert(0,str(path.parent))
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:]=previous
+    return module
+
+
 def evaluate(root, p, original, x, oxygen, target, validate=False):
     """Use the exact canonical Sobol operator; only the accepted method label differs."""
     target.mkdir(parents=True, exist_ok=True)
@@ -290,8 +306,7 @@ def summarize(root,n):
     table(dest/'not_passed.tsv.gz',[r for r in rows if r['convergence_status']!='passed'],list(rows[0]))
     save(dest/'completion.json',dict(status='complete',method='eFAST',N=n,M=p['M'],n_repeats=5,n_oxygen=201,n_indices=len(rows),
         summary_sha256=sha(dest/'indices_summary.tsv.gz'),convergence_policy='diagnostic_only',completed_utc=now()))
-    from report import efast_report
-    efast_report(root,n)
+    reporting(root).efast_report(root,n)
 
 
 def main():
@@ -307,8 +322,8 @@ def main():
         elif args.mode=='report':summarize(args.root,args.n)
         else:
             runtime(args.root)
-            from report import sobol_report,final_report
-            (sobol_report if args.mode=='sobol_report' else final_report)(args.root)
+            module=reporting(args.root)
+            (module.sobol_report if args.mode=='sobol_report' else module.final_report)(args.root)
     except Exception as exc:
         save(args.root/'failures'/('%s_N%d_T%d.json'%(args.mode,args.n,args.task)),
              dict(error=str(exc),utc=now(),job_id=os.environ.get('SLURM_JOB_ID')))

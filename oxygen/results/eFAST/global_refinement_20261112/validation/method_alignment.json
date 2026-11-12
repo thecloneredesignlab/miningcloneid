@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "completed_utc": "2026-11-12T17:08:11.434339Z",
+  "public_compute_orders_max_error": 0.0,
+  "additive_reference_max_error": 0.0014782711880110266,
+  "transformed_bound_transport_bitwise_equal": true,
+  "bootstrap_confidence_not_used": true,
+  "cached_sobol_samples": [
+    0,
+    1,
+    2
+  ],
+  "checked_model_points": 603,
+  "output_max_absolute_error": {
+    "dominant_mean_ploidy": 0.0,
+    "dominant_growth_rate": 0.0
+  },
+  "maximum_eigen_residual": 3.21964677141295e-15,
+  "minimum_spectral_gap": 2.01346916725575e-06,
+  "alignment_reused": true,
+  "new_model_validation_points": 0,
+  "previous_alignment_sha256": "bdc665e5dd07cf3e7d36c9217249832dd00701904c912e9cdf2e71e78582a158"
+}

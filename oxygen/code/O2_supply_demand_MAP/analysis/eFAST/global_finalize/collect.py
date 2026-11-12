@@ -21,7 +21,7 @@ def inventory(root):
                  'methods_results_en.md','meeting_update.tsv','export_manifest.json','slurm/jobs.json',
                  'time_extension/targets.json','time_extension/submission_jobs.tsv']:
         candidates.add(root/name)
-    for name in ['hpc_sync_receipt.json','reporting_recovery_receipt.json','slurm/reporting_recovery_jobs.json',
+    for name in ['hpc_sync_receipt.json','preparation_recovery_receipt.json','reporting_recovery_receipt.json','slurm/reporting_recovery_jobs.json',
                  'time_extension_reporting/targets.json','time_extension_reporting/submission_jobs.tsv']:
         if (root/name).is_file():candidates.add(root/name)
     for directory in (root/'slurm').glob('reporting_overlay_*'):

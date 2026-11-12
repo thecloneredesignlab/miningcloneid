@@ -1,0 +1,75 @@
+{
+  "status": "complete",
+  "revision": "6b85cc181db111ad7913d9e5fa6287878ccef5a2",
+  "checkout_HEAD_preserved": "9166a2ddeccbd1d0e04405c4e4fb3f5172a12b9e",
+  "git_object_content_verified": true,
+  "files": [
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/README.md",
+      "sha256": "c9ebc399949c050332b7c41723aa423ff7bd41dbf44c69cc95ee418fc0fe4e31"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/submit.py",
+      "sha256": "e3bdd0c44c006e2992ba303cb9ae09ba0d39bdae3c7f956f645cf810662490d2"
+    },
+    {
+      "path": "oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/test_workflow.py",
+      "sha256": "c44f15109e3983083e5656a20cffb9468bb53e17e88b5af22802024ddbee536e"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/hpc_sync_receipt.json",
+      "sha256": "ee478cf7008514b96327e7f9becfc60ac489695a7b5b1a39ca263c10b16608b5"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/launch_receipt.json",
+      "sha256": "fd37e978b876d668554c6710e31a0b7be219a7539e6324acb79825111139da16"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/plan.json",
+      "sha256": "3f32edf972ac250aa4542e9e2a3c3640f90b219e5f542e369cdca152150e7277"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/preparation_recovery_receipt.json",
+      "sha256": "6a2d8a1fbdf02ff3e37de14c1033717df75e368bd71c3b2e46d61393b5a1d898"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/slurm/jobs.json",
+      "sha256": "c2c6af1da37d5d032f46394db34e00185ff64c18c925f276a7409fc5c6f0f006"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/time_extension/submission_jobs.tsv",
+      "sha256": "59a0051b1067cf22b448f12185d0de2d0745fe0af9617db11b09a543ff124705"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/time_extension/targets.json",
+      "sha256": "55929852bbc511a1749229d171e9c875d957bc046f5249c6735b569b429709e1"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/frozen_bundle_preflight.json",
+      "sha256": "2142376ae0620cd55f9018209dea038c4de0658e216fadb35e39207e745efcb7"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/frozen_dependency_completion.json",
+      "sha256": "98d2f5e2b26381e6cff3ea90b2baa1c693a0c062e6220ed46328f561193c4baa"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/preparation_initial_failure/prepare_21842774_4294967294.err",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/preparation_initial_failure/prepare_21842774_4294967294.out",
+      "sha256": "6c86387e37994fd776a1059a269c8c8c87744e1cc46743ce8489f2cbf604b3ea"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/preparation_initial_failure/prepare_N0_T1.json",
+      "sha256": "404a7e8c88dd889224d92f4cf20c91871f0dd41ef080b220ff130a1485c5fa2b"
+    },
+    {
+      "path": "oxygen/results/eFAST/global_refinement_20261112/validation/reference_reuse.json",
+      "sha256": "8cef6dc88fd3d8c326c234a63d407e3dc4493eace99a0cbaa23df56a3641f302"
+    }
+  ],
+  "previous_batch_files_verified": 349,
+  "neighborhood_modified": false,
+  "completed_utc": "2026-11-12T17:08:13.781406Z"
+}

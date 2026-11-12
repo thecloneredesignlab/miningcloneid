@@ -1,0 +1,26 @@
+{
+  "status": "complete",
+  "plan_sha256": "3f32edf972ac250aa4542e9e2a3c3640f90b219e5f542e369cdca152150e7277",
+  "design_sha256": {
+    "inputs/designs/N32769_R01.npz": "cc22c5e568190c498b4ff8deac778c88a5c6929995c6d5a7174bca82932a618e",
+    "inputs/designs/N32769_R02.npz": "9303e239772d062a56646d8bb2cc9023889099d643d93e45714b45081f6e7866",
+    "inputs/designs/N32769_R03.npz": "e7237254e95822d9d8ed0db9e8c40cdcf6b7aa3f58304d1f12275ff060e05939",
+    "inputs/designs/N32769_R04.npz": "087e77e28471e9b0145db428e6af4a4f580e512eef1157c0fbc1d0c198040a0a",
+    "inputs/designs/N32769_R05.npz": "3799d6744fac942b589926ebc0230db455a2642e35c1dff133ea86bafad392d4",
+    "inputs/designs/N65537_R01.npz": "d876d6a9146d49e5be65711361f6e987874021ed1acfb21a1f4e4497e7bb4c03",
+    "inputs/designs/N65537_R02.npz": "c51f475b785693a6713b7391cc232e448075ddfb8a2876fa3f8c4142789f0b0a",
+    "inputs/designs/N65537_R03.npz": "298d99b8c5aaf46748437c596f727341f9176b7014ef43b1e9b933e6d8de362d",
+    "inputs/designs/N65537_R04.npz": "0a5ac1ae242f2526cf9596d34da12c8a7b5f5775db3b6464cf9cf559731aaa27",
+    "inputs/designs/N65537_R05.npz": "255364ed6061773581c676edde96934e90c376266ccc4e7d0823e914b6702557",
+    "inputs/designs/N131073_R01.npz": "6a074e0795de6270cf057474cb8b373fa0fde5351e51ae52bc472603fbc99d84",
+    "inputs/designs/N131073_R02.npz": "1449a6bd4b4bb21fa336ea490a2e49b26ebc2038854495a8c0ddef16393c334e",
+    "inputs/designs/N131073_R03.npz": "1edaea10ca39027daab3c9e62c95726c156f0977e6b1c83b555136599bef2ef4",
+    "inputs/designs/N131073_R04.npz": "81399cfae4e408ef517b1cc100461d9a2c35912591a3ce818acbae8deb253f5e",
+    "inputs/designs/N131073_R05.npz": "6ee48186f7ded413621f66190f0bcad3a232f5941a6aa7e92ba26610ecee4448"
+  },
+  "model_alignment_validation_points": 0,
+  "reused_model_alignment_validation_points": 603,
+  "model_alignment_elapsed_seconds": 0,
+  "neighborhood_files_read": 0,
+  "completed_utc": "2026-11-12T17:08:11.441174Z"
+}

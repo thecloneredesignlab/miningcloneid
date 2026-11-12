@@ -6,4 +6,6 @@ This directory contains preparation and submission records. Submission is not co
 
 Resources: xxlarge; initially 12h; no node constraint or array throttle; add 6h when fewer than 6h remain, with renewing scoped monitors.
 
-Code: oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/. Validation/synthetic_reporting_integration.json is a temporary synthetic reporting test, not a new scientific result.
+Code: oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/. validation/synthetic_reporting_integration.json is a temporary synthetic reporting test, not a new scientific result.
+
+[Submission status and job IDs](submission_status.md)

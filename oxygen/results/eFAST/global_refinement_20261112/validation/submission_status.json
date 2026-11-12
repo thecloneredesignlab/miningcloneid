@@ -1,0 +1,182 @@
+{
+  "status": "submitted_and_prepared",
+  "checked_utc": "2026-11-12T17:10:14.514580Z",
+  "production_revision": "ca9fa912b022b0993b8df7ae45af187b3eaba1b9",
+  "stages": [
+    {
+      "stage": "prepare",
+      "job_id": "21842774",
+      "array_count": 0,
+      "current_queue_state_counts": {},
+      "monitor_job_id": "21842786",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      },
+      "terminal_state": "COMPLETED",
+      "exit_code": "0:0",
+      "restarts": "1"
+    },
+    {
+      "stage": "smoke",
+      "job_id": "21842775",
+      "array_count": 0,
+      "current_queue_state_counts": {
+        "RUNNING": 1
+      },
+      "monitor_job_id": "21842789",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "model_32769",
+      "job_id": "21842776",
+      "array_count": 2310,
+      "current_queue_state_counts": {
+        "PENDING": 2310
+      },
+      "monitor_job_id": "21842790",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "analyze_32769",
+      "job_id": "21842777",
+      "array_count": 70,
+      "current_queue_state_counts": {
+        "PENDING": 70
+      },
+      "monitor_job_id": "21842791",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "report_32769",
+      "job_id": "21842778",
+      "array_count": 0,
+      "current_queue_state_counts": {
+        "PENDING": 1
+      },
+      "monitor_job_id": "21842792",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "model_65537",
+      "job_id": "21842779",
+      "array_count": 4550,
+      "current_queue_state_counts": {
+        "PENDING": 4550
+      },
+      "monitor_job_id": "21842793",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "analyze_65537",
+      "job_id": "21842780",
+      "array_count": 70,
+      "current_queue_state_counts": {
+        "PENDING": 70
+      },
+      "monitor_job_id": "21842794",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "report_65537",
+      "job_id": "21842781",
+      "array_count": 0,
+      "current_queue_state_counts": {
+        "PENDING": 1
+      },
+      "monitor_job_id": "21842795",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "model_131073",
+      "job_id": "21842782",
+      "array_count": 9030,
+      "current_queue_state_counts": {
+        "PENDING": 9030
+      },
+      "monitor_job_id": "21842796",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "analyze_131073",
+      "job_id": "21842783",
+      "array_count": 70,
+      "current_queue_state_counts": {
+        "PENDING": 70
+      },
+      "monitor_job_id": "21842797",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "report_131073",
+      "job_id": "21842784",
+      "array_count": 0,
+      "current_queue_state_counts": {
+        "PENDING": 1
+      },
+      "monitor_job_id": "21842798",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    },
+    {
+      "stage": "final",
+      "job_id": "21842785",
+      "array_count": 0,
+      "current_queue_state_counts": {
+        "PENDING": 1
+      },
+      "monitor_job_id": "21842799",
+      "monitor_queue_state_counts": {
+        "RUNNING": 1
+      }
+    }
+  ],
+  "all_requested_levels_registered": true,
+  "all_resource_contracts_verified": true,
+  "scoped_monitors": 12,
+  "auto_extension_threshold_hours": 6,
+  "auto_extension_increment_hours": 6,
+  "preparation_completed": true,
+  "preparation_recovery_resolved": true,
+  "preparation_completion_utc": "2026-11-12T17:08:11.441174Z",
+  "generated_design_files": 15,
+  "model_output_receipts_present": 0,
+  "first_exact_reference_reuse": {
+    "status": "complete",
+    "source_path": "/share/lab_crd/taoli/Project/soft_couping_eFAST/oxygen/results/eFAST/global_finalize_20261112/efast/N16385/blocks/R01/lam_max/from000000/outputs.npz",
+    "source_sha256": "b3477d7f4a010bbb0565e76411818162ce7aa4aed661d5d6399487d1532f8057",
+    "source_identity": "4fe0f5af451038e6c8939a414577a74f05f3a9f871896ee4ddfa3b4bfb35edd2",
+    "source_design_sha256": "774e1e4698583ff963e526a20bb71537cac9f13b6fea24405ca4bda67f1dd21d",
+    "source_N": 16385,
+    "repeat": 1,
+    "parameter": "lam_max",
+    "source_row": 0,
+    "target_row": 0,
+    "bitwise_parameter_equality_verified": true,
+    "reused_parameter_oxygen_points": 201,
+    "diagnostic_bounds": "conservative gap/residual bounds from the source block",
+    "completed_utc": "2026-11-12T17:08:18.559136Z"
+  },
+  "model_arrays_resubmitted": 0,
+  "sobol_jobs_submitted": 0,
+  "neighborhood_jobs_submitted": 0,
+  "new_statistical_results_not_yet_complete": true
+}

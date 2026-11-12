@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-11-12T17:00:31.224460+00:00",
+  "host": "red.moffitt.org",
+  "sif": "/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact_salib152_20260923.sif",
+  "tests": 13,
+  "passed": 12,
+  "skipped": 1,
+  "skip_reason": "Canonical R model file is outside the preflight copy; body identity is checked locally and by compute-node preparation.",
+  "model_calls": 0,
+  "estimator_calls": 0,
+  "source_sha256": {
+    "common.py": "dcabd6b29925d4c89c99d43287aa959355cefa28ecba11bb30cc8d6f5f7e3939",
+    "submit.py": "3f238082e3a24baa7f019e1228c152c4bb033470897d5a1f07d9558c504ce552",
+    "workflow.py": "1616fc75d3864f302e98bd84a7d8ddb36651102c1670686be9069d61f17b6a7f",
+    "report.py": "4309f9a4fe1f0c6c66374cd8d3da2049740c995dba0d6df70fd7c9c8b0ef0a9c",
+    "verify_exports.py": "6207a506de0750232a0dc97f38c29d06e63491ce017d4320d99fd21982a9e33a",
+    "finish_report.py": "5afe3f8d9beb5ff57da0f8a5214230b34a02cb90fcad8e4cdbaff388481842b1",
+    "test_workflow.py": "48fa6323b0eb7e9be9bde9a864a695fd01044d5a274eaa8f4b2cf012b0b42e08"
+  },
+  "test_output": "** WARNING: connection is not using a post-quantum key exchange algorithm.\n** This session may be vulnerable to \"store now, decrypt later\" attacks.\n** The server may need to be upgraded. See https://openssh.com/pq.html\n...../usr/local/lib64/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one_of'\n  prop = Group((name + Suppress(\"=\") + comma_separated(value)) | oneOf(_CONSTANTS))\n/usr/local/lib64/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'\n  parse = parser.parseString(pattern)\n/usr/local/lib64/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'\n  parser.resetCache()\n/usr/local/lib64/python3.9/site-packages/matplotlib/_mathtext.py:45: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'\n  ParserElement.enablePackrat()\nIn /usr/local/lib64/python3.9/site-packages/matplotlib/mpl-data/stylelib/classic.mplstyle: 'parseString' deprecated - use 'parse_string'\nIn /usr/local/lib64/python3.9/site-packages/matplotlib/mpl-data/stylelib/classic.mplstyle: 'resetCache' deprecated - use 'reset_cache'\n.s......\n----------------------------------------------------------------------\nRan 13 tests in 2.305s\n\nOK (skipped=1)\n"
+}

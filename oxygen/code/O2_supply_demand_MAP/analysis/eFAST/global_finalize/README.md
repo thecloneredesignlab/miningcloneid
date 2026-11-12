@@ -9,6 +9,47 @@ upper-N restriction. Later batches can use `--root NEW_ROOT --resolutions
 32769 65537 ...`; the current immutable batch is never rewritten. No additional
 batch is silently submitted just because a diagnostic failed.
 
+## Approved sequential refinement (2026-11-12)
+
+The follow-up batch evaluates **32769, 65537, 131073**, retaining M=4, the same
+five phase seeds, 14 inputs and all 201 oxygen points. Its separate output root
+is `oxygen/results/eFAST/global_refinement_20261112`. Invoke `submit.py` with
+`--previous-root .../global_finalize_20261112 --resolutions 32769 65537 131073`.
+Use the committed source revision and an explicit `--root` for the new batch.
+
+All three new levels are registered at launch, with model N65537 depending on
+the completed N32769 report and model N131073 on the N65537 report. Reporting
+success does not require diagnostic success. All three levels run regardless
+of the diagnostic outcome. The completed Sobol report and previous FAST index
+exports are copied and checksum-verified; **no Sobol model, estimator or report
+job is submitted**. N32769 compares against N16385 from the certified batch.
+All seven certified FAST resolutions and the separate historical N513 appear
+in the final comparison. The sampler and estimator definitions remain fixed.
+
+New N designs are not nested prefixes. Complete old designs are not rerun.
+For a new trajectory's first point, reuse is allowed only after byte equality
+of all 14 sampled values, matching oxygen axes, original model/SIF identity,
+and the old model block's identity and content certificate are verified.
+Other points are evaluated under their own new design. Each reused point gets
+an `exact_reference_reuse.json` record; model receipts distinguish design
+positions, newly evaluated positions and reused positions. Checkpoints retain
+the same identity and do not re-evaluate certified oxygen chunks or blocks.
+
+There are 15,890 model shards and 210 estimator shards, covering 3,227,362,530
+parameter-oxygen design positions across the three new levels (both outputs
+computed together). `comparison/design_budget.tsv` separates this design
+budget from Sobol's different definition of N. Exact reused positions reduce
+actual model calls and are counted separately. All stages and their scoped
+monitors retain xxlarge, 12h initially, no node constraint, no array throttle,
+and six-hour-threshold/six-hour-increment extension with monitor renewal.
+
+`test_refinement_exports.py` uses explicitly synthetic temporary indices to
+exercise the cross-batch comparison, independent validation and dynamic
+synthesis. It never creates scientific results or invokes a model/estimator.
+`finish_report.py` derives conclusions from actual completed source tables;
+it no longer carries the first batch's fixed N, diagnostic counts or FAST
+oxygen-preference conclusions into later runs.
+
 ## Execution
 
 1. Commit and push the explicit new source files. Sync those Git objects to RED,

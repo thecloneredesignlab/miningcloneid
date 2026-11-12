@@ -110,3 +110,27 @@ def model_path(root, n, repeat, parameter, begin):
 
 def next_n(n):
     return 2 * valid_n(n) - 1
+
+
+def resolutions(plan):
+    """Certified prior designs plus designs evaluated in this batch."""
+    old = list(plan.get('reference_resolutions', []))
+    new = list(plan['resolutions'])
+    if set(old) & set(new) or old != sorted(set(old)) or new != sorted(set(new)):
+        raise ValueError('Overlapping or unordered resolution provenance')
+    if old and min(new) <= max(old):
+        raise ValueError('Refinement must follow its certified reference designs')
+    return old + new
+
+
+def previous_resolution(plan, n):
+    ns = resolutions(plan)
+    i = ns.index(n)
+    return ns[i-1] if i else None
+
+
+def efast_directory(root, plan, n):
+    if n not in resolutions(plan):
+        raise ValueError('Resolution not registered in this batch')
+    prefix = 'inputs/previous_efast' if n in plan.get('reference_resolutions', []) else 'efast'
+    return Path(root) / prefix / ('N%d' % n)

@@ -3,15 +3,17 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import numpy as np
 
-from common import ACTIVE, OUTPUTS, INITIAL_NS, CHUNK, decode, model_count, next_n, valid_n
+from common import (ACTIVE, OUTPUTS, INITIAL_NS, CHUNK, decode, model_count, next_n, valid_n,
+                    resolutions,previous_resolution,efast_directory)
 from submit import stages, sbatch_args
 
 
 class DesignContracts(unittest.TestCase):
     def test_complete_nonoverlapping_trajectories(self):
-        for n in INITIAL_NS:
+        for n in INITIAL_NS+(32769,65537,131073):
             groups={}
             for task in range(1,model_count(n)+1):
                 rep,pi,begin,end=decode(n,task)
@@ -32,6 +34,64 @@ class DesignContracts(unittest.TestCase):
     def test_reject_invalid_positions(self):
         for n,task in [(2049,0),(2049,model_count(2049)+1)]:
             with self.assertRaises(ValueError):decode(n,task)
+
+    def test_refinement_bridges_previous_batch(self):
+        p=dict(reference_resolutions=list(INITIAL_NS),resolutions=[32769,65537,131073])
+        self.assertEqual(resolutions(p),list(INITIAL_NS)+p['resolutions'])
+        self.assertEqual(previous_resolution(p,32769),16385)
+        self.assertEqual(previous_resolution(p,65537),32769)
+        self.assertEqual(previous_resolution(p,131073),65537)
+        self.assertEqual(efast_directory('/new',p,16385),Path('/new/inputs/previous_efast/N16385'))
+        self.assertEqual(efast_directory('/new',p,32769),Path('/new/efast/N32769'))
+        with self.assertRaises(ValueError):resolutions(dict(reference_resolutions=[16385],resolutions=[16385]))
+
+    def test_refinement_runs_all_three_levels_without_sobol_jobs(self):
+        ns=[32769,65537,131073];plan=stages(ns,refinement=True);by_name={s[0]:s for s in plan}
+        self.assertEqual(len(plan),12)
+        self.assertEqual(sum(s[3] for s in plan if s[1]=='model'),15890)
+        self.assertFalse(any('sobol' in s[1] for s in plan))
+        self.assertEqual(by_name['model_32769'][-1],['smoke'])
+        self.assertEqual(by_name['model_65537'][-1],['report_32769'])
+        self.assertEqual(by_name['model_131073'][-1],['report_65537'])
+        self.assertEqual(sum(ns)*14*5*201,3227362530)
+        for s in plan:
+            args=sbatch_args(Path('/scope/global/refinement'),s,[])
+            self.assertIn('--qos=xxlarge',args);self.assertIn('--time=12:00:00',args)
+            self.assertFalse(any(a.startswith(('--nodelist','--constraint')) for a in args))
+            self.assertFalse(any('%' in a for a in args if a.startswith('--array=')))
+
+    def test_oxygen_trend_synthesis_uses_new_values(self):
+        from finish_report import oxygen_preference_comparison
+        def values(high):
+            return [dict(output=o,index='ST',parameter_i='gamma_mu',oxygen_band=b,band_mean=v)
+                    for o in OUTPUTS for b,v in [('low',.3),('middle',.2),('high',high)]]
+        self.assertTrue(all(r['same_trend'] for r in oxygen_preference_comparison(values(.1),values(.2))))
+        self.assertFalse(any(r['same_trend'] for r in oxygen_preference_comparison(values(.1),values(.5))))
+
+    def test_reference_cache_requires_identical_point_and_certificate(self):
+        import workflow as w
+        from common import save,sha,model_path
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)/'new';old=Path(temp)/'old'
+            design=w.design_file(old,65,1);design.parent.mkdir(parents=True)
+            x=np.arange(14,dtype=float)
+            np.savez_compressed(design,natural=np.tile(x,(65*14,1)))
+            save(root/'inputs/previous_batch/preparation.json',dict(design_sha256={str(design.relative_to(old)):sha(design)}))
+            save(root/'inputs/previous_batch/plan.json',dict(scope='global',method='eFAST'))
+            source=model_path(old,65,1,0,0);source.parent.mkdir(parents=True)
+            values=np.arange(65*201*2,dtype=float).reshape(65,201,2)
+            np.savez_compressed(source,outputs=values,solver_flags=np.ones((65,201),dtype=int),
+                oxygen=np.arange(201)/40.,minimum_gap=np.ones(201),maximum_residual=np.full(201,1e-15))
+            p=dict(reference_resolutions=[65],previous_root=str(old),oxygen_pct=[i/40. for i in range(201)])
+            with patch.object(w,'np',np,create=True),patch.object(w,'f',create=True) as engine:
+                engine.complete.return_value=True
+                cached=w.reference_point(root,p,1,0,x)
+                self.assertTrue(np.array_equal(cached[0],values[0]))
+                self.assertTrue(cached[-1]['bitwise_parameter_equality_verified'])
+                self.assertEqual(cached[-1]['reused_parameter_oxygen_points'],201)
+                self.assertIsNone(w.reference_point(root,p,1,0,x+1e-10))
+                engine.complete.return_value=False
+                with self.assertRaises(ValueError):w.reference_point(root,p,1,0,x)
 
     def test_scheduling_contract(self):
         plan=stages(INITIAL_NS)

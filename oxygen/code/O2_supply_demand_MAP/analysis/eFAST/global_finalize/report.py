@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Patch
 
-from common import ACTIVE, OUTPUTS, METRICS, now, sha, load, save, read, table
+from common import (ACTIVE, OUTPUTS, METRICS, now, sha, load, save, read, table,
+                    resolutions, previous_resolution, efast_directory)
 import plot_helpers as gp
 
 FOCAL = {'p_mis_base', 'mu_hp', 'gamma_mu'}
@@ -261,7 +262,7 @@ def legacy_values(root):
 
 def comparison_figures(root,dest,series,sobol,oxygen):
     dest=Path(dest);dest.joinpath('figures').mkdir(exist_ok=True)
-    colors={n:color for n,color in zip(sorted(series),['#9b9b9b','#c5b0d5','#9970ab','#762a83','#40004b','#2166ac'])}
+    colors={n:plt.get_cmap('viridis')(v) for n,v in zip(sorted(series),np.linspace(.1,.9,len(series)))}
     with PdfPages(dest/'figures/parameter_comparison_curves.pdf') as pdf:
         for start in range(0,14,7):
             fig,axes=plt.subplots(7,2,figsize=(15,19))
@@ -275,12 +276,12 @@ def comparison_figures(root,dest,series,sobol,oxygen):
                             v=series[n][:,:,k,j]
                             ax.plot(oxygen,v.mean(axis=0),style,color=colors[n],lw=1,label='eFAST N%d %s'%(n,idx))
                             if idx=='ST':ax.fill_between(oxygen,v.min(axis=0),v.max(axis=0),color=colors[n],alpha=.1)
-                    gp.oxygen_axis(ax);ax.set_title(ACTIVE[pi]+'; '+LABELS[out],fontsize=9)
+                    gp.oxygen_axis(ax);ax.set_title(ACTIVE[pi]+'; '+LABELS[out],fontsize=9,pad=22)
                     ax.axhline(0,color='#777777',lw=.4)
-                    if row==0:ax.legend(fontsize=7,ncol=2)
+                    if row==0:ax.legend(fontsize=7,ncol=2,loc='upper left',bbox_to_anchor=(1.01,1))
             fig.suptitle('S1 dashed / ST solid; highest two new eFAST designs versus Sobol N131072')
             fig.text(.5,.008,'ST shading: five independent phase repeats min-max; not a confidence interval.',ha='center')
-            fig.tight_layout(rect=[0,.03,1,.97]);pdf.savefig(fig);plt.close(fig)
+            fig.tight_layout(rect=[0,.03,.84,.97]);pdf.savefig(fig);plt.close(fig)
     last=max(series);smean=sobol.mean(axis=0);emean=series[last].mean(axis=0)
     classes=gp.classify(sobol,METRICS,oxygen);process,correlation,palette=annotations(root)
     limits=[]
@@ -318,8 +319,9 @@ def final_report(root):
     sv,oxygen,sm=sobol_data(root)
     ids=[sm.index(m) for m in METRICS];sobol=sv[1][:,:,:,ids]
     series={513:legacy_values(root)}
-    for n in p['resolutions']:
-        directory=root/'efast'/('N%d'%n)
+    ns=resolutions(p)
+    for n in ns:
+        directory=efast_directory(root,p,n)
         if load(directory/'completion.json')['status']!='complete':raise ValueError('Missing eFAST resolution')
         with np.load(directory/'indices_repeats.npz') as z:
             if z['values'].shape!=(5,201,2,28) or not np.array_equal(z['oxygen'],oxygen):raise ValueError('eFAST axes differ')
@@ -328,7 +330,7 @@ def final_report(root):
     reference=sobol.mean(axis=0)
     for n,values in sorted(series.items()):
         mean=values.mean(axis=0);spread=np.ptp(values,axis=0)
-        previous=None if n in [513,p['resolutions'][0]] else p['resolutions'][p['resolutions'].index(n)-1]
+        previous=None if n==513 else previous_resolution(p,n)
         delta=np.abs(mean-series[previous].mean(axis=0)) if previous else np.full_like(mean,np.nan)
         for k,out in enumerate(OUTPUTS):
             for idx in ['S1','ST']:
@@ -365,8 +367,8 @@ def final_report(root):
     table(dest/'method_rank_comparison.tsv.gz',ranks)
     reference_hyp={tuple(r[k] for k in ['output','index','condition']):r for r in read(root/'sobol/noemi_hypothesis_checks.tsv')}
     hypothesis_comparison=[]
-    for n in p['resolutions']:
-        for row in read(root/'efast'/('N%d'%n)/'noemi_hypothesis_checks.tsv'):
+    for n in ns:
+        for row in read(efast_directory(root,p,n)/'noemi_hypothesis_checks.tsv'):
             ref=reference_hyp[tuple(row[k] for k in ['output','index','condition'])]
             hypothesis_comparison.append(dict(efast_N=n,output=row['output'],index=row['index'],condition=row['condition'],
                 sobol_contrast=float(ref['contrast']),efast_contrast=float(row['contrast']),
@@ -374,6 +376,15 @@ def final_report(root):
                 same_contrast_direction=bool(np.sign(float(ref['contrast']))==np.sign(float(row['contrast']))),
                 interpretation='descriptive process means, not formal group indices or biological confidence'))
     table(dest/'hypothesis_method_comparison.tsv',hypothesis_comparison)
+    budgets=[dict(method='Sobol',N=131072,n_repeats=5,n_oxygen=201,
+        parameter_vectors_per_repeat=131072*30,parameter_oxygen_design_positions=131072*30*5*201,
+        evaluated_in_this_batch=False,note='second-order design; existing result, no recomputation')]
+    for n in ns:
+        budgets.append(dict(method='eFAST',N=n,n_repeats=5,n_oxygen=201,
+            parameter_vectors_per_repeat=n*14,parameter_oxygen_design_positions=n*14*5*201,
+            evaluated_in_this_batch=n in p['resolutions'],
+            note='design positions; exact reused points are recorded separately in model receipts'))
+    table(dest/'design_budget.tsv',budgets)
     comparison_figures(root,dest,series,sobol,oxygen)
     last=max(series)
     interpretation=['# 全域eFAST与Sobol最终比较','',
@@ -395,7 +406,7 @@ def final_report(root):
         '收敛仅作诊断，所有参数、氧点和重复保留；未通过不能被隐藏为缺失。通过也不等于交互显著或生物学机制被证实。',
         '五次重复范围不是95%置信区间。微弱S2的细微排名不作为机制证据。',
         '过程均值不等于正式组Sobol指数；死亡参数也参与误分离通路。响应面固定背景，不是全域交互方向。',
-        '本轮只完成批准的四档；更高N可作为后续独立不可变批次追加，无N=8193硬上限，也未无限自动提交未指定的计算。',
+        '本轮完成批准的%d档新设计，复用%d档已认证旧设计；更高N可另建独立批次追加，没有N硬上限。'%(len(p['resolutions']),len(p.get('reference_resolutions',[]))),
         '邻域保持封存。','', '全部逐点差值、重复范围及未通过项见本目录源表。']
     (dest/'interpretation_zh.md').write_text('\n'.join(interpretation)+'\n')
     english=(
@@ -410,8 +421,10 @@ def final_report(root):
         ', M=4 and five independent phase repeats. Identical model and numerical-recovery rules were used. '
         'FAST bootstrap intervals were not used as convergence evidence.\n\n'
         'Operational diagnostics were a five-repeat range <=0.05 and an adjacent-resolution mean change <=0.02. '
-        'They were reported per output, parameter/index and oxygen level without excluding entries. '
-        'The first new FAST resolution has no adjacent new-design diagnostic. Numerical convergence, nonzero interaction '
+        'They were reported per output, parameter/index and oxygen level without excluding entries. '+
+        ('The first new FAST resolution is compared with the certified preceding batch. ' if p.get('previous_root') else
+         'The first new FAST resolution has no adjacent new-design diagnostic. ') +
+        'Numerical convergence, nonzero interaction '
         'evidence, conditional response-surface direction and biological interpretation were treated separately. '
         'Endpoint neighborhoods remained archived.\n\n'
         '## Results\n\n'
@@ -444,5 +457,6 @@ def final_report(root):
             if path.is_file():files.append(dict(path=str(path.relative_to(root)),size=path.stat().st_size,sha256=sha(path)))
     save(root/'export_manifest.json',dict(files=files,created_utc=now(),raw_model_blocks_excluded=True))
     save(root/'completion.json',dict(status='complete',scope='global',sobol_N=131072,efast_resolutions=p['resolutions'],
+        reference_resolutions=p.get('reference_resolutions',[]),
         n_repeats=5,n_oxygen=201,N_hard_limit=None,convergence_policy='diagnostic_only',
         neighborhood_jobs_submitted=0,completed_utc=now()))

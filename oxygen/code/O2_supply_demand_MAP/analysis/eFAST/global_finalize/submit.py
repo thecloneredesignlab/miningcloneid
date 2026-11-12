@@ -8,7 +8,8 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from common import INITIAL_NS, M, ACTIVE, OUTPUTS, now, load, save, sha, valid_n, model_count
+from common import (INITIAL_NS, M, ACTIVE, OUTPUTS, now, load, save, sha,
+                    valid_n, model_count, resolutions, efast_directory, next_n)
 
 FILES = ('common.py', 'workflow.py', 'report.py', 'submit.py', 'test_workflow.py', 'collect.py',
          'evaluate_efast.R', 'run.sbatch', 'plot_helpers.py', 'time_extension.py',
@@ -20,28 +21,32 @@ def output(args):
     return subprocess.check_output(args, universal_newlines=True).strip()
 
 
-def stages(ns):
+def stages(ns, refinement=False):
     rows = [('prepare', 'prepare', 0, 0, '8G', []),
-            ('smoke', 'smoke', ns[0], 0, '4G', ['prepare']),
-            ('sobol', 'sobol_report', 0, 0, '8G', ['prepare'])]
+            ('smoke', 'smoke', ns[0], 0, '4G', ['prepare'])]
+    if not refinement:
+        rows.append(('sobol', 'sobol_report', 0, 0, '8G', ['prepare']))
     previous = None
     for n in ns:
         key = str(n)
-        rows += [('model_'+key, 'model', n, model_count(n), '4G', ['smoke']),
+        model_deps = [previous] if refinement and previous else ['smoke']
+        rows += [('model_'+key, 'model', n, model_count(n), '4G', model_deps),
                  ('analyze_'+key, 'analyze', n, 70, '8G', ['model_'+key]),
                  ('report_'+key, 'report', n, 0, '8G', ['analyze_'+key] + ([previous] if previous else []))]
         previous = 'report_'+key
-    rows.append(('final', 'final_report', 0, 0, '16G', ['sobol']+['report_'+str(n) for n in ns]))
+    rows.append(('final', 'final_report', 0, 0, '16G',
+                 ([] if refinement else ['sobol'])+['report_'+str(n) for n in ns]))
     return rows
 
 
-def freeze(repo, root, revision, ns):
+def freeze(repo, root, revision, ns, previous_root=None):
     ns = sorted(set(map(valid_n, ns)))
     if not ns:
         raise ValueError('A batch needs at least one N')
     if (root/'plan.json').exists():
         p = load(root/'plan.json')
-        if p['revision'] != revision or p['resolutions'] != ns:
+        if (p['revision'] != revision or p['resolutions'] != ns or
+                p.get('previous_root') != (str(previous_root) if previous_root else None)):
             raise ValueError('Resume the immutable batch; use a separate root for a new batch')
         return p
     initial = repo/'oxygen/results/eFAST/sobol/full_N4096'
@@ -87,6 +92,50 @@ def freeze(repo, root, revision, ns):
     for suffix in ['pdf', 'png']:
         copy(repo/'oxygen/results/eFAST/figures'/('figure4b_spearman_direction.'+suffix),
              'inputs/figure4b_spearman_direction.'+suffix)
+    references = []
+    if previous_root:
+        previous_root = Path(previous_root)
+        prior = load(previous_root/'plan.json')
+        completed = load(previous_root/'completion.json')
+        if (completed['status'] != 'complete' or prior['scope'] != 'global' or
+                prior['method'] != 'eFAST' or prior['M'] != M or
+                prior['n_repeats'] != 5 or prior['n_oxygen'] != 201 or
+                prior['phase_seeds'] != list(range(20260923,20260928)) or
+                prior['parameters'] != list(ACTIVE) or prior['outputs'] != list(OUTPUTS) or
+                prior['oxygen_pct'] != [i/40. for i in range(201)] or
+                prior['sif'] != old['sif'] or
+                prior['original_plan_sha256'] != sha(initial/'slurm/submission_plan.json')):
+            raise ValueError('Previous global batch is incomplete or scientifically different')
+        references = resolutions(prior)
+        if ns[0] != next_n(references[-1]) or any(b != next_n(a) for a,b in zip(ns,ns[1:])):
+            raise ValueError('Refinement must retain consecutive doubling resolutions')
+        if sha(previous_root/'inputs/parameter_bounds.tsv') != sha(root/'inputs/parameter_bounds.tsv'):
+            raise ValueError('Previous and current bounds differ')
+        for name in ['plan.json','completion.json','preparation.json']:
+            copy(previous_root/name, 'inputs/previous_batch/'+name)
+        copy(previous_root/'validation/method_alignment.json', 'inputs/previous_method_alignment.json')
+        for name in ['source_sobol_submission_plan.json','source_sobol_evaluate.R']:
+            copy(previous_root/'inputs'/name, 'inputs/'+name)
+        for name in ['best_params.tsv','fit_config.rds','parameter_table.csv']:
+            copy(previous_root/'inputs/reference_seed25'/name, 'inputs/reference_seed25/'+name)
+        for n in references:
+            directory = efast_directory(previous_root, prior, n)
+            receipt = load(directory/'completion.json')
+            if (receipt['status'] != 'complete' or receipt['N'] != n or receipt['M'] != M or
+                    receipt['n_repeats'] != 5 or receipt['n_oxygen'] != 201 or
+                    receipt['summary_sha256'] != sha(directory/'indices_summary.tsv.gz')):
+                raise ValueError('Previous eFAST resolution not certified: '+str(n))
+            for path in sorted(directory.iterdir()):
+                if path.is_file():
+                    copy(path, 'inputs/previous_efast/N%d/%s' % (n,path.name))
+        # Reuse the completed Sobol report byte-for-byte; no Sobol job is submitted.
+        if load(previous_root/'sobol/completion.json')['status'] != 'complete':
+            raise ValueError('Previous Sobol report is incomplete')
+        for path in sorted((previous_root/'sobol').rglob('*')):
+            if path.is_file():copy(path, 'sobol/'+str(path.relative_to(previous_root/'sobol')))
+        save(root/'validation/reference_reuse.json',dict(status='complete',previous_root=str(previous_root),
+             reference_resolutions=references,sobol_report_copied=True,sobol_model_calls=0,
+             sobol_estimator_calls=0,old_efast_model_calls=0,raw_blocks_copied=False,completed_utc=now()))
     monitor = root/'time_extension'
     for name in ['slurm/logs', 'failures', 'validation', 'time_extension/logs', 'time_extension/bin', 'time_extension/source_scripts']:
         (root/name).mkdir(parents=True, exist_ok=True)
@@ -97,6 +146,8 @@ def freeze(repo, root, revision, ns):
     for name in ['submit_hourly_add_hours.sh', 'add_hours_to_running_array_jobs.sh']:
         shutil.copyfile('/home/4482173/'+name, str(monitor/'source_scripts'/name))
     p = dict(scope='global', method='eFAST', revision=revision, created_utc=now(), resolutions=ns,
+             previous_root=str(previous_root) if previous_root else None,reference_resolutions=references,
+             execution_order='sequential_by_resolution' if previous_root else 'independent_model_arrays',
              N_hard_limit=None, next_resolution_rule='2*N-1; separate immutable subsequent batch', M=M,
              n_repeats=5, phase_seeds=list(range(20260923,20260928)), n_oxygen=201,
              oxygen_pct=[i/40. for i in range(201)], parameters=list(ACTIVE), outputs=list(OUTPUTS),
@@ -108,7 +159,8 @@ def freeze(repo, root, revision, ns):
              extension_threshold_hours=6, extension_increment_hours=6, convergence_policy='diagnostic_only',
              repeat_range_tolerance=.05, resolution_delta_tolerance=.02, sample_chunk=1024,
              model_tasks=sum(model_count(n) for n in ns), model_points=sum(ns)*14*201*5,
-             neighborhood_jobs_to_submit=0, sobol_model_jobs_to_submit=0)
+             neighborhood_jobs_to_submit=0, sobol_model_jobs_to_submit=0,sobol_estimator_jobs_to_submit=0,
+             sobol_report_jobs_to_submit=0 if previous_root else 1)
     save(root/'plan.json', p)
     (root/'plan.json').chmod(0o444)
     return p
@@ -129,14 +181,14 @@ def sbatch_args(root, stage, dependencies):
     return args+[str(root/'slurm/code_snapshot/run.sbatch'),str(root),role,str(n)]
 
 
-def submit(repo, root, revision, ns):
-    p=freeze(repo,root,revision,ns)
+def submit(repo, root, revision, ns, previous_root=None):
+    p=freeze(repo,root,revision,ns,previous_root)
     if (root/'launch_receipt.json').exists():
         print((root/'launch_receipt.json').read_text());return
     ledger=root/'slurm/jobs.json'
     rows=load(ledger) if ledger.exists() else []
     jobs={r['stage']:r['job_id'] for r in rows}
-    for stage in stages(p['resolutions']):
+    for stage in stages(p['resolutions'], refinement=bool(p.get('previous_root'))):
         name,role,n,count,memory,deps=stage
         if name in jobs:continue
         args=sbatch_args(root,stage,[jobs[d] for d in deps])
@@ -178,11 +230,12 @@ def main():
     parser.add_argument('--root',type=Path)
     parser.add_argument('--revision',required=True)
     parser.add_argument('--resolutions',type=int,nargs='+',default=list(INITIAL_NS))
+    parser.add_argument('--previous-root',type=Path,help='Completed immutable global eFAST batch to reuse')
     args=parser.parse_args();root=args.root or args.repo/'oxygen/results/eFAST/global_finalize_20261112'
     root.mkdir(parents=True,exist_ok=True)
     with (root/'submission.lock').open('a') as handle:
         fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        submit(args.repo,root,args.revision,args.resolutions)
+        submit(args.repo,root,args.revision,args.resolutions,args.previous_root)
 
 
 if __name__=='__main__':main()

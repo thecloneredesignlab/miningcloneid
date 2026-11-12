@@ -11,7 +11,7 @@ import time
 
 from common import (ACTIVE, OUTPUTS, METRICS, INITIAL_NS, M, CHUNK, REPEATS,
                     now, sha, load, save, read, table, locked, decode,
-                    decode_analysis, model_path, model_count)
+                    decode_analysis, model_path, model_count, previous_resolution, efast_directory)
 
 
 def runtime(root):
@@ -163,6 +163,23 @@ def prepare(root):
             else:
                 f.atomic_npz(target, natural=x, N=np.array(n), M=np.array(p['M']), phase_seed=np.array(seed))
             designs[str(target.relative_to(root))] = sha(target)
+    # A refinement reuses the completed golden comparison if the exact model
+    # wrapper, canonical inputs and SIF remain unchanged (verified above).
+    if p.get('previous_root'):
+        previous=load(root/'inputs/previous_batch/plan.json')
+        checked=load(root/'inputs/previous_method_alignment.json')
+        if (checked['status']!='passed' or max(checked['output_max_absolute_error'].values())>1e-8 or
+                previous['controller_sha256']['evaluate_efast.R']!=sha(root/'slurm/code_snapshot/evaluate_efast.R')):
+            raise ValueError('Previous numerical alignment cannot be reused')
+        results.update({k:v for k,v in checked.items() if k not in ['status','completed_utc']})
+        results.update(alignment_reused=True,new_model_validation_points=0,
+                       previous_alignment_sha256=sha(root/'inputs/previous_method_alignment.json'))
+        save(root/'validation/method_alignment.json',dict(status='passed',completed_utc=now(),**results))
+        save(root/'preparation.json',dict(status='complete',plan_sha256=sha(root/'plan.json'),
+            design_sha256=designs,model_alignment_validation_points=0,
+            reused_model_alignment_validation_points=checked['checked_model_points'],
+            model_alignment_elapsed_seconds=0,neighborhood_files_read=0,completed_utc=now()))
+        return
     # Method-alignment checks reuse cached Sobol outputs, not another Sobol run.
     directory = f.case_dir(p['source_initial_root'], case)
     x = f.samples(p['source_initial_root'], case, 1, 0)
@@ -185,6 +202,35 @@ def prepare(root):
         completed_utc=now()))
 
 
+def reference_point(root,p,repeat,pi,x):
+    """Reuse only a bit-identical first point from a certified previous trajectory."""
+    old_n=p['reference_resolutions'][-1];old_root=Path(p['previous_root'])
+    prep=load(Path(root)/'inputs/previous_batch/preparation.json')
+    design=design_file(old_root,old_n,repeat)
+    if sha(design)!=prep['design_sha256'][str(design.relative_to(old_root))]:
+        raise ValueError('Previous reference sampling design changed')
+    with np.load(design) as z:old_x=z['natural'][pi*old_n].copy()
+    if old_x.dtype!=x.dtype or old_x.tobytes()!=x.tobytes():
+        return None
+    path=model_path(old_root,old_n,repeat,pi,0)
+    identity=__import__('hashlib').sha256(('%s/%d/%d/%d/%d/%d'%(
+        sha(Path(root)/'inputs/previous_batch/plan.json'),old_n,repeat,pi,0,min(CHUNK,old_n))).encode()).hexdigest()
+    if not f.complete(path,identity):
+        raise ValueError('Exact-match reference model block is not certified')
+    with np.load(path) as z:
+        if not np.array_equal(z['oxygen'],np.asarray(p['oxygen_pct'])):
+            raise ValueError('Reference oxygen axes differ')
+        values=z['outputs'][0].copy();flags=z['solver_flags'][0].copy()
+        gaps=z['minimum_gap'].copy();residuals=z['maximum_residual'].copy()
+    if values.shape!=(201,2) or not np.isfinite(values).all():
+        raise ValueError('Reference point is incomplete or nonfinite')
+    return values,flags,gaps,residuals,dict(status='complete',source_path=str(path),
+        source_sha256=sha(path),source_identity=identity,source_design_sha256=sha(design),
+        source_N=old_n,repeat=repeat,parameter=ACTIVE[pi],source_row=0,target_row=0,
+        bitwise_parameter_equality_verified=True,reused_parameter_oxygen_points=201,
+        diagnostic_bounds='conservative gap/residual bounds from the source block',completed_utc=now())
+
+
 def model(root, n, task, smoke=False):
     p, original = runtime(root)
     if n not in p['resolutions']:
@@ -204,13 +250,21 @@ def model(root, n, task, smoke=False):
             return
         oxygen = np.asarray(p['oxygen_pct'])
         values, flags, done, gaps, residuals, elapsed = f.checkpoint(path.parent/'checkpoint.npz', key, len(x), oxygen)
+        cached=reference_point(root,p,repeat,pi,x[0]) if begin==0 and p.get('previous_root') else None
+        if cached:
+            save(path.parent/'exact_reference_reuse.json',cached[-1])
         scratch = Path(os.environ['SOBOL_SCRATCH']) / 'evaluation'
         while not done.all():
             positions = np.flatnonzero(~done)[:8]
             if shutil.disk_usage(root).free < 32 * 1024**3:
                 raise ValueError('Storage reserve below 32 GiB; retain checkpoint')
-            (v, s, g, residual), receipt = evaluate(root, p, original, x, oxygen[positions], scratch)
-            values[:, positions], flags[:, positions] = v, s
+            (v, s, g, residual), receipt = evaluate(root, p, original, x[1:] if cached else x, oxygen[positions], scratch)
+            if cached:
+                values[0,positions],flags[0,positions]=cached[0][positions],cached[1][positions]
+                values[1:,positions],flags[1:,positions]=v,s
+                g=np.minimum(g,cached[2][positions]);residual=np.maximum(residual,cached[3][positions])
+            else:
+                values[:, positions], flags[:, positions] = v, s
             gaps[positions], residuals[positions], done[positions] = g, residual, True
             elapsed += receipt['elapsed_seconds']
             if (scratch/'recovery').exists():
@@ -225,6 +279,8 @@ def model(root, n, task, smoke=False):
         save(str(path)+'.receipt.json', dict(status='complete', identity=key, sha256=sha(path), N=n,
              repeat=repeat, parameter=ACTIVE[pi], sample_begin=begin, sample_end=end,
              n_points=len(x)*201, n_recovered=int((flags==2).sum()), elapsed_seconds=elapsed,
+             n_model_evaluations=(len(x)-(1 if cached else 0))*201,
+             n_reused_reference_points=201 if cached else 0,evaluated_sample_begin=begin+(1 if cached else 0),
              completed_utc=now(), job_id=os.environ.get('SLURM_JOB_ID')))
         (path.parent/'checkpoint.npz').unlink()
         if smoke:
@@ -285,10 +341,10 @@ def summarize(root,n):
             values[repeat-1,:,:,pi+14]=z['values'][:,:,1]
             variances[repeat-1,:,:,pi]=z['variance']; output_means[repeat-1,:,:,pi]=z['output_mean']
     mean=values.mean(axis=0); spread=np.ptp(values,axis=0)
-    low=p['resolutions'][p['resolutions'].index(n)-1] if n!=p['resolutions'][0] else None
+    low=previous_resolution(p,n)
     delta=np.full_like(mean,np.nan)
     if low is not None:
-        with np.load(root/'efast'/('N%d'%low)/'indices_summary.npz') as z:
+        with np.load(efast_directory(root,p,low)/'indices_summary.npz') as z:
             delta=np.abs(mean-z['mean'])
     rows=[]
     for oi,o2 in enumerate(p['oxygen_pct']):

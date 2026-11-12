@@ -1,0 +1,24 @@
+{
+  "status": "passed",
+  "synthetic_test_only": true,
+  "reference_root": "oxygen/results/eFAST/global_finalize_20261112",
+  "certified_reference_resolutions": [
+    2049,
+    4097,
+    8193,
+    16385
+  ],
+  "new_resolutions": [
+    32769,
+    65537,
+    131073
+  ],
+  "comparison_rows_verified": 90048,
+  "boundary_delta_verified": 0.000123,
+  "arbitrary_series_count": 8,
+  "new_result_synthesis_exercised": true,
+  "model_calls": 0,
+  "estimator_calls": 0,
+  "temporary_outputs_discarded": true,
+  "completed_utc": "2026-11-12T17:00:05.679390Z"
+}

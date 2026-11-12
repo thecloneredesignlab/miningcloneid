@@ -1,0 +1,29 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-11-12T17:00:31.223609+00:00",
+  "test_output": "......./Users/4482173/Documents/GitHub/soft_couping_eFAST/oxygen/code/O2_supply_demand_MAP/analysis/eFAST/global_finalize/common.py:24: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n  return datetime.datetime.utcnow().isoformat() + 'Z'\n......\n----------------------------------------------------------------------\nRan 13 tests in 0.749s\n\nOK\n",
+  "unit_tests": 13,
+  "model_calls": 0,
+  "estimator_calls": 0,
+  "source_sha256": {
+    "common.py": "dcabd6b29925d4c89c99d43287aa959355cefa28ecba11bb30cc8d6f5f7e3939",
+    "submit.py": "3f238082e3a24baa7f019e1228c152c4bb033470897d5a1f07d9558c504ce552",
+    "workflow.py": "1616fc75d3864f302e98bd84a7d8ddb36651102c1670686be9069d61f17b6a7f",
+    "report.py": "4309f9a4fe1f0c6c66374cd8d3da2049740c995dba0d6df70fd7c9c8b0ef0a9c",
+    "verify_exports.py": "6207a506de0750232a0dc97f38c29d06e63491ce017d4320d99fd21982a9e33a",
+    "finish_report.py": "5afe3f8d9beb5ff57da0f8a5214230b34a02cb90fcad8e4cdbaff388481842b1",
+    "test_workflow.py": "48fa6323b0eb7e9be9bde9a864a695fd01044d5a274eaa8f4b2cf012b0b42e08",
+    "test_refinement_exports.py": "2d8fe234a322e29c5e42c04b169b991ee9e9e9ed1e077825ca6fbd9597b47d07",
+    "README.md": "92c9f2aac2e141dd0f47e6d26dd758238435e61a7e5babe0bef123d6b3095aae"
+  },
+  "resolutions": [
+    32769,
+    65537,
+    131073
+  ],
+  "model_shards": 15890,
+  "estimator_shards": 210,
+  "parameter_oxygen_design_positions": 3227362530,
+  "sobol_model_or_estimator_rerun": false,
+  "neighborhood_resumed": false
+}

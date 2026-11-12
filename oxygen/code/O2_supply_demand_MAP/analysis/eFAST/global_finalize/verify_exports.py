@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 import numpy as np
 
-from common import ACTIVE,OUTPUTS,METRICS,read,table,load,save,sha,now
+from common import (ACTIVE,OUTPUTS,METRICS,read,table,load,save,sha,now,
+                    resolutions,previous_resolution,efast_directory)
 
 
 def validate(root):
@@ -32,8 +33,9 @@ def validate(root):
     if not passed.all():raise ValueError('Certified Sobol convergence count differs')
     refs=sv[1].mean(axis=0)[:,:,[metrics.index(m) for m in METRICS]]
     repeats={};checks={};moment_rows=[];class_rows=[]
-    for n in p['resolutions']:
-        directory=root/'efast'/('N%d'%n)
+    ns=resolutions(p)
+    for n in ns:
+        directory=efast_directory(root,p,n)
         done=load(directory/'completion.json')
         if done['N']!=n or done['n_repeats']!=5 or done['n_oxygen']!=201 or done['n_indices']!=11256:
             raise ValueError('eFAST completion differs')
@@ -45,7 +47,7 @@ def validate(root):
         if v.shape!=(5,201,2,28) or var.shape!=(5,201,2,14):raise ValueError('Repeat/trajectory dimensions differ')
         mean=np.add.reduce(v,axis=0)/5
         spread=np.max(v,axis=0)-np.min(v,axis=0)
-        i=p['resolutions'].index(n);previous=p['resolutions'][i-1] if i else None
+        previous=previous_resolution(p,n)
         delta=np.abs(mean-repeats[previous].mean(axis=0)) if previous else np.full_like(mean,np.nan)
         data=read(directory/'indices_summary.tsv.gz')
         keys={(r['output'],round(float(r['O2_pct']),12),r['index'],r['parameter_i']) for r in data}
@@ -73,7 +75,7 @@ def validate(root):
                     interpretation='finite-design output variances; phase/trajectory spread is not a confidence interval'))
     # Cross-method rows are matched by labels, independently of report array order.
     comparative=read(root/'comparison/method_pointwise_comparison.tsv.gz')
-    expected_rows=(1+len(p['resolutions']))*11256
+    expected_rows=(1+len(ns))*11256
     if len(comparative)!=expected_rows:raise ValueError('Comparison row count differs')
     selected=[r for r in comparative if int(r['efast_N']) in repeats]
     keys=set()
@@ -85,7 +87,7 @@ def validate(root):
         e=float(repeats[n][:,oi,k,j].mean());s=float(refs[oi,k,j])
         if not all(np.isclose(float(row[field]),value,rtol=0,atol=1e-12,equal_nan=True) for field,value in [('efast_mean',e),('sobol_mean',s),('difference',e-s)]):
             raise ValueError('Comparison values differ')
-    if len(keys)!=len(p['resolutions'])*11256:raise ValueError('Comparison coverage differs')
+    if len(keys)!=len(ns)*11256:raise ValueError('Comparison coverage differs')
     rankings=read(root/'sobol/all_parameter_and_pair_rankings.tsv')
     if sum(r['index']=='S2' for r in rankings)!=91*2*4:raise ValueError('91-pair ranking coverage differs')
     if len(read(root/'sobol/focal_36_pair_rankings.tsv'))!=36*2*4:raise ValueError('36 focal-pair ranking coverage differs')
@@ -100,8 +102,8 @@ def validate(root):
     masks=[('all',np.ones(201,dtype=bool)),('low_0_to_1_inclusive',oxygen<=1),
            ('middle_above1_below3',(oxygen>1)&(oxygen<3)),('high_3_to_5_inclusive',oxygen>=3)]
     configurations=[('Sobol',131072,sv[1],sv[0],metrics,root/'sobol')]+[
-        ('eFAST',n,repeats[n],None if i==0 else repeats[p['resolutions'][i-1]],METRICS,root/'efast'/('N%d'%n))
-        for i,n in enumerate(p['resolutions'])]
+        ('eFAST',n,repeats[n],None if previous_resolution(p,n) is None else repeats[previous_resolution(p,n)],
+         METRICS,efast_directory(root,p,n)) for n in ns]
     for method,n,v,previous,mm,directory in configurations:
         # Independent trapezoidal integration, without calling the plot helper.
         bands_source=read(directory/'oxygen_band_indices.tsv.gz')
@@ -156,7 +158,7 @@ def validate(root):
     fig,axes=plt.subplots(2,2,figsize=(12,8))
     for k,out in enumerate(OUTPUTS):
         for col,param in enumerate(['O2_crit','n_O']):
-            ax=axes[k,col];ns=p['resolutions']
+            ax=axes[k,col];ns=resolutions(p)
             for ri in range(5):
                 j=METRICS.index(('ST',param,''))
                 ax.plot(ns,[repeats[n][ri,0,k,j] for n in ns],'.-',color='#762a83',alpha=.5,lw=.7)
@@ -176,7 +178,7 @@ def validate(root):
         dict(item='runtime',Sobol=p['sif']['sha256'],eFAST=p['sif']['sha256'],status='matched'),
         dict(item='repetitions',Sobol='5 independent scrambles',eFAST='5 independent phase repeats',status='different randomization; same repeat count'),
         dict(item='estimator',Sobol='SALib.sample.sobol; analyze.sobol; calc_second_order=True',eFAST='SALib.sample.fast_sampler; analyze.fast.compute_orders; M4; public-interface parity verified',status='intentional method difference'),
-        dict(item='N',Sobol='131072',eFAST=';'.join(map(str,p['resolutions'])),status='different design definitions; not matched by numeric N'),
+        dict(item='N',Sobol='131072',eFAST=';'.join(map(str,resolutions(p))),status='different design definitions; not matched by numeric N'),
         dict(item='legacy_N513',Sobol='not applicable',eFAST='old best/config identities incomplete',status='historical reference only')]
     if read(root/'inputs/parameter_bounds.tsv')!=read(root/'inputs/legacy_parameter_ranges.tsv'):
         raise ValueError('Input bounds/distributions differ')

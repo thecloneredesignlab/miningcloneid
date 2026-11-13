@@ -2,13 +2,15 @@
 
 Date: 2026-11-12, America/New_York.
 
+Scope reviewed: 2026-11-13, America/New_York. This plan covers the culture and tumor ploidy-evolution model and its identifiability analysis only.
+
 Status: **The user approved this scientific direction and scope, and authorized writing this document only.** Implementation, new numerical experiments, HPC submissions, controller changes, and a new synthetic-study compute budget are not authorized by this documentation request.
 
 ## Purpose and governing priorities
 
 The primary task is practical identifiability under finite, noisy observations: determine which parameters, parameter combinations, and biological predictions can be recovered when the full model generates data under the actual experimental design.
 
-The user-provided meeting summary takes precedence over the earlier sequencing of work. Noemi's preceding message and the two original plans supply the mechanism questions and supporting methods. The resulting order is:
+The ploidy-model identifiability requirements in the user-provided meeting summary take precedence over the earlier sequencing of work. Noemi's preceding message and the two original plans supply the mechanism questions and supporting methods. The resulting order is:
 
 1. Start with culture, targeting all fourteen fitted mechanistic parameters.
 2. Define realistic observations and finite sampling before studying recovery.
@@ -26,7 +28,7 @@ Successful simulation and refitting under the same model establishes conditional
 
 ### Primary requirements
 
-- Meeting summary supplied by the user: /Users/4482173/.codex/attachments/74d1a2bd-650d-41ff-aa6b-ce908738dbfd/Pasted text.txt. This is an AI-generated discussion summary supplied as the governing brief; technical ambiguities must be checked against experimental records.
+- Meeting summary supplied by the user: /Users/4482173/.codex/attachments/74d1a2bd-650d-41ff-aa6b-ce908738dbfd/Pasted text.txt. Its ploidy-model identifiability and associated structural-tool requirements form the governing brief for this plan; technical ambiguities in this AI-generated summary must be checked against experimental records.
 - Noemi's supplied message: begin with a small culture profile pilot for inducible missegregation and ploidy-dependent survival; use the findings to guide structural analysis; defer formal confidence intervals until statistical calibration.
 - [Original profile plan](profile_likelihood_implementation_plan.md).
 - [Original mechanism and structural-identifiability plan](invitro_mechanism_identifiability_implementation_plan.md).
@@ -106,13 +108,13 @@ Retain all failures and native limits. Never select a fit because it is closest 
 
 ### Inputs
 
-The meeting summary, Noemi's message, the fourteen source documents above, completed culture packages, current tumor metadata, and their manifests.
+The relevant ploidy-model identifiability sections of the meeting summary, Noemi's message, the fourteen source documents above, completed culture packages, current tumor metadata, and their manifests.
 
 ### Execution steps
 
-1. Build a requirement-to-analysis table showing how each meeting request is implemented or deferred.
+1. Build a requirement-to-analysis table showing how each applicable ploidy-model identifiability request is implemented or deferred.
 2. Inventory the actual source, image, data, observation manifests, fits, numerical checks, failed gates, and collection evidence available for reuse.
-3. Record separate ownership for synthetic culture, existing tumor execution, structural tools, and AlphaK2. Do not launch another dispatcher against an owned run.
+3. Record separate ownership for synthetic culture, existing tumor execution, and structural tools. Do not launch another dispatcher against an owned run.
 4. Preserve the closed culture outcome. Ask the existing tumor owner to reconcile its current work when an implementation handoff is separately authorized; this planning step itself changes no jobs.
 5. Define a new synthetic namespace and ledger rather than modifying old scientific payloads.
 
@@ -575,15 +577,7 @@ Estimator percentile ranges, Monte Carlo intervals for performance rates, and co
 
 Questions for data owners or collaborators are future workflow items. This documentation request does not authorize sending messages or requesting package access on the user's behalf.
 
-## Appendix B - Separate AlphaK2/sparse-joint follow-up
-
-The meeting's AlphaK2 discussion belongs to a separate project and budget. Record it for a separate handoff; do not implement it in this repository's ploidy-model study.
-
-The separate follow-up should resolve count versus frequency with explicit sample-depth-aware observation modeling; document normalization and domain/filter definitions; evaluate numeric and directional accuracy separately; stratify by observed/neighbor/distant karyotype states; test two-time-point performance across sampling depth and landscape smoothness; and compare runtime with fair baselines. Three or four steps refer to karyotype distance, not extra time points.
-
-Any further AlphaK2 work requires that project's actual sources and validation protocol. This appendix does not substantiate the preliminary claims, authorize new benchmarks, or reopen another project's protected evaluation data.
-
-## Appendix C - Implementation handoff boundary
+## Appendix B - Implementation handoff boundary
 
 The user has approved this scientific direction and requested this complete English plan. The current request is **documentation only**. No code, controller, numerical artifact, remote state, or job has been changed by preparing it.
 

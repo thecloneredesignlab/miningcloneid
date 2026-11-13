@@ -1,24 +1,29 @@
-# Meeting-aligned synthetic identifiability master plan
+# Meeting-aligned identifiability master plan: structural analysis before synthetic recovery
 
 Date: 2026-11-12, America/New_York.
 
 Scope reviewed: 2026-11-13, America/New_York. This plan covers the culture and tumor ploidy-evolution model and its identifiability analysis only.
 
-Status: **The user approved this scientific direction and scope, and authorized writing this document only.** Implementation, new numerical experiments, HPC submissions, controller changes, and a new synthetic-study compute budget are not authorized by this documentation request.
+Sequencing revised: 2026-11-13, America/New_York, following Noemi's clarification that structural-identifiability results should inform the design of synthetic practical-identifiability experiments.
+
+Status: **Revised documentation for structural-first planning.** The earlier synthetic-first sequencing is superseded by this clarification. This document update authorizes no implementation, numerical experiments, HPC submissions, controller changes, or new compute budget.
 
 ## Purpose and governing priorities
 
-The primary task is practical identifiability under finite, noisy observations: determine which parameters, parameter combinations, and biological predictions can be recovered when the full model generates data under the actual experimental design.
+The first scientific task is structural identifiability: identify theoretical parameter ambiguities and identifiable combinations under explicit model, input, observation, and initial-condition assumptions. These results must inform which quantities the subsequent synthetic practical-identifiability study attempts to recover.
 
-The ploidy-model identifiability requirements in the user-provided meeting summary take precedence over the earlier sequencing of work. Noemi's preceding message and the two original plans supply the mechanism questions and supporting methods. The resulting order is:
+Noemi's later clarification, supplied by the user on 2026-11-13, governs the sequence wherever it differs from the earlier AI meeting summary or the preceding message. The two original plans supply the mechanism questions, observation contracts, and reduced-model starting point. The revised order is:
 
-1. Start with culture, targeting all fourteen fitted mechanistic parameters.
-2. Define realistic observations and finite sampling before studying recovery.
-3. Test deterministic recovery, then one realistic synthetic dataset, repeated datasets, and additional generating parameter regimes.
-4. Use paired data-stream ablation and design changes to identify informative measurements.
-5. Use focused full-model profiles and function/flux recovery to explain compensation.
-6. Investigate Mathematica and reduced-model structural tools in parallel without delaying the synthetic study.
-7. Undertake formal interval calibration later; extend the validated recovery framework to tumors afterward.
+1. Audit culture sources, all fourteen mechanistic parameters, nuisance roles, and the actual experiment.
+2. Formulate and validate the structural-analysis model and observation/input cases; establish a working symbolic or analytical route.
+3. Identify structural ambiguities, identifiable parameters/combinations, and unresolved cases, with their exact assumptions.
+4. Map those findings back to the full simulator and review the resulting synthetic estimands, parameterization, observation sets, and initial-state assumptions. This is a release gate for designing and running the practical study.
+5. Only then register generating truths, implement the reviewed finite-sampling design, and test deterministic and realistic recovery.
+6. Expand to repeated datasets, further regimes, paired stream ablation, and experimental-design comparisons under finite budgets.
+7. Use focused profiles and function/flux recovery to explain remaining practical ambiguity; undertake formal interval calibration later.
+8. Extend to tumors with their own structural/input-output review before designing tumor synthetic recovery.
+
+Source and assay audits may proceed together, and basic artifact inspection can continue during tool discovery. These supporting tasks do not bypass the structural review or finalize the synthetic recovery design. If the structural route is unresolved, stop that decision at review rather than automatically proceeding under the former synthetic-first policy.
 
 The existing real-data profiles are supporting evidence. They do not substitute for synthetic recovery, and the current study must not become another open-ended search for a global optimum on the real data. A reproducible feasible fit can supply a generating parameter set even when independent recovery of the real-data minimum remains unresolved.
 
@@ -28,12 +33,13 @@ Successful simulation and refitting under the same model establishes conditional
 
 ### Primary requirements
 
-- Meeting summary supplied by the user: /Users/4482173/.codex/attachments/74d1a2bd-650d-41ff-aa6b-ce908738dbfd/Pasted text.txt. Its ploidy-model identifiability and associated structural-tool requirements form the governing brief for this plan; technical ambiguities in this AI-generated summary must be checked against experimental records.
-- Noemi's supplied message: begin with a small culture profile pilot for inducible missegregation and ploidy-dependent survival; use the findings to guide structural analysis; defer formal confidence intervals until statistical calibration.
+- Noemi's later clarification, supplied by the user on 2026-11-13: start with structural identifiability so that theoretical non-identifiabilities and parameter combinations inform the design of the synthetic practical-identifiability study. This clarification supersedes contradictory sequencing in the earlier summary and this document's original version.
+- Meeting summary supplied by the user: /Users/4482173/.codex/attachments/74d1a2bd-650d-41ff-aa6b-ce908738dbfd/Pasted text.txt. Retain its finite-sampling, recovery, measurement-contribution, and design requirements, interpreted with the structural-first clarification.
+- Earlier Noemi message: begin with a small culture profile pilot for inducible missegregation and ploidy-dependent survival; structural work can follow or proceed alongside it; defer formal confidence intervals until statistical calibration. Preserve this as historical context, not the current sequencing instruction.
 - [Original profile plan](profile_likelihood_implementation_plan.md).
 - [Original mechanism and structural-identifiability plan](invitro_mechanism_identifiability_implementation_plan.md).
 
-The meeting expands the immediate target from two profile coordinates to recovery of all fourteen mechanistic parameters. It also makes finite sampling, synthetic refitting, and measurement contribution the main experimental analysis.
+All fourteen mechanistic parameters remain in the inventory. Structural analysis determines which should be targeted individually, through combinations, or only as explicitly unresolved diagnostics. The later practical study evaluates finite sampling, synthetic recovery, and measurement contribution for those reviewed targets; it must not require unique recovery of parameters already shown to be structurally confounded.
 
 ### Reviewed recent documentation
 
@@ -79,7 +85,7 @@ Verify this table against the frozen production-v2 source and actual runtime con
 | Initial composition nuisance | init_mean_2N, init_sd_2N, init_mean_4N, init_sd_4N | 4 |
 | Fitted observation nuisance | sigma_growth, sigma_kary | 2 |
 
-The first five rows are the fourteen mechanistic targets. The primary realistic recovery configuration must retain nuisance estimation appropriate to the actual study. Known-nuisance configurations are diagnostic controls, not evidence that all fourteen are recoverable when those nuisances are unknown. The flow kernel has separate configured/derived behavior; do not invent an additional fitted flow-error coordinate.
+The first five rows inventory the fourteen mechanistic parameters. Step 05 releases the actual individual or combination estimands after structural review. The primary realistic recovery configuration must retain nuisance estimation appropriate to the actual study. Known-nuisance configurations are diagnostic controls, not evidence that the parameters are recoverable when those nuisances are unknown. The flow kernel has separate configured/derived behavior; do not invent an additional fitted flow-error coordinate. Parameters that govern observation variance require an appropriate probabilistic observation analysis; a noiseless mean-output calculation alone cannot establish their identifiability.
 
 At exact p_misseg=0, k_o_mis is inactive for the culture data-only model; at buffer_beta=0, buffer_n_exp is inactive. Do not demand recovery of an inactive parameter. Additional assay-error or dead-material parameters require explicit roles and assumptions rather than silently extending the fourteen-parameter claim.
 
@@ -108,13 +114,13 @@ Retain all failures and native limits. Never select a fit because it is closest 
 
 ### Inputs
 
-The relevant ploidy-model identifiability sections of the meeting summary, Noemi's message, the fourteen source documents above, completed culture packages, current tumor metadata, and their manifests.
+Noemi's structural-first clarification, the relevant ploidy-model sections of the meeting summary and earlier message, the fourteen source documents above, completed culture packages, current tumor metadata, and their manifests.
 
 ### Execution steps
 
-1. Build a requirement-to-analysis table showing how each applicable ploidy-model identifiability request is implemented or deferred.
+1. Build a requirement-to-analysis table showing how each applicable ploidy-model identifiability request is implemented or deferred, with structural-first precedence explicit.
 2. Inventory the actual source, image, data, observation manifests, fits, numerical checks, failed gates, and collection evidence available for reuse.
-3. Record separate ownership for synthetic culture, existing tumor execution, and structural tools. Do not launch another dispatcher against an owned run.
+3. Record ownership for the initial culture structural analysis, its full-model bridge, later synthetic recovery, and existing tumor execution. Structural analysis is part of the main scientific sequence. Do not launch another dispatcher against an owned run.
 4. Preserve the closed culture outcome. Ask the existing tumor owner to reconcile its current work when an implementation handoff is separately authorized; this planning step itself changes no jobs.
 5. Define a new synthetic namespace and ledger rather than modifying old scientific payloads.
 
@@ -130,7 +136,7 @@ Every primary requirement has an assigned step, every reused numerical object ha
 
 Hold dependent implementation for missing source identity or conflicting ownership. Do not repair these problems by overwriting old runs or assuming a local monitor reflects current HPC state. Independent documentation and data discovery may continue.
 
-## Step 02 - Freeze parameters, nuisance roles, and recovery targets
+## Step 02 - Audit parameters, nuisance roles, and candidate estimands
 
 ### Inputs
 
@@ -140,21 +146,21 @@ The frozen optimizer specification, natural-scale parameter table, model switche
 
 1. Verify the fourteen mechanistic names, units, transformations, bounds, and actual runtime use.
 2. Enumerate the four initial-distribution and two observation-error coordinates, plus every fixed setting.
-3. Register three configurations: known-nuisance deterministic diagnosis; realistic recovery with all applicable nuisance coordinates free; and a later known-versus-unknown nuisance comparison.
-4. Define parameter-specific error scales and recovery summaries before confirmation datasets are inspected. Use log errors for appropriate positive quantities and absolute/scaled errors at exact zero; relative error at zero is undefined.
-5. Declare important function/prediction targets, including induced error response, survival contrasts, and viable-daughter output. Audit active/inactive roles in every later mask or null.
+3. Inventory known-versus-unknown initial-state and nuisance cases for structural analysis. Draft, but do not yet release, known-nuisance and realistically free-nuisance recovery configurations.
+4. Record candidate parameter-specific error scales and summaries. Finalize individual versus combination estimands in Step 05 using structural findings, before generating recovery datasets. Relative error at zero is undefined.
+5. Inventory important function/prediction targets, including induced error response, survival contrasts, and viable-daughter output. Audit active/inactive roles in every later mask or null.
 
 ### Outputs
 
-parameter_roles.tsv, fixed_settings.tsv, recovery_estimands.tsv, nuisance_configurations.tsv, and parameter_map_validation.md.
+parameter_roles.tsv, fixed_settings.tsv, candidate_estimands.tsv, structural_nuisance_cases.tsv, and parameter_map_validation.md.
 
 ### Acceptance gate
 
-Counts reconcile to the actual executable mapping. No fitted unknown is silently fixed in the primary realistic case, and inactive coordinates are excluded from individual-recovery claims.
+Counts reconcile to the actual executable mapping. Known and unknown quantities are explicit for structural cases, and candidate recovery targets remain provisional until Step 05. No fixed convention or inactive coordinate is presented as an identified parameter.
 
 ### Stop conditions
 
-Hold synthesis if parameter semantics, units, active roles, or source versions disagree. Do not reduce the parameter set merely because recovery is difficult. A necessary new nuisance parameter must be declared and reviewed before its results are generalized.
+Hold dependent analysis if parameter semantics, units, active roles, or source versions disagree. Do not reduce the parameter inventory merely because a tool is difficult to run or recovery is difficult. A necessary new nuisance parameter must be declared before interpreting structural or practical results.
 
 ## Step 03 - Audit the actual experiment and observation contract
 
@@ -181,17 +187,73 @@ Each available modality has a reproducible sampling/processing definition. The g
 
 ### Stop conditions
 
-Block claims of faithful real-design recovery for a modality whose sampling or protocol mapping is unresolved. Missing live/dead records do not block engineering work with existing modalities; its augmentation scenario remains pending or explicitly hypothetical. Do not fabricate assay counts or treat tumor necrosis as culture live/dead data.
+Block claims of faithful real-design recovery for a modality whose sampling or protocol mapping is unresolved. Missing live/dead records do not block source/assay audits or structural cases using verified existing outputs; an additional dead-cell output remains explicitly hypothetical. They do not waive the structural-first release gate. Do not fabricate assay counts or treat tumor necrosis as culture live/dead data.
 
-## Step 04 - Register the first generating truth and simulate latent dynamics
+## Step 04 - Perform culture structural-identifiability analysis first
 
 ### Inputs
 
-Verified existing culture fits, Steps 02-03 contracts, the pinned simulator, and full initial/error settings.
+Steps 01-03 parameter/input/output inventories, the original five-live-class reduction with retained dead material, exact full-model equations and switches, and the actual citation for the proposed Mathematica package.
 
 ### Execution steps
 
-1. Choose one reproducible existing fit by a recorded rule based on provenance and scientific representativeness, not favorable synthetic recovery. Prefer a complete validated package; disclose unresolved global-search status and boundaries.
+1. Obtain the exact package/paper, establish access and license requirements, and verify supported model classes using authoritative documentation. Do not assume that the Mathematica package is COMBOS or that either accepts the complete simulator unchanged. Validate a known identifiable and a known nonidentifiable example before project-specific claims.
+2. Formulate a tractable culture model, using the original five-live-class recurrent model as the starting point. Preserve the relevant error-generation, daughter-survival, WGD, growth/death, and dead-material accounting. Record rational response substitutions, fixed exponents, coarse states, and omitted mechanisms in a reduction map; the one-generation ledger is only an algebraic unit check.
+3. Specify ideal outputs, inputs, and initial conditions for each case. Compare controlled constant-oxygen experiments sharing parameters, justified switching inputs, known versus unknown initial mixtures/abundance, and applicable passage/reset assumptions. A proof for an arbitrary varying input or continuously observed output must not be labeled a result for the actual sparse schedule.
+4. Analyze an output ladder: growth/live abundance alone; abundance plus viable composition; and additional dead-cell or event/fate outputs only as declared observed or hypothetical cases. Remove redundant normalized fractions and distinguish live abundance from total retained material.
+5. Classify globally identifiable, locally identifiable, nonidentifiable, and unresolved/tool-limited quantities under each case. Export explicit identifiable combinations or input-output-preserving transformations where obtained. Treat exact-zero boundaries and inactive parameters separately from generic interior conclusions.
+6. Verify claimed equivalences by analytical substitution or other appropriate structural evidence. Numerical trajectory agreement and rank checks can corroborate or nominate candidates, but are not global structural proofs.
+7. Use a finite, pre-registered case/time/memory allowance. If one package is unavailable, consider a validated alternative symbolic or analytical route within the same structural scope. Preserve raw inputs, versions, outputs, failures, and assumptions.
+
+### Outputs
+
+tool_access_and_compatibility.md, symbolic_models/, symbolic_case_manifest.tsv, reduction_validation.tsv, structural_identifiability_results.tsv, identifiable_combinations.md, structural_transformations.tsv, and structural_limitations.md.
+
+### Acceptance gate
+
+A structural results package has been reviewed before practical-study design. Each conclusion identifies its model, outputs, inputs, initial conditions, parameter domain, and proof/status. Theoretically identifiable parameters/combinations and unresolved quantities are explicit. A tool smoke test or a result for an unrelated toy model does not satisfy this project-specific gate.
+
+### Stop conditions
+
+A package timeout, inaccessible license, or intractable reduction is an unresolved structural case, not proof of nonidentifiability and not automatic permission to proceed with recovery. At the finite allowance, stop and review an alternative route, a justified model reduction, or a separately approved restricted diagnostic scope. Source and assay audits can continue; the former rule that practical recovery cannot be delayed is withdrawn. Do not silently drop mechanisms, fix unknowns, or change the pinned production model to obtain a convenient result.
+
+## Step 05 - Translate structural results and release the practical-study design
+
+### Inputs
+
+The reviewed Step 04 results and assumptions, the full simulator and observation contract, the parameter/nuisance inventory, and the actual finite sampling schedule.
+
+### Execution steps
+
+1. Map each reduced-model parameter and identifiable combination to the original fourteen mechanisms and relevant nuisances. Label exact correspondences, approximations, fixed shape assumptions, and unmapped quantities. Neither identifiability nor nonidentifiability of a reduction transfers automatically to the full simulator.
+2. Where structural equivalence is demonstrated for the relevant full input-output map, choose identifiable coordinates/combinations for primary recovery. If a representative parameter is fixed to break an equivalence, label that as a convention or external-information assumption, not identification by the data.
+3. For findings supported only by the reduction, define targeted full-model checks and retain their limited status. Numerical checks at actual observation events address local distinguishability, not a global structural proof. Do not remove original parameters solely on the strength of an unvalidated reduced correspondence.
+4. Build the final estimand table: individually estimable targets, identifiable combinations, inactive quantities, parameters retained only for diagnostic comparison, and unresolved cases. Keep all fourteen original mechanisms accounted for; do not demand unique recovery from a structurally confounded coordinate.
+5. Use the structural output ladder to choose baseline modalities, informative additions, known/unknown nuisance cases, and initial generating regimes. Preserve realistic finite sampling and noise; theoretical identifiability under ideal outputs does not establish practical recovery.
+6. Register the parameterization, observation/conditioning design, truth-selection rule, error metrics, finite search strategy, and staged compute proposal before implementing the synthetic generator or launching new recovery fits.
+7. Record an explicit scientific review decision and the unresolved limitations. A narrowed practical diagnostic after incomplete structural work requires an explicit scope decision; package inconvenience is not a standing bypass.
+
+### Outputs
+
+structural_to_full_model_map.tsv, recovery_estimands.tsv, nuisance_configurations.tsv, estimand_decision_log.tsv, structural_informed_synthetic_design.md, full_model_bridge_checks.tsv, and structural_review_gate.tsv.
+
+### Acceptance gate
+
+The structural-to-practical review has accepted a coherent design for the specified targets and model. Its coordinate changes, external assumptions, applicable findings, and remaining limitations are explicit. Only after this gate may Steps 06-14 implement and run that practical design, subject also to the separate implementation and compute authorization.
+
+### Stop conditions
+
+Hold practical-design release for an unexplained parameter mapping, a reduction that changes the mechanisms of interest, or an unsupported claim of structural identification. If the relevant case remains unresolved, stop for review rather than returning automatically to an all-parameter recovery study. Do not select favorable truths or noise levels to conceal a structural ambiguity.
+
+## Step 06 - Register the first generating truth and simulate latent dynamics
+
+### Inputs
+
+Verified existing culture fits, Steps 02-05 contracts and accepted structural review, the pinned simulator, and full initial/error settings.
+
+### Execution steps
+
+1. After Step 05 release, choose one reproducible existing full parameter vector consistent with the reviewed estimands and representative conventions. Use provenance and scientific representativeness, not favorable synthetic recovery. Disclose unresolved global-search status, structural-equivalence assumptions, and boundaries.
 2. Freeze all generating coordinates, fixed settings, initial states, source hashes, and any conditioning assumptions. Do not choose only fourteen values while omitting the rest of the generator.
 3. Simulate the complete lineage and passage history under assigned oxygen and the audited protocol. Preserve latent live states and required dead/event outputs.
 4. Verify state propagation, reseeding, ordinary division, one-lineage WGD, and event accounting. Separate numerical out-of-grid loss from biological nonviability.
@@ -209,11 +271,11 @@ The complete generating object replays with the frozen model and yields feasible
 
 Hold a truth with irreproducible provenance, invalid dynamics, or unresolved observation-state correspondence. Do not silently replace it with a favorable case. Valid boundary truths remain usable with explicit boundary interpretation.
 
-## Step 05 - Implement realistic finite-sample observation generation
+## Step 07 - Implement realistic finite-sample observation generation
 
 ### Inputs
 
-The registered latent trajectories, physical-sample manifest, nuisance truth values, assay processing, and independently registered data-generation RNG streams.
+The Step 05 accepted synthetic design, registered latent trajectories, physical-sample manifest, nuisance truth values, assay processing, and independently registered data-generation RNG streams.
 
 ### Execution steps
 
@@ -236,11 +298,11 @@ Every generated observation maps to a declared physical sample and sampling proc
 
 Stop a modality generator on inconsistent denominators, impossible counts, duplicate sample IDs, unsupported noise, or hidden reuse of observed outcomes as fixed inputs. Do not run the large refitting batch before the generator passes. Observation-only debugging may continue without allocated model fitting when later implementation is authorized.
 
-## Step 06 - Test deterministic/noise-free recovery
+## Step 08 - Test deterministic/noise-free recovery
 
 ### Inputs
 
-The frozen truth, deterministic expected observations, the fitted observation mapping, declared numerical tolerances, and the known-nuisance diagnostic configuration.
+The frozen truth, deterministic expected observations, the fitted observation mapping, declared numerical tolerances, the known-nuisance diagnostic configuration, and the upstream structural expectations for individual parameters or combinations.
 
 ### Execution steps
 
@@ -248,7 +310,7 @@ The frozen truth, deterministic expected observations, the fitted observation ma
 2. Fix or separately control observation-error scales in this diagnostic so shrinking a fitted scale cannot manufacture an apparent recovery result. Do not set a positive-log nuisance to an invalid zero.
 3. Replay the generating vector and independently recompute its predictions and score. An expected score need not be numerically zero.
 4. Run a finite blind multi-start recovery test. Keep any truth-initialized positive control separate from eligible independent starts.
-5. Compare observation recovery, objective attainability, parameter recovery, and alternative equal-quality vectors. Investigate differences without tuning toward the known answer.
+5. Compare observation recovery, objective attainability, and recovery of the structurally reviewed parameters/combinations. Check alternative equal-quality vectors against predicted equivalences and reduction limitations. Investigate differences without tuning toward the known answer.
 
 ### Outputs
 
@@ -262,16 +324,16 @@ The generator/fitter bridge and attainable prediction/score are reproduced to pr
 
 Do not proceed to expensive noisy replication if blind fits cannot approach a known feasible generating solution and the discrepancy is unexplained. Distinguish implementation, optimization, protocol, and possible model-equivalence causes. A finite numerical test cannot establish a global structural symmetry.
 
-## Step 07 - Fit one realistic synthetic dataset and benchmark cost
+## Step 09 - Fit one realistic synthetic dataset and benchmark cost
 
 ### Inputs
 
-One frozen realistic dataset, Steps 02-06 validation, the primary nuisance configuration, and a separately authorized pilot compute allowance.
+One frozen realistic dataset, Steps 02-08 validation including the structurally informed design, the released nuisance/coordinate configuration, and a separately authorized pilot compute allowance.
 
 ### Execution steps
 
 1. Pre-register a finite start bank, seeds, bounds, actual search controls, and one bounded rescue allowance. Four independent complete starts are a planning candidate, subject to measured cost and the approved implementation budget.
-2. Fit all fourteen mechanisms and applicable nuisance coordinates. Known-nuisance runs remain separately labeled controls.
+2. Estimate the Step 05 individual parameters or combinations and required nuisance coordinates, retaining all mechanisms in the forward model. Report the status of all fourteen original parameters. Any fit in redundant original coordinates is an explicitly labeled diagnostic, not a requirement to recover each coordinate uniquely. Known-nuisance runs remain separately labeled controls.
 3. Keep truth-based scoring or initialization as separate diagnostics. On noisy data the fitted optimum can outperform the generating vector and differ from it; that is not automatically failure.
 4. Choose the primary estimate by the lowest verified feasible score, never by parameter distance to truth. Preserve competing fits and original termination/evidence.
 5. Measure whole-chain allocated cost, evaluations, wall time, memory, feasibility, and checks. Separate optimizer variation within this one dataset from later sampling variation.
@@ -289,7 +351,7 @@ The realistic dataset is correctly consumed, numerical evidence is valid, and re
 
 Stop at the registered pilot/rescue limits rather than repeatedly adding starts. Withhold parameter-identifiability conclusions dominated by unresolved optimization. Stop immediately on source/target/score identity failure. A budget-limited estimate can remain a provisional result with its limitations.
 
-## Step 08 - Repeated independent synthetic datasets at one truth
+## Step 10 - Repeated independent synthetic datasets at one truth
 
 ### Inputs
 
@@ -300,7 +362,7 @@ The validated generator and estimator, frozen truth, dataset-level search protoc
 1. Start with a small development/debugging batch, provisionally about twenty independent datasets. Decide a larger batch, for example about one hundred or more, from Monte Carlo precision and measured cost rather than treating those counts as automatic authority.
 2. Separate data-generation seeds from optimizer seeds. Give every dataset its own observation draw and complete refitting record.
 3. Freeze the estimator after development corrections. New confirmation datasets use untouched seeds; development results are not relabeled as prospective confirmation.
-4. Report bias, natural/log/scaled error, RMSE or robust alternatives, estimator quantiles, boundary occupancy, correlations, optimizer success, and prediction recovery.
+4. Report bias, natural/log/scaled error, RMSE or robust alternatives, estimator quantiles, boundary occupancy, correlations, optimizer success, and prediction recovery for the released estimands. Original-coordinate values that depend on a structural representative convention are reported as such, not scored as independently recoverable truths.
 5. Retain failed datasets in total denominators and show both unconditional failure rates and conditional successful-fit summaries. Predefine any bounded retries.
 6. Distinguish Monte Carlo uncertainty on a reported rate from parameter confidence intervals. State that estimator quantiles describe recovery under a fixed generating truth.
 
@@ -316,11 +378,11 @@ Independence units and seed separation are verified, all attempts are accounted 
 
 End the batch at its predeclared dataset/compute limit or precision endpoint. Do not add datasets until a preferred recovery result appears. If numerical failure dominates, stop interpretation, diagnose on development fixtures, and register a fresh confirmation batch after any method change.
 
-## Step 09 - Test additional generating parameter regimes
+## Step 11 - Test additional generating parameter regimes
 
 ### Inputs
 
-Step 08 results, existing fit/regime inventory, declared scientific contrasts, and an independently budgeted scenario registry.
+Step 10 results, the reviewed structural cases and estimands, existing fit/regime inventory, declared scientific contrasts, and an independently budgeted scenario registry.
 
 ### Execution steps
 
@@ -336,13 +398,13 @@ regime_registry.tsv, regime_recovery_summary.tsv, boundary_and_activity_summary.
 
 ### Acceptance gate
 
-Each regime is feasible and reproducible, has correct parameter activity, and has a clear conditional interpretation. Conclusions identify which regimes were actually tested.
+Each regime is feasible and reproducible, has correct parameter activity and applicable structural status, and has a clear conditional interpretation. Revisit special boundary or input cases not covered by the initial structural result. Conclusions identify which regimes were actually tested.
 
 ### Stop conditions
 
 Do not launch an unrestricted parameter-space sweep or full Cartesian product. Stop invalid truths or incompatible activity maps. Additional regimes require remaining registered allowance, not favorable outcomes or unused historical budgets.
 
-## Step 10 - Paired data-stream ablation
+## Step 12 - Paired data-stream ablation
 
 ### Inputs
 
@@ -353,7 +415,7 @@ The same registered truths and synthetic datasets, modality availability, active
 1. Start with growth alone, growth plus dead-cell data where defined, and all available modalities, as requested in the meeting.
 2. Retain the actual available-data configuration, growth plus karyotype plus flow, when dead-cell measurements are unavailable. Treat dead-cell augmentation as a proposed experiment rather than an existing-data result.
 3. Add targeted no-karyotype and no-flow contrasts where they answer remaining ambiguities. Avoid automatically multiplying all truths, masks, noise levels, and profiles.
-4. Refit all active mechanism/nuisance quantities for every mask, auditing nuisance inactivity. Preserve sample identities and legitimate conditioning dependencies.
+4. Revisit the structural output case for each mask before refitting. A quantity identifiable with all ideal outputs may become structurally confounded after stream removal. Refit the appropriate active parameters/combinations and nuisance quantities, preserving sample identities and legitimate conditioning dependencies.
 5. Use paired replicate comparisons to measure changes in parameter, function, and prediction recovery. Do not compare total score heights across different masks as a significance scale.
 6. If removed outcomes still condition passage selection, label a conditional information audit. Do not call it leakage-free withheld prediction.
 
@@ -363,13 +425,13 @@ stream_mask_manifest.tsv, mask_parameter_roles.tsv, paired_recovery_comparison.t
 
 ### Acceptance gate
 
-Every mask is applied to the intended same experimental units, receives its own valid refits, and supports a paired information comparison. Missing streams and hypothetical augmentations remain explicit.
+Every mask is applied to the intended same experimental units, has its structural output case reviewed, receives its own valid refits, and supports a paired information comparison. Missing streams and hypothetical augmentations remain explicit.
 
 ### Stop conditions
 
 Hold masks with outcome leakage, changed cohorts, unsupported stream generation, or inactive coordinates left spuriously fitted. Stop at the finite mask/replicate allowance. Lack of improved recovery is a reportable result, not a reason to keep changing weights.
 
-## Step 11 - Evaluate feasible experimental-design changes
+## Step 13 - Evaluate feasible experimental-design changes
 
 ### Inputs
 
@@ -377,7 +439,7 @@ The leading recovery limitations, paired ablation results, feasible sample-size/
 
 ### Execution steps
 
-1. Change a small number of candidate factors: karyotype count, live/dead count, measurement time, passage schedule, or starting-ploidy coverage.
+1. Use the structural findings and practical recovery limitations to change a small number of candidate factors: karyotype count, live/dead count, measurement time, passage schedule, or starting-ploidy coverage. Revisit the relevant structural case when an input, output, or initial-condition assumption changes.
 2. Use illustrative count levels such as 20, 50, and 100 only after checking feasible assay-specific values. Do not equate a flow event count with a karyotype count.
 3. Compare targeted designs before combined designs, using paired truth/replicate generation where useful and recording any nested-sampling dependence.
 4. Re-simulate dynamics when a schedule or reseeding design changes; do not merely resample an incompatible old trajectory.
@@ -395,7 +457,7 @@ Recommendations follow from simulated observations at feasible schedules and sam
 
 Stop infeasible designs and unregistered combinatorial expansion. A recommendation does not authorize new wet-lab experiments. If no tested design resolves the ambiguity, document that limitation and identify the next discriminating observable.
 
-## Step 12 - Focused profiles, compensation, and biological predictions
+## Step 14 - Focused profiles, compensation, and biological predictions
 
 ### Inputs
 
@@ -403,7 +465,7 @@ Verified synthetic fits, the earlier real-data profile packages with their flags
 
 ### Execution steps
 
-1. Retain p_misseg and buffer_beta as priority profile targets. Add only a few parameters/combinations nominated by recovery results; profiling all fourteen across every replicate is not the default.
+1. Retain the biological questions represented by p_misseg and buffer_beta. Select individual-coordinate or combination profiles using the structural results and recovery findings; label redundant-coordinate profiles as diagnostics. Profiling all fourteen across every replicate is not the default.
 2. At each imposed target, refit all other active quantities with registered finite search. Exact zero must use the tested zero-capable map and inactive semantics.
 3. Link profile behavior to nuisance compensation, boundaries, selected-day changes, and synthetic parameter error. Keep real-data and synthetic-study curves separately identified.
 4. Assess recovery of error probabilities, survival contrasts near the configured 2N/4N states, growth/death responses, and viable loss/gain daughter output.
@@ -422,80 +484,81 @@ Each curve has verified candidates and search limitations, every function/flux h
 
 Stop at the registered target/grid/search allowance and retain unresolved points. Do not use 1.92/3.84 cutoffs or attach confidence labels to uncalibrated scores. Do not force monotonic curves, remove inconvenient boundaries, or expand domains to obtain a desired mechanism result.
 
-## Step 13 - Parallel structural tools and later statistical calibration
+## Step 15 - Calibrate formal inference after recovery validation
 
 ### Inputs
 
-For the parallel tool track: the exact shared paper/package citation, available license information, original five-class reduction, and observed recovery ambiguities. For later calibration: a validated generator/estimator, explicit inferential target, and a separate simulation allowance.
+The accepted structurally informed estimands, a validated generator/estimator and focused profiles, an explicit inferential target, and a separate calibration/coverage simulation allowance.
 
 ### Execution steps
 
-1. Begin tool discovery after Step 01; it is not a dependency of the synthetic pilot. Obtain the actual Mathematica package name/paper rather than assuming it is COMBOS.
-2. Establish access, license sufficiency, supported equation/output/initial-condition classes, dependencies, and required reformulation. Do not claim these facts before checking authoritative sources.
-3. Test a known identifiable and nonidentifiable example, then a validated reduced culture model. Preserve five live classes, justified response simplification, retained dead material, known/unknown initial-state cases, and explicit ideal outputs.
-4. Distinguish global/local identifiability, explicit identifiable combinations, and tool-limited/unresolved cases. A timeout is not nonidentifiability; reduced-model conclusions do not prove full-simulator identifiability.
-5. Separately, after the recovery framework works, specify a coherent generative likelihood or an explicitly simulation-calibrated score procedure. Do not delay the initial estimator-recovery study merely to redesign the full likelihood.
-6. Register statistic scaling, null-specific parameter activity, independent calibration/coverage batches, nuisance regimes, and Monte Carlo precision. Validate coverage and failures before reporting formal confidence sets.
+1. Specify a coherent generative likelihood or an explicitly simulation-calibrated score procedure for the reviewed individual parameters/combinations. Structural analysis is already an upstream input, not work deferred to this step.
+2. Register statistic scaling, nuisance treatment, null-specific parameter activity, and the permitted shapes of confidence sets. Do not promise a unique finite interval for a structurally nonidentifiable original coordinate.
+3. Generate independent calibration and coverage batches under the actual sampling design, including relevant nuisance regimes and special boundary cases.
+4. Refit required unrestricted and constrained models under the same validated finite-search protocol. Retain optimizer failures and Monte Carlo uncertainty.
+5. Validate coverage before reporting formal confidence sets. Keep estimator quantile ranges, Monte Carlo intervals for performance rates, and parameter confidence sets distinct.
 
 ### Outputs
 
-tool_access_and_compatibility.md, symbolic_case_manifest.tsv, reduced_model_validation.tsv, identifiable_combinations.md, and later inference_calibration_protocol.md with coverage evidence if executed.
+inference_calibration_protocol.md, calibration_statistic_registry.tsv, coverage_results.tsv, confidence_set_results.tsv, and inference_limitations.md if this later phase is executed.
 
 ### Acceptance gate
 
-Tool findings have exact references and validated examples. Structural conclusions state their model/observation scope. Formal parameter intervals require completed statistical calibration and independent coverage validation; recovery quantiles alone do not satisfy this gate.
+Formal parameter or combination intervals require completed statistical calibration and independent coverage validation for the declared model, design, and estimand. Recovery quantiles alone do not satisfy this gate.
 
 ### Stop conditions
 
-Package access or symbolic complexity cannot hold up Steps 04-12. Report unavailable tools or unresolved reductions honestly. Do not install tools into or alter the pinned numerical image as a shortcut. Defer formal interval claims if the generative assumptions, calibration budget, or coverage precision are inadequate.
+Defer formal interval claims if structural scope, generative assumptions, optimization adequacy, calibration budget, or coverage precision is inadequate. Stop at the registered finite allowance. Do not repair failed coverage by relabeling old profile scores or removing failed simulations.
 
-## Step 14 - Extend the validated recovery framework to in vivo
+## Step 16 - Review tumor structural identifiability, then extend recovery
 
 ### Inputs
 
-A working culture generator/refitter with understood limitations, tumor observation manifests and fit packages, scale/initial-state assumptions, and the original in vivo owner's reconciled status.
+The reviewed culture structural and practical findings, a working culture generator/refitter with understood limitations, tumor equations and observation manifests, fit packages, scale/initial-state assumptions, and the original in vivo owner's reconciled status.
 
 ### Execution steps
 
 1. Enter this new synthetic extension after the culture workflow is validated and its main limitations understood. The gate does not require every culture parameter to be individually recoverable.
 2. Preserve the existing tumor study and its outcomes. Reconcile any ongoing approved work through its owner; do not silently restart it or spend its 220/360 budget on synthetic cases.
-3. Define tumor-specific generation at measured burden times and matched harvests, using verified volume-error, chromosome-sampling, and histology measurement processes.
-4. Preserve animal/section-level sampling structure. Terminal necrotic fraction is not a continuously observed death rate or necessarily a binomial sample of twenty cells.
-5. Treat tumor oxygen as latent model dynamics, unlike assigned culture oxygen. Audit rho_2N, fixed N0 and demand reference, retained dead material, initial states, and priors.
-6. Begin with one tumor truth and the same deterministic/single-noisy/repeated sequence. Compare data-only and production-penalized estimators separately, refitting each.
-7. Prioritize density/initial-size/resource and death/clearance compensation. Any newly free scale or changed volume law is a declared extension. Cross-context sharing/joint mechanism comparisons follow independently validated context results.
+3. Before designing tumor recovery, perform the tumor-specific structural/input-output review, extending the validated reduction only with explicit resource and retained-material assumptions. Compare known/unknown volume conversion, initial abundance, demand reference, clearance, and latent-resource quantities. Culture structural conclusions do not automatically transfer to tumors.
+4. Translate those structural results into tumor estimands and sampling/measurement comparisons, with a tumor structural-to-practical release decision analogous to Step 05. Then define generation at measured burden times and matched harvests using verified volume-error, chromosome-sampling, and histology measurement processes.
+5. Preserve animal/section-level sampling structure. Terminal necrotic fraction is not a continuously observed death rate or necessarily a binomial sample of twenty cells.
+6. Treat tumor oxygen as latent model dynamics, unlike assigned culture oxygen. Audit rho_2N, fixed N0 and demand reference, retained dead material, initial states, and priors.
+7. Begin with one tumor truth and the same deterministic/single-noisy/repeated sequence. Compare data-only and production-penalized estimators separately, refitting each.
+8. Prioritize density/initial-size/resource and death/clearance compensation. Any newly free scale or changed volume law is a declared extension. Cross-context sharing/joint mechanism comparisons follow independently validated context results.
 
 ### Outputs
 
-invivo_synthetic_contract.md, invivo_truth_registry.tsv, invivo_recovery_results.tsv, scale_and_clearance_recovery.tsv, and a scoped cross_context_followup_plan.md.
+invivo_structural_results.tsv, invivo_structural_to_practical_gate.tsv, invivo_synthetic_contract.md, invivo_truth_registry.tsv, invivo_recovery_results.tsv, scale_and_clearance_recovery.tsv, and a scoped cross_context_followup_plan.md.
 
 ### Acceptance gate
 
-The tumor generator reproduces actual observation units and timing, its free/fixed maps and numerical evidence are valid, and claims distinguish absolute abundance, volume, normalized composition, retained material, and prior influence.
+Tumor-specific structural findings and their bridge have been reviewed before the synthetic design is released. The generator reproduces actual observation units and timing, its free/fixed maps and numerical evidence are valid, and claims distinguish absolute abundance, volume, normalized composition, retained material, and prior influence.
 
 ### Stop conditions
 
-Do not launch this extension with unresolved tumor observation/scale contracts or without a separate authorized synthetic budget. Do not import culture point estimates as fixed tumor truth merely to simplify recovery. Failure of scale recovery is a result, not permission for unlimited fitting or silent model changes.
+Do not launch tumor synthetic recovery with an unreviewed structural/input-output case, unresolved observation/scale contracts, or without a separate authorized synthetic budget. An unresolved structural case requires review; it is not an automatic bypass. Do not import culture point estimates as fixed tumor truth merely to simplify recovery. Failure of scale recovery is a result, not permission for unlimited fitting or silent model changes.
 
 ## Dependency and release map
 
 | Work package | Dependencies | Meaning of progression |
 | --- | --- | --- |
-| Sources, parameter and design audit: Steps 01-03 | Documentation and experimental records | Freeze the study contract; unresolved modalities can be isolated |
-| First generator and controls: Steps 04-06 | Verified contract for the modalities used | Establish numerical and observation consistency |
-| Realistic single-case pilot: Step 07 | Generator and deterministic bridge | Establish estimator behavior and cost |
-| Repeated recovery: Step 08 | Frozen method, budget, dataset manifest | Quantify recovery; weak parameters are allowed outcomes |
-| Regimes, ablation, design: Steps 09-11 | Valid first-case framework and targeted scope | Avoid a full Cartesian expansion |
-| Focused profiles/predictions: Step 12 | Valid candidate fits; can overlap targeted later batches | Explain ambiguities without replacing recovery experiments |
-| Structural tools: Step 13, tool track | Step 01 and explicit reduced assumptions | Parallel, never a prerequisite for the first synthetic study |
-| Formal calibration: Step 13, inference track | Valid generator/estimator and separate inferential protocol | Later evidence for confidence claims |
-| New tumor synthetic study: Step 14 | Working culture framework and audited tumor contract | Separate context and budget, not automatic reuse of prior allowances |
+| Sources, parameter and observation audit: Steps 01-03 | Clarification, source identity, and experimental records | Establish structural inputs and candidate estimands; do not finalize recovery design |
+| Culture structural analysis: Step 04 | Explicit model, outputs, inputs, initial conditions, validated tool/analytical route | Deliver reviewed parameter/combination and ambiguity results with exact scope |
+| Structural-to-practical bridge and design: Step 05 | Step 04 results and validated full-model mapping | Mandatory release gate for the practical study; unresolved scope returns to review |
+| First generator and controls: Steps 06-08 | Accepted Step 05 design and separate execution allowance | Establish numerical and observation consistency for structurally informed estimands |
+| Realistic single-case pilot: Step 09 | Generator, deterministic bridge, and released targets | Establish estimator behavior and cost |
+| Repeated recovery: Step 10 | Frozen method, budget, dataset manifest | Quantify recovery of the reviewed parameters/combinations |
+| Regimes, ablation, design: Steps 11-13 | Valid first-case framework and structural cases for changed outputs/inputs | Avoid a full Cartesian expansion and unsupported transfer of structural status |
+| Focused profiles/predictions: Step 14 | Structural estimands and valid candidate fits | Explain remaining practical ambiguity without replacing theoretical analysis |
+| Formal calibration: Step 15 | Valid generator/estimator and separate inferential protocol | Later evidence for confidence claims |
+| New tumor synthetic study: Step 16 | Culture framework plus tumor-specific structural analysis and bridge | Separate context, review gate, and budget |
 
 ## Compute, stopping, and version governance
 
 ### New budgets must be derived from measured synthetic cost
 
-This document authorizes no allocations. Writing the plan is not permission to run even a numerical benchmark. After a separate implementation/compute instruction, benchmark the smallest approved package and define each subsequent stage's ceiling before dispatch.
+This document authorizes no allocations. Writing the plan is not permission to run a symbolic elimination or a numerical benchmark. After a separate implementation/compute instruction, define a finite structural/tool/reduction allowance first. Benchmark practical fitting only after the Step 05 design release and within a separately authorized package.
 
 For a proposed package estimate:
 
@@ -506,7 +569,7 @@ For a proposed package estimate:
 
 Use the actual selected combinations, not a default full product. Count data generation, feasible screening, failed jobs, dependent local polishing, and verification. For illustration only, eighty chains at fifty core-hours each already require 4000 fitting core-hours before checks; the prior culture chain costs must not be assumed to be synthetic costs or treated as available authorization.
 
-Maintain separate ceilings for engineering, the first dataset, development replication, confirmation replication, and later regimes/masks/designs. Development batch size around twenty and confirmation size around one hundred are proposals, not claims of sufficient statistical precision or automatic release.
+Maintain separate ceilings for source/observation engineering, structural cases and reduction validation, the full-model bridge, the first recovery dataset, development replication, confirmation replication, and later regimes/masks/designs. A stalled structural case ends at review, not an unannounced switch to practical fitting. Development batch size around twenty and confirmation size around one hundred are proposals, not claims of sufficient statistical precision or automatic release.
 
 ### Finite optimizer policy
 
@@ -518,7 +581,7 @@ Stopping a valid case with poor parameter recovery is permitted. Stopping an ina
 
 ### Source, runtime, and ownership
 
-Reuse the pinned production-v2 numerical model, valid mapping/event checks, and current R/Python/shell orchestration where compatible. First verify exact versions and scientific contracts rather than copying entire legacy controllers. Keep the existing Java/JavaScript/JSON-free core-workflow conventions, English artifacts, typed TSV/CSV, native RDS, and static scientific figures. Symbolic-tool dependencies are documented separately; they do not silently change the core runtime.
+Reuse the pinned production-v2 numerical model, valid mapping/event checks, and current R/Python/shell orchestration where compatible. First verify exact versions and scientific contracts rather than copying entire legacy controllers. Keep the existing Java/JavaScript/JSON-free core-workflow conventions, English artifacts, typed TSV/CSV, native RDS, and static scientific figures. Symbolic-tool dependencies are documented as part of the initial structural stage; they do not silently change the pinned simulation runtime.
 
 The previously pinned HPC image is:
 
@@ -529,6 +592,8 @@ At future execution, verify that image and source identity, scheduler limits, re
 
 Proposed new code and result locations, to be created only during authorized implementation:
 
+    oxygen/code/O2_supply_demand_MAP/analysis/structural_identifiability/structural_first/
+    oxygen/results/structural_identifiability/YYYYMMDD_culture_symbolic_<study_id>/
     oxygen/code/O2_supply_demand_MAP/analysis/synthetic_identifiability/
     oxygen/results/synthetic_identifiability/YYYYMMDD_culture_recovery_<study_id>/
     oxygen/results/synthetic_identifiability/YYYYMMDD_invivo_recovery_<study_id>/
@@ -537,11 +602,12 @@ Use isolated immutable releases, input/source hashes, append-only candidate hist
 
 ## Deliverable and interpretation standard
 
-The main report must answer which parameters are individually recoverable, which combinations are better recovered, which weak parameters leave predictions stable, and which uncertainties change biological conclusions. It must also identify informative measurements and tested feasible design improvements.
+The main report must first state the structural findings and their exact assumptions, then answer which reviewed parameters/combinations are practically recoverable, which weak quantities leave predictions stable, and which uncertainties change biological conclusions. It must also identify informative measurements and tested feasible design improvements. A reduced-model result and a full-simulator conclusion must never be merged without a justified bridge.
 
 Required report components:
 
 - Source/design/parameter contract and actual tested scenario coverage.
+- Structural equations, case-specific proof/status, identifiable combinations, reduction limitations, and the accepted structural-to-practical mapping and design gate.
 - True-versus-estimated parameter plots and bias/error/quantile tables by truth and mask.
 - Optimizer success, failure, boundaries, and per-start quality separate from sampling variability.
 - Correlation/compensation summaries, with transformed and natural units stated.
@@ -567,20 +633,48 @@ Estimator percentile ranges, Monte Carlo intervals for performance rates, and co
 
 | Input or decision | Required resolution | Work that need not wait |
 | --- | --- | --- |
-| Exact Mathematica paper/package | Obtain citation/name and investigate authoritative compatibility/licensing information | Core synthetic recovery |
-| Sample-specific karyotype sizes | Derive from physical cell lists and sample manifest | Generator unit fixtures with explicitly assumed counts |
-| Live/dead availability and assay mapping | Confirm counts, timing, denominator, classification, and model-state correspondence | Existing-modality pipeline work, explicitly without a claim about current dead-cell information |
-| Flow acquisition/gating/event counts | Recover metadata or declare an approximation and sensitivity range | Non-flow controls and metadata audit |
+| Exact Mathematica paper/package | Obtain citation/name and investigate authoritative compatibility/licensing information; use a validated alternative structural route if needed | Source, parameter, and assay audits; practical design still requires structural review |
+| Unresolved structural case or reduced/full-model mapping | Record the exact unresolved scope and review a tractable route or explicitly limited follow-up | Evidence preservation and independent input audits; no automatic synthetic-study release |
+| Sample-specific karyotype sizes | Derive from physical cell lists and sample manifest | Source/assay audit and ideal-output structural cases with explicit assumptions |
+| Live/dead availability and assay mapping | Confirm counts, timing, denominator, classification, and model-state correspondence | Existing-output structural cases; additional dead-cell outputs stay explicitly hypothetical |
+| Flow acquisition/gating/event counts | Recover metadata or declare an approximation and sensitivity range | Non-flow structural cases and metadata audit |
 | Passage timing versus target-count conditioning | Reconcile actual protocol and fitting selection rule | Source/parameter inventory; not full real-design recovery claims |
-| Appropriate error/dependence model | Use available replication and assay definitions; label unsupported assumptions | Deterministic bridge and clearly stated sensitivity fixtures |
-| Synthetic compute ceiling and replicate precision | Measure pilot cost and register the next package | Documentation and existing-result inspection |
+| Appropriate error/dependence model | Use available replication and assay definitions; label unsupported assumptions | Structural analysis of the declared ideal outputs and assay documentation |
+| Structural and synthetic compute ceilings | Register bounded structural cases first; measure fitting cost only after design release | Documentation and existing-result inspection |
 
 Questions for data owners or collaborators are future workflow items. This documentation request does not authorize sending messages or requesting package access on the user's behalf.
 
 ## Appendix B - Implementation handoff boundary
 
-The user has approved this scientific direction and requested this complete English plan. The current request is **documentation only**. No code, controller, numerical artifact, remote state, or job has been changed by preparing it.
+The user requested this documentation revision in response to Noemi's structural-first clarification. The current action is **documentation only**. No code, controller, numerical artifact, remote state, or job has been changed by preparing or revising it.
 
-For a future implementation handoff, read this plan together with the original profile/mechanism plans and the current context-specific ownership logs. Begin with Steps 01-03, obtain the missing experimental contracts, and register a separately authorized small implementation/benchmark package. Do not resume real-data global-optimum searches as a prerequisite, reinterpret old unresolved profiles as completed identifiability evidence, or spend old budgets on the new synthetic program.
+For a future implementation handoff, read this plan together with Noemi's later clarification, the original profile/mechanism plans, and current ownership logs. Complete Steps 01-03, then the Step 04 structural analysis and Step 05 structural-to-practical review before releasing the synthetic design. Register a separately authorized finite structural package first; practical compute is a later release. Do not resume real-data global-optimum searches as a prerequisite, reinterpret old unresolved profiles as completed identifiability evidence, or spend old budgets on the new program.
 
-Prepared on 2026-11-12, America/New_York. No commit, push, HPC task, external message, or code implementation is included in this document-writing action.
+## Appendix C - Step-number migration and existing-work transition
+
+This revision has sixteen steps. Existing files, receipts, run IDs, and approvals using the original fourteen-step numbering retain that historical meaning. Do not rename an old run or infer that an existing Steps 04-06 artifact is evidence for the newly numbered structural Steps 04-05.
+
+| Original step | Revised step | Change |
+| --- | --- | --- |
+| 01 Sources/ownership | 01 | Add structural-first precedence and ownership |
+| 02 Parameters/targets | 02 and 05 | Audit first; finalize estimands after structural findings |
+| 03 Observation contract | 03 and 05 | Inventory actual design first; release recovery design after structural review |
+| 13 Structural-tool component | 04 | Move to the initial scientific analysis |
+| No separate bridge step | 05 | Add mandatory structural-to-full-model and practical-design review |
+| 04 Generating truth | 06 | Move after the structural gate |
+| 05 Finite observations | 07 | Use the reviewed synthetic design |
+| 06 Deterministic recovery | 08 | Check the reviewed parameters/combinations |
+| 07 Single noisy dataset | 09 | Fit released coordinates and nuisances |
+| 08 Repeated datasets | 10 | Quantify practical recovery after structural review |
+| 09 Additional regimes | 11 | Check structural scope for each regime |
+| 10 Stream ablation | 12 | Revisit structural output cases |
+| 11 Experimental design | 13 | Combine structural and practical findings |
+| 12 Profiles/functions | 14 | Interpret remaining practical compensation |
+| 13 Calibration component | 15 | Keep formal confidence inference late |
+| 14 Tumor extension | 16 | Require tumor-specific structural review before recovery design |
+
+Before another practical-stage release, the execution owner must reconcile any already authorized or completed work against this revision. Preserve valid deterministic, generator, and optimizer artifacts as engineering or historical diagnostic evidence. They do not retroactively satisfy the new structural gate and must not be relabeled as a structurally informed confirmatory design.
+
+This documentation update does not cancel or pause live allocations, change an existing controller, or authorize a new one. Any required operational transition remains with the original execution owner under the applicable user instruction. The next proposed stage and its budget must cite the revised step numbers and the status of the structural review.
+
+Originally prepared on 2026-11-12; scope and structural-first sequencing revised on 2026-11-13, America/New_York. No commit, push, HPC task, external message, or code implementation is included in this document revision.

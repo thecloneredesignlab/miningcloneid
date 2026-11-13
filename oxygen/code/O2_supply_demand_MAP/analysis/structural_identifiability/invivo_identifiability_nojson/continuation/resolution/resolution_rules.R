@@ -1,0 +1,30 @@
+# Outer scheduling decisions only; native numerical termination is unchanged.
+resolution_compare<-function(a,b){
+ if(!is.finite(a)||!is.finite(b))return(NA_integer_)
+ delta<-a-b;tol<-32*.Machine$double.eps*max(1,abs(a),abs(b))
+ if(abs(delta)<=tol)0L else if(delta>0)1L else -1L
+}
+resolution_local_rule<-function(gain,probe,complete,passed=FALSE,representative=TRUE){
+ if(passed)return('accepted')
+ if(!complete)return('unresolved_check')
+ if(isTRUE(resolution_compare(gain,.001)>=0L)||isTRUE(resolution_compare(probe,.002)>0L))return('continue')
+ if(!representative)return('unresolved_check')
+ 'resolution_stop'
+}
+resolution_batch_rule<-function(before_uniform,after_uniform,before_best,after_best){
+ isTRUE(resolution_compare(max(before_uniform-after_uniform,before_best-after_best),.002)>0L)
+}
+resolution_completed_batch<-function(before_uniform,after_uniform,before_feasible,after_feasible,frozen=NULL){
+ if(!is.null(frozen)){
+  stopifnot(nrow(frozen)==1L,
+   resolution_compare(frozen$before_uniform,before_uniform)==0L,
+   resolution_compare(frozen$before_feasible,before_feasible)==0L,
+   resolution_compare(frozen$protected_gain,max(frozen$before_uniform-frozen$after_uniform,frozen$before_feasible-frozen$after_feasible))==0L,
+   identical(isTRUE(frozen$eligible),resolution_batch_rule(frozen$before_uniform,frozen$after_uniform,frozen$before_feasible,frozen$after_feasible)))
+  return(frozen)
+ }
+ gain<-max(before_uniform-after_uniform,before_feasible-after_feasible)
+ data.frame(before_uniform=before_uniform,before_feasible=before_feasible,
+  after_uniform=after_uniform,after_feasible=after_feasible,protected_gain=gain,
+  eligible=resolution_batch_rule(before_uniform,after_uniform,before_feasible,after_feasible))
+}

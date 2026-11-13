@@ -1,0 +1,33 @@
+# One verified evaluation through the requested map/policy; no optimization.
+run_reference_reconstruct<-function(study,task,spec){
+ out<-file.path(study,'tests',task);dir.create(out,recursive=TRUE,showWarnings=FALSE)
+ ctx<-formal_context(study,spec)
+ path<-file.path(study,'dispatch',task,'selection.rds');original<-readRDS(path)
+ r<-original$record;p<-r$parameters
+ stopifnot(identical(names(p),names(ctx$endpoint)),all(is.finite(p)),all(p>=ctx$lower),all(p<=ctx$upper))
+ before<-p;if(length(spec$fixed))p[names(spec$fixed)]<-spec$fixed
+ expected<-original$expected_target_objective
+ if(is.null(expected)&&identical(before,p)&&r$policy==spec$policy)expected<-r$components$L
+ atomic_rds(list(parameters=p,original_parameters=before,record=r,source=original$source_task,
+  source_sha256=hash_file(path),original_policy=r$policy,target_policy=spec$policy),file.path(out,'original_source.rds'))
+ ctx$provenance$start_sha256<-hash_file(file.path(out,'original_source.rds'))
+ fn<-new_evaluator(ctx,out,spec$fixed,'canonical_map_reference',getOption('ivi.job.deadline'))
+ free<-setdiff(names(p),names(spec$fixed));value<-fn(p[free]);record<-.ivi_state$best_record
+ point<-validate_point(ctx,p,expected=expected,record=record)
+ stopifnot(.ivi_state$n==1L,abs(value-point$components$L)<1e-8,all(p[names(spec$fixed)]==spec$fixed))
+ atomic_rds(list(parameters=p,record=record,expected=value,source=original$source_task,
+  source_sha256=hash_file(path)),file.path(out,'actual_start.rds'))
+ atomic_rds(list(parameters=p,components=point$components,predictions=point$predictions,
+  policy=spec$policy,source_task=original$source_task),file.path(out,'fresh_acceptance.rds'))
+ accepted<-list(record=record,checked=point$components,policy=spec$policy,root_id=spec$root_id,
+  root_family=spec$root_family,fixed=spec$fixed,source_task=task,source_scope='tests')
+ atomic_rds(accepted,file.path(out,'accepted_candidate.rds'));atomic_rds(accepted,file.path(out,'checked_center.rds'))
+ write_kv(list(pass=TRUE,policy=spec$policy,scope='canonical_target_map_reference',
+  termination='reference_verified',objective=value,start_objective=value,window_gain=0,
+  evaluations=1L,optimizer_callbacks=0L,method_calls=0L,root_callbacks=0L,
+  probes=0L,directional_improvement=0,full_direction_check=FALSE,
+  free_coordinates=length(free),difference=value-point$components$L,
+  source_projection=any(before!=p),original_policy=r$policy,target_policy=spec$policy,
+  fixed_residual=if(length(spec$fixed))max(abs(p[names(spec$fixed)]-spec$fixed)) else 0),file.path(out,'result.tsv'))
+ finalize_payload(out)
+}

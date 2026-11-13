@@ -76,7 +76,7 @@ The local culture path consumes `fit_data.Rds`, `jobs_2N.Rds`, `jobs_4N.Rds`, an
 | --- | --- | --- |
 | Culture growth | Growth over recorded passage intervals, using the verified production selection/scoring rule | Preserve assigned oxygen histories, lineage ancestry, and reseeding; do not treat daily simulated counts as observations. |
 | Culture chromosome counts and flow | Full distributions at their measured passages | Preserve separate modality transformations and sample identities; no replacement by mean ploidy. |
-| Tumor burden | Total burden at each measured time | Retain the production mapping from live and retained dead material to volume, inclusion filters, and scale parameters. |
+| Tumor burden | Total burden at each measured time | Retain the production mapping from live and retained dead material to volume, inclusion filters, and `rho_2N`; distinguish total cell-equivalent material from viable-cell number. |
 | Tumor chromosomes | Viable chromosome-state distribution at the matching harvest only | Keep the harvest-specific endpoint and cohort; no invented longitudinal tumor karyotypes. |
 | Tumor necrosis | Retained dead volume divided by total volume at the matching harvest only | Retain clearance and volume weighting; necrotic fraction is neither instantaneous death rate nor cumulative death count. |
 
@@ -153,6 +153,10 @@ Export `extended_variant_definitions.tsv`, `initial_mixture_constraints.tsv`, an
 ### Tumor and Cross-Context Stage: Shared Responses Versus Different Resource Histories
 
 First replay the approved separate tumor and joint fits under WP0, including retained dead biomass and harvest-only measurements. Test the selected mechanism alternatives in tumors on the full grid; culture oxygen stays an assigned input, whereas tumor oxygen is latent and inferred through the approved burden/resource dynamics.
+
+**Volume scale and initial-cell-number audit:** Include the user-approved future `rho_2N` identifiability study before interpreting absolute tumor cell counts or fluxes. Freeze and replay the actual tumor density bounds, volume/dead-stock convention, initial abundance, `o2_Nref`, and penalty policy. Fit density profiles with all active nuisance parameters free under separately refitted data-only and exact production-penalized baselines. Distinguish known inoculation from effective founding abundance, and compare the production fixed-initial-state assumption against a declared initial-size sensitivity with its own unrestricted baseline. Audit candidate density/initial-size/resource compensation, including a limited joint diagnostic when needed; do not infer a structural symmetry from parameter co-occurrence or from a changed scale convention. Export density and initial-size paths, data/penalty terms, cell counts, retained material and volume predictions separately. The inactive `beta_size` argument is not a fitted volume-law parameter of the inspected production model. See the [density and initial-abundance review](tumor_volume_conversion_identifiability_review.md) and the companion profile plan's WP4.
+
+**Execution scope (2026-11-09):** Inclusion of this tumor scale audit is approved as a plan update. First complete the current two-target culture profile pilot. Do not launch tumor fits as part of that pilot or this documentation update; the later tumor execution requires its own stage and compute plan. All generated outputs use English.
 
 Then fit the following joint models, with an explicit shared/free map:
 
@@ -319,7 +323,7 @@ Test no-error propagation, symmetric loss/gain accounting before biological filt
 | S0 | Ideal continuously observed total live abundance in culture, or total burden in the tumor extension | Establish what growth/burden alone can distinguish; do not conflate these two outputs. |
 | S1 | S0 plus all five viable class fractions, with four independent fractions in the calculation | Test the additional information from distributions; also test fractions without total abundance. |
 | S2 | S1 plus total necrotic fraction as a hypothetical continuous output, then direct division, death, error-event, or daughter-survival measurements one at a time | Test death/clearance and generation/survival ambiguity. A continuous necrosis output is a richer hypothetical experiment than terminal histology. |
-| S3 | Repeat with known versus unknown initial mixtures/abundance, clearance, volume scales, and (in tumors) latent-resource parameters; compare one versus both starting ploidies | Expose conclusions dependent on external knowledge rather than measured trajectories. |
+| S3 | Repeat with known versus unknown initial mixtures/abundance, clearance, volume scales (including shared `rho_2N` in the tumor extension), and latent-resource parameters; compare one versus both starting ploidies | Expose conclusions dependent on external knowledge; explicitly audit density versus initial-cell-number confounding. |
 
 For every case state whether the input is one constant oxygen level, several separately constant experiments sharing parameters, or a switching schedule. A proof that assumes an arbitrarily varying input must not be presented as a result for the observed exposure history. Test purely parental versus unknown mixed initial states explicitly; generic nonzero initial-state results may not apply to the proposed experiment. Any symbolic passage extension uses externally specified times and declared resets, not target-count matching. Its conclusions apply to that observation scheme, not automatically to the implemented culture objective.
 

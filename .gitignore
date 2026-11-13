@@ -117,3 +117,20 @@ data/DrugResponseData_PDX/.DS_Store
 !/revised/iteration2/manuscript/**/*.pdf
 /revised/iteration2/manuscript/tables/data/
 /revised/iteration2/manuscript/ltee_hypoxia_model.html
+
+# Local identifiability execution plans and logs.
+/docs/culture_baseline_recovery_execution_log.md
+/docs/culture_baseline_recovery_nojson_plan.md
+/docs/culture_profile_optimization_review_plan.md
+/docs/culture_resolution_aware_revision_review_and_execution_plan_20261112.md
+/docs/culture_resolution_aware_stopping_plan_and_handoff_20261112.md
+/docs/culture_seven_point_profile_execution_log.md
+/docs/culture_seven_point_profile_nojson_plan.md
+/docs/invivo_baseline_repair_plan_20261111.md
+/docs/invivo_identifiability_parallel_handoff.md
+/docs/invivo_improvement_driven_continuation_plan_20261112.md
+/docs/invivo_resolution_aware_review_and_next_steps_20261112.md
+/docs/invivo_resolution_aware_stopping_plan_and_handoff_20261112.md
+
+# Generated Python bytecode caches.
+__pycache__/

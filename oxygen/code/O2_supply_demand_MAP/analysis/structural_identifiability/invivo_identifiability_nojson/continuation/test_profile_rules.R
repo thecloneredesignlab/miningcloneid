@@ -1,0 +1,10 @@
+# Labeled analytic metadata fixtures only: zero model calls and no submission.
+args<-commandArgs(trailingOnly=TRUE);source(file.path(args[1],'profile_rules.R'))
+row<-function(branch,q,center=q,free=10)data.frame(branch=branch,objective=q,center_objective=center,raw_delta=q-free)
+stopifnot(!summarize_profile_anchor(rbind(row('ascending',10.1),row('ascending',10.101)))$pass)
+z<-summarize_profile_anchor(rbind(row('ascending',10.1),row('descending',10.109)))
+stopifnot(z$pass,z$branches==2L,abs(z$raw_delta-.1)<1e-12)
+stopifnot(!summarize_profile_anchor(rbind(row('ascending',10.1),row('descending',10.111)))$pass)
+stopifnot(!summarize_profile_anchor(rbind(row('ascending',9.99),row('descending',9.991)))$pass)
+stopifnot(!summarize_profile_anchor(rbind(row('ascending',10.1,10.103),row('descending',10.109,10.112)))$pass)
+cat('Analytic profile metadata fixtures passed: branch uniqueness, 0.01 agreement, raw negative delta and 0.002 direction gate; zero model calls.\n')

@@ -1,0 +1,93 @@
+# D19 only: all19 active coordinates retain native units; the known SD is fixed.
+d_limits<-c(import=1000L,global=73200L,local=6000L,pattern=2000L,verify=800L,handoff=1000L)
+d_read<-function(study,origin){
+ case<-readRDS(file.path(study,'inputs/public/D19.rds'));contract<-readRDS(file.path(study,'inputs/public/contract.rds'))
+ id<-readRDS(file.path(study,'verification/T00/identities',paste0(origin,'.rds')))
+ stopifnot(case$kind=='D',identical(case$design,contract$design),identical(case$data_sha,sf_hash(case$data)),identical(id$data_sha,case$data_sha),identical(id$scale,case$known_sigma_growth),identical(id$scale_sha,sf_hash(case$known_sigma_growth)),identical(id$contract_sha,sf_hash(contract)),id$origin==origin)
+ list(case=case,contract=contract,id=id)
+}
+d_context<-function(env,case,contract,id){
+ stopifnot(case$kind=='D',is.double(case$known_sigma_growth),length(case$known_sigma_growth)==1,is.finite(case$known_sigma_growth),case$known_sigma_growth>0)
+ t<-case$design$bounds;t$status<-ifelse(t$parameter=='sigma_growth','fixed','active');t$fixed_value<-NA_real_;t$fixed_value[t$parameter=='sigma_growth']<-case$known_sigma_growth
+ free<-t[t$status=='active',,drop=FALSE];stopifnot(nrow(free)==19)
+ c<-f_context(env,contract);c$case<-case;c$id<-id;c$free<-free;c$low<-env$o2prof_transform(free$lower,free);c$high<-env$o2prof_transform(free$upper,free)
+ c$map<-list(table=t,base_params=c(case$design$fixed,cg_neutral(env,t)));c$identity<-sf_hash(id);c
+}
+d_decode<-function(c,u){
+ stopifnot(is.numeric(u),length(u)==19,all(is.finite(u)),all(u>=0&u<=1))
+ z<-setNames(c$low+as.numeric(u)*(c$high-c$low),c$free$coordinate)
+ p<-c$env$o2prof_from_free(c$map,z);stopifnot(identical(p$sigma_growth,c$case$known_sigma_growth));cg_candidate(c$d,p[cg_roles])
+}
+d_loss<-function(c,pred,p){
+ stopifnot(identical(p$sigma_growth,c$case$known_sigma_growth),identical(sf_hash(p$sigma_growth),c$id$scale_sha),identical(names(pred$growth),names(c$case$data$growth)),identical(names(pred$kary),names(c$case$data$prob)))
+ q0<-c$case$data$prob;stopifnot(length(q0)==12,length(pred$growth)==114)
+ g<-(pred$growth-c$case$data$growth)/p$sigma_growth
+ q<-lapply(pred$kary,function(x){stopifnot(length(x)==133,all(is.finite(x)),all(x>=0),abs(sum(x)-1)<=1e-12);x/sum(x)})
+ hk<-vapply(names(q0),function(n){stopifnot(length(q0[[n]])==133,abs(sum(q0[[n]])-1)<=1e-12);sum((sqrt(q[[n]])-sqrt(q0[[n]]))^2)/2},numeric(1))
+ tv<-vapply(names(q0),function(n)sum(abs(q[[n]]-q0[[n]]))/2,numeric(1))
+ stopifnot(all(is.finite(g)),all(is.finite(hk)),all(hk>=0))
+ list(value=mean(g*g)/2+mean(hk),growth=mean(g*g)/2,kary=mean(hk),rms_growth=sqrt(mean(g*g)),max_growth=max(abs(g)),max_kary_tv=max(tv))
+}
+d_independent_loss<-function(c,pred){
+ e<-unname(pred$growth[names(c$case$data$growth)]-c$case$data$growth)
+ a<-sum(e^2)/(2*length(e)*c$case$known_sigma_growth^2)
+ b<-sum(vapply(seq_along(c$case$data$prob),function(j){x<-pred$kary[[names(c$case$data$prob)[j]]];x<-x/sum(x);y<-c$case$data$prob[[j]];sum((sqrt(x)-sqrt(y))^2)},numeric(1)))/(2*length(c$case$data$prob))
+ c(growth=a,kary=b,value=a+b)
+}
+d_physics<-function(c,p,reference=FALSE){
+ z<-if(reference)f_reference(c,p)else f_physics(c,p)
+ if(z$feasible)z$loss<-d_loss(c,z$pred,p)
+ z
+}
+d_candidate<-function(c,u,z,origin,stage){
+ p<-d_decode(c,u);pred<-z$pred;pred$states<-NULL
+ list(score=z$loss$value,unit=as.numeric(u),params=p[cg_roles],pred=pred,loss=z$loss,key=sf_hash(as.numeric(u)),origin=origin,source_stage=stage,identity=c$identity,scale_sha=c$id$scale_sha)
+}
+d_validate_state<-function(c,x,origin){
+ stopifnot(x$origin==origin,identical(x$identity,c$identity),identical(x$scale_sha,c$id$scale_sha),identical(x$counts,setNames(as.integer(x$counts),names(d_limits))),all(x$counts>=0),all(x$counts<=d_limits),sum(x$counts)<=84000,identical(sf_hash(x$rng),x$rng_sha))
+ if(is.finite(x$best$score))stopifnot(identical(x$best$params,d_decode(c,x$best$unit)[cg_roles]),identical(x$best$key,sf_hash(x$best$unit)),x$best$identity==c$identity)
+ invisible(TRUE)
+}
+d_evaluator<-function(c,out,origin,stage,previous=NULL,backend=NULL){
+ st<-new.env(parent=emptyenv());st$counts<-setNames(integer(6),names(d_limits));st$n<-0L;st$best<-list(score=Inf);st$last<-NULL;st$times<-list();st$initial<-list();st$gate<-NULL
+ if(!is.null(previous)){d_validate_state(c,previous,origin);st$counts<-previous$counts;st$best<-previous$best;st$gate<-previous$gate_candidate}
+ primary<-if(stage=='import')'import'else if(stage=='bench'||startsWith(stage,'de'))'global'else if(stage=='local')'local'else if(stage=='pattern')'pattern'else 'verify'
+ log<-file(file.path(out,'evaluations.tsv'),'a');writeLines(paste(c('call','event','bucket','score','seconds','feasible','key',paste0('u',1:19)),collapse='\t'),log);flush(log)
+ fail<-file(file.path(out,'failure_journal.tsv'),'a');failure_header<-FALSE
+ capstop<-function()stop(structure(list(message='Registered D19 callback allowance exhausted',call=NULL),class=c('recovery_budget_stop','error','condition')))
+ fn<-function(u,bucket=NULL){
+  if(is.null(bucket))bucket<-if(stage=='de1b'&&st$n<200L)'handoff'else primary
+  stopifnot(bucket%in%names(d_limits));if(st$counts[bucket]>=d_limits[bucket]||sum(st$counts)>=84000)capstop()
+  st$n<-st$n+1L;st$counts[bucket]<-st$counts[bucket]+1L;t<-proc.time()[3];key<-sf_hash(as.numeric(u))
+  emit<-function(event,score=NA,seconds=NA,ok=NA){writeLines(paste(c(st$n,event,bucket,sprintf('%.17g',score),sprintf('%.9g',seconds),ok,key,sprintf('%.17g',u)),collapse='\t'),log);flush(log)}
+  emit('START');p<-d_decode(c,u)
+  if((stage=='bench'||startsWith(stage,'de'))&&st$n<=200L)st$initial[[st$n]]<-as.numeric(u)
+  z<-if(is.null(backend))d_physics(c,p)else backend(u);st$last<-z
+  score<-if(z$feasible)z$loss$value else Inf;stopifnot(!is.na(score),score>=0)
+  if(!is.null(z$lineages)){
+   q<-f_short(z);q$call<-st$n;write.table(q,fail,sep='\t',row.names=FALSE,col.names=!failure_header,quote=TRUE);failure_header<<-TRUE;flush(fail)
+   if(!z$feasible){sf_rds(lapply(z$lineages,function(a)a$error),file.path(out,'failures',sprintf('%06d.rds',st$n)));sf_emit(f_ledger(z,key,c$contract),file.path(out,'failures',sprintf('%06d_edges.tsv',st$n)))}
+  }
+  if(is.finite(score)){
+   improves<-score<st$best$score
+   qualifies<-score<=1e-4&&z$loss$rms_growth<=.01&&z$loss$max_growth<=.03&&z$loss$max_kary_tv<=.005
+   if(improves||qualifies&&(is.null(st$gate)||score<st$gate$score)){
+    candidate<-d_candidate(c,u,z,origin,stage)
+    if(improves){st$best<-candidate;sf_rds(candidate,file.path(out,'best.rds'));sf_rds(candidate,file.path(out,'improvements',sprintf('%06d.rds',st$n)))}
+    if(qualifies&&(is.null(st$gate)||score<st$gate$score)){st$gate<-candidate;sf_rds(candidate,file.path(out,'gate_candidate.rds'))}
+   }
+  }
+  seconds<-proc.time()[3]-t;st$times[[st$n]]<-data.frame(call=st$n,seconds=seconds,feasible=z$feasible,score=score);emit('END',score,seconds,z$feasible);score
+ }
+ snapshot<-function(extra=list()){
+  sf_emit(if(length(st$times))do.call(rbind,st$times)else data.frame(call=integer(),seconds=double(),feasible=logical(),score=double()),file.path(out,'callback_timings.tsv'))
+  rng<-get('.Random.seed',.GlobalEnv)
+  c(list(origin=origin,stage=stage,counts=st$counts,best=st$best,gate_candidate=st$gate,rng=rng,rng_sha=sf_hash(rng),calls=st$n,identity=c$identity,scale_sha=c$id$scale_sha),extra)
+ }
+ list(fn=fn,state=st,snapshot=snapshot,close=function(){close(log);close(fail)},capstop=capstop)
+}
+d_bank<-function(study,origin){
+ if(substr(origin,3,3)%in%c('E','F')){
+  pointer<-readLines(file.path(study,'controller',paste0('F_',substr(origin,3,3),'_bank_path.txt')));stopifnot(length(pointer)==1,startsWith(pointer,paste0('F_',substr(origin,3,3),'_')));readRDS(file.path(study,'verification',pointer,'bank.rds'))
+ }else readRDS(file.path(study,'inputs/banks',paste0(origin,'.rds')))
+}

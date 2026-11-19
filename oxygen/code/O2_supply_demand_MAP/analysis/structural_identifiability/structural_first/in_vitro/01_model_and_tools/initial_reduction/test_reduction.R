@@ -1,0 +1,10 @@
+# Base-R unit checks only; no native simulator or experimental observations.
+path<-commandArgs(TRUE)[1];expressions<-parse(path)
+for(e in expressions)if(is.call(e)&&as.character(e[[1]])=='<-'&&is.symbol(e[[2]])&&as.character(e[[2]])%in%c('P','lift','aug','operator'))eval(e)
+nodes<-c(22,44,66,88,110);p<-list(O2_crit=.8,lam_max=.75,alpha_o2=.4,mu_hp=.02,p_mis_base=.0001,p_misseg=.01,k_o_mis=.02,p_wgd=.001,buffer_smax=.9,buffer_beta=.5,buffer_n_exp=2)
+grid<-1:220;projection<-P(grid);R<-lift(grid,projection);stopifnot(max(abs(projection%*%R-diag(5)))<1e-12)
+stopifnot(identical(max.col(t(P(c(32,33,54,55,76,77,98,99)))),c(1L,2L,2L,3L,3L,4L,4L,5L)))
+o<-operator(grid,.2,p);A<-o$A;rate<-p$lam_max/(1+p$alpha_o2*(p$O2_crit/(p$O2_crit+.2))*grid/44)
+stopifnot(max(abs(colSums(A[1:(length(grid)+2),1:length(grid)])-rate*(1-p$p_wgd)))<1e-12)
+stopifnot(all(dim(aug(A,projection,R))==c(7L,7L)))
+cat('Four reduction-unit checks passed; no native calls.\n')

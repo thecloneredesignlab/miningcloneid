@@ -1,0 +1,62 @@
+# Production interfaces are loaded from immutable snapshots into private caches.
+rr_load<-function(study,task){
+ source(file.path(study,'inputs/d0_common.R'),local=.GlobalEnv)
+ ctx<-d0_backend(study,task);seed<-readRDS(file.path(ctx$paths$wp0,'source/seed144/fit_result.rds'));cfg<-seed$cfg
+ cfg$parameter_table<-file.path(ctx$paths$wp0,'source/seed144/parameter_table_input.csv')
+ stopifnot(isTRUE(cfg$Crowding),cfg$crowding=='logistic',cfg$K==1e12,!isTRUE(cfg$o2_burden_feedback),isTRUE(cfg$O2_growth),cfg$DT==.05,cfg$N_MIN==22,cfg$N_MAX==154,cfg$N_UNIT==22)
+ ctx$cfg<-cfg;ctx$core<-ctx$backend$build_model_core(cfg=cfg);ctx$study<-study;ctx$task<-task;ctx$release<-Sys.getenv('RR_RELEASE')
+ ctx$contract<-digest::digest(paste(d0_hash(file.path(ctx$release,'production.R')),d0_hash(file.path(ctx$release,'numerics.R')),d0_hash(file.path(study,'inputs/manifest.tsv'))),algo='sha256',serialize=FALSE)
+ ctx
+}
+rr_case<-function(ctx,id){
+ cases<-d0_tab(file.path(ctx$study,'inputs/cases.tsv'));row<-cases[cases$case_id==id,,drop=FALSE];stopifnot(nrow(row)==1L)
+ path<-file.path(ctx$paths$project,row$fit_path);stopifnot(d0_hash(path)==row$fit_sha256);fit<-readRDS(path)
+ map<-o2prof_map(ctx$cfg$parameter_table,fit$best_params,'zero_extended');projected<-o2prof_project_start(map,fit$best_params);stopifnot(!any(projected$projection$reason=='projected_to_bound'))
+ p<-projected$params;grid<-22:154;n0<-ctx$backend$ivt_gaussian_initial_state(grid,p[[paste0('init_mean_',row$cohort)]],p[[paste0('init_sd_',row$cohort)]])
+ initial<-fit$best_components[[paste0('run_',row$cohort)]]$segment_results[[1]]$sim$Ntot_live_obs[1];stopifnot(initial>0,initial<ctx$cfg$K,p$k_clear==1e-4)
+ list(id=id,row=row,params=p,fit=fit,grid=grid,n0=n0*initial,initial_cells=initial,oxygen=as.numeric(row$oxygen_pct),projection=projected$projection)
+}
+rr_reserve<-function(ctx,kind,label){
+ value<-system2('python3',c('-B',shQuote(file.path(ctx$release,'workflow.py')),shQuote(ctx$study),'call','--kind',kind,'--task',shQuote(paste(ctx$task,label,sep=':'))),stdout=TRUE)
+ stopifnot(is.null(attr(value,'status')),length(value)==1L,grepl('^[0-9]+$',value));as.integer(value)
+}
+rr_operator<-function(ctx,case,grid=22:154,eps=1e-8){
+ p<-case$params;cfg<-ctx$cfg;N<-as.integer(grid);oxygen<-case$oxygen;n<-length(N)
+ tri<-get('cpp_o2simps_build_G_for_o2_triplet',envir=ctx$backend,inherits=TRUE)(O2=oxygen,O2_crit=p$O2_crit,N0min=min(N),N0max=max(N),N1min=min(N),N1max=max(N),lam_max=p$lam_max,p_mis_base=p$p_mis_base,p_misseg=p$p_misseg,k_o_mis=p$k_o_mis,p_wgd=p$p_wgd,boundary='drop',eps_tail=eps,buffer_smax=p$buffer_smax,buffer_beta=p$buffer_beta,buffer_n_exp=p$buffer_n_exp,N_unit=cfg$N_UNIT,beta_size=p$beta_size,O2_growth=cfg$O2_growth,alpha_o2=p$alpha_o2,gamma_growth=p$gamma_growth,mu_hp=p$mu_hp,gamma_mu=p$gamma_mu,n_O=p$n_O,ploidy_O2_death=cfg$ploidy_O2_death)
+ G<-Matrix::sparseMatrix(i=tri$i,j=tri$j,x=tri$x,dims=c(n,n))
+ lambda<-ctx$backend$.lambda_eff_of_O2(oxygen,p,N=N,O2_growth=cfg$O2_growth);mu<-ctx$backend$.mu_eff_of_O2(oxygen,p,N=N);prob<-ctx$backend$.pmisseg_of_O2(oxygen,p,N=N)
+ flows<-matrix(0,length(rr_counters),n,dimnames=list(rr_counters,NULL));survival<-p$buffer_smax*exp(-p$buffer_beta*(44/N)^p$buffer_n_exp)
+ for(j in seq_along(N)){
+  m<-0:N[j];pn<-dbinom(m,N[j],prob[j]);S<-survival[j]^m;S[1]<-1;keep<-pn>0&pn>=eps;viable<-pn*S*keep;r<-lambda[j]*(1-p$p_wgd)
+  bio<-r*2*sum(pn*(1-S));prune<-r*2*sum(pn*S*!keep);lower<-r*sum(viable[N[j]-m<min(N)]);upper<-r*sum(viable[N[j]+m>max(N)])+lambda[j]*p$p_wgd*as.numeric(2*N[j]>max(N))
+  flows[,j]<-c(tri$dead_buffer_rate[j],bio,prune,lower,upper,tri$dead_buffer_rate[j]-bio-prune-lower-upper,r*sum(pn[m>0]),r,lambda[j],lambda[j]*p$p_wgd,r*sum(viable[m>0&N[j]-m>=min(N)]),r*sum(viable[m>0&N[j]+m<=max(N)]),lambda[j]*(2-p$p_wgd))
+  # All retained daughters, pruning, overflow and biological failure reconcile.
+  retained<-r*(sum(viable[N[j]-m>=min(N)])+sum(viable[N[j]+m<=max(N)]))+lambda[j]*p$p_wgd*as.numeric(2*N[j]<=max(N))
+  stopifnot(abs(retained+bio+prune+lower+upper-lambda[j]*(2-p$p_wgd))<=1e-12*max(1,lambda[j]))
+ }
+ expected_col<-lambda*(1-p$p_wgd)-as.numeric(tri$dead_buffer_rate)
+ stopifnot(max(abs(as.numeric(Matrix::colSums(G))-expected_col))<1e-10)
+ list(grid=N,G=G,mu=as.numeric(mu),flows=flows,capacity=cfg$K,clearance=p$k_clear,eps_tail=eps,lambda=as.numeric(lambda),probability=as.numeric(prob),survival=as.numeric(survival),maximum_roundoff_rate=max(abs(flows['roundoff',])))
+}
+rr_native<-function(ctx,case,dt=.05,n0=case$n0,label='native'){
+ rr_reserve(ctx,'native',paste(case$id,label,dt,sep=':'));cfg<-ctx$cfg;cfg$DT<-dt
+ volumes<-ctx$backend$cell_volume_mm3_by_N(case$grid,run_params=case$params,cfg=cfg);stopifnot(max(abs(volumes-1/case$params$rho_2N))<1e-15)
+ segment<-list(cohort=as.character(case$row$cohort),oxygen_pct=case$oxygen,initial_cells=sum(n0),obs_days_local=rr_time,duration_days=14)
+ sim<-ctx$backend$ivt_run_segment_fixed_o2(segment,cfg,case$params,ctx$core,volumes,init_state_override=n0,init_cells_override=sum(n0))$sim
+ list(times=rr_time,sim=sim,dt=dt,params=case$params,initial=n0)
+}
+rr_native_run<-function(native,op){
+ n<-length(op$grid);state<-matrix(0,length(native$times),length(rr_initial(rep(0,n))));state[,seq_len(n)]<-native$sim$live_state_obs
+ state[,n+1]<-native$sim$Ntot_dead_hypoxia_obs;state[,n+2]<-native$sim$Ntot_dead_buffer_obs
+ list(times=native$times,state=state,op=op,method='Production C++ Euler',dt=native$dt)
+}
+rr_native_identity<-function(native,replica,old=NULL){
+ n<-length(replica$op$grid);actual<-cbind(native$sim$live_state_obs,native$sim$Ntot_dead_hypoxia_obs,native$sim$Ntot_dead_buffer_obs);expected<-replica$state[,seq_len(n+2),drop=FALSE]
+ gap<-max(abs(actual-expected)/pmax(1,abs(actual)));old_gap<-NA_real_
+ if(!is.null(old)){idx<-match(0:7,native$times);a<-actual[idx,,drop=FALSE];b<-cbind(old$live_state_obs,old$Ntot_dead_hypoxia_obs,old$Ntot_dead_buffer_obs);old_gap<-max(abs(a-b)/pmax(1,abs(b)))}
+ list(pass=gap<=1e-12&&(is.na(old_gap)||old_gap<=1e-12),gap=gap,old_seven_day_gap=old_gap)
+}
+rr_propagate<-function(ctx,op,n0,label,method='continuous',rtol=1e-10,atol=1e-12,solver='lsoda'){
+ rr_reserve(ctx,'reference',label)
+ if(method=='Euler')rr_euler(op,n0,.05) else rr_ode(op,n0,rtol,atol,solver)
+}

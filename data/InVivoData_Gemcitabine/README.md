@@ -11,6 +11,20 @@ Files included:
 
 ---
 
+## Necrosis slide IDs by mouse
+
+These seven untreated SUM159 tumors have a recorded necrosis percentage in the [histology mapping CSV](histology_to_dt_Gem_VT_20260209_v5_mapping.csv). The starting cohort identifies the implanted lineage. The [QuPath annotation filenames](histology_Annotations/) use the quantified Image ID, not the Slide ID.
+
+| Starting cohort | Mouse ID | Quantified Image ID | Slide ID for that image | Earlier Image ID, same mouse |
+|---|---|---:|---:|---:|
+| 2N | A1-R | 558123 | 133886 | 557980 |
+| 2N | A1-RL | 558140 | 133903 | 557997 |
+| 2N | A1-0 | 558157 | 133920 | 558014 |
+| 4N | A5-R | 558089 | 133852 | 557946 |
+| 4N | A5-RL | 558205 | 133968 | 558062 |
+| 4N | A5-0 | 558222 | 133985 | 558079 |
+| 4N | A5-L | 558227 | 133990 | 557963 |
+
 ## Experimental design (conceptual)
 
 ### Cohorts / initial conditions (2N vs 4N)
